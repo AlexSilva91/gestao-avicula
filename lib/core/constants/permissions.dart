@@ -1,0 +1,68 @@
+class SeletoPermission {
+  const SeletoPermission(this.key, this.label, this.group);
+  final String key;
+  final String label;
+  final String group;
+}
+
+const seletoPermissions = <SeletoPermission>[
+  SeletoPermission('dashboard.view', 'Visualizar dashboard', 'Home'),
+  SeletoPermission('lots.view', 'Visualizar lotes', 'Produção'),
+  SeletoPermission('lots.create', 'Criar lotes', 'Produção'),
+  SeletoPermission('lots.update', 'Alterar lotes', 'Produção'),
+  SeletoPermission('birds.purchase', 'Comprar aves', 'Produção'),
+  SeletoPermission('birds.sell', 'Vender aves', 'Produção'),
+  SeletoPermission('birds.mortality', 'Registrar mortalidade', 'Produção'),
+  SeletoPermission('birds.transfer', 'Transferir aves', 'Produção'),
+  SeletoPermission('birds.adjust', 'Ajustar plantel', 'Produção'),
+  SeletoPermission('feeding.view', 'Visualizar alimentação', 'Ração'),
+  SeletoPermission('feeding.register', 'Registrar alimentação', 'Ração'),
+  SeletoPermission('feed_batches.view', 'Visualizar fabricação', 'Ração'),
+  SeletoPermission('feed_batches.create', 'Fabricar ração', 'Ração'),
+  SeletoPermission('feed_formulas.manage', 'Alterar formulações', 'Ração'),
+  SeletoPermission('feed_stock.view', 'Visualizar estoque de ração', 'Ração'),
+  SeletoPermission('feed_stock.adjust', 'Ajustar estoque de ração', 'Ração'),
+  SeletoPermission('ingredients.view', 'Visualizar insumos', 'Ração'),
+  SeletoPermission('ingredients.manage', 'Gerenciar insumos', 'Ração'),
+  SeletoPermission('ingredients.price_register', 'Registrar preços', 'Ração'),
+  SeletoPermission('egg_collection.view', 'Visualizar coletas', 'Ovos'),
+  SeletoPermission('egg_collection.create', 'Registrar coletas', 'Ovos'),
+  SeletoPermission('egg_stock.view', 'Visualizar estoque de ovos', 'Ovos'),
+  SeletoPermission('egg_stock.adjust', 'Ajustar estoque de ovos', 'Ovos'),
+  SeletoPermission('customers.create', 'Cadastrar clientes', 'Comercial'),
+  SeletoPermission('orders.view', 'Visualizar pedidos e vendas', 'Comercial'),
+  SeletoPermission('orders.create', 'Criar pedidos', 'Comercial'),
+  SeletoPermission('orders.update', 'Alterar pedidos', 'Comercial'),
+  SeletoPermission('orders.cancel', 'Cancelar pedidos', 'Comercial'),
+  SeletoPermission('sales.view', 'Visualizar vendas', 'Comercial'),
+  SeletoPermission('sales.create', 'Registrar vendas', 'Comercial'),
+  SeletoPermission('sales.cancel', 'Cancelar vendas', 'Comercial'),
+  SeletoPermission('finance.view', 'Visualizar financeiro', 'Financeiro'),
+  SeletoPermission(
+    'finance.create',
+    'Criar lançamentos e investimentos',
+    'Financeiro',
+  ),
+  SeletoPermission(
+    'finance.update',
+    'Cancelar/alterar lançamentos',
+    'Financeiro',
+  ),
+  SeletoPermission('calendar.view', 'Visualizar calendário', 'Calendário'),
+  SeletoPermission('calendar.manage', 'Criar eventos', 'Calendário'),
+  SeletoPermission('lighting.view', 'Visualizar iluminação', 'Calendário'),
+  SeletoPermission('lighting.manage', 'Gerenciar iluminação', 'Calendário'),
+  SeletoPermission('reports.view', 'Visualizar relatórios', 'Gestão'),
+  SeletoPermission('alerts.view', 'Visualizar alertas', 'Sistema'),
+  SeletoPermission('settings.view', 'Visualizar configurações', 'Sistema'),
+  SeletoPermission(
+    'settings.update',
+    'Alterar configurações e backup',
+    'Sistema',
+  ),
+  SeletoPermission('audit.view', 'Visualizar auditoria', 'Sistema'),
+  SeletoPermission('users.view', 'Visualizar usuários', 'Sistema'),
+  SeletoPermission('users.create', 'Criar usuários', 'Sistema'),
+  SeletoPermission('users.update', 'Alterar usuários', 'Sistema'),
+  SeletoPermission('users.permissions', 'Definir permissões', 'Sistema'),
+];
