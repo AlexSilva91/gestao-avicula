@@ -508,6 +508,11 @@ class AppDatabase extends _$AppDatabase {
     )..where((u) => u.username.equals(normalizedUsername))).getSingleOrNull();
   }
 
+  Future<User?> userById(String userId) async {
+    if (userId.trim().isEmpty) return null;
+    return (select(users)..where((u) => u.id.equals(userId))).getSingleOrNull();
+  }
+
   Stream<List<User>> watchUsers() => (select(
     users,
   )..orderBy([(u) => OrderingTerm.asc(u.displayName)])).watch();

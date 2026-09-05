@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/app_failures.dart';
 import '../../../../core/utils/password_hasher.dart';
@@ -14,10 +16,34 @@ class AccountCreationResult {
 class LocalAuthRepository implements AuthRepository {
   LocalAuthRepository(this._database);
   final AppDatabase _database;
+  static const _rememberedUserIdKey = 'seleto.remembered_user_id';
+  static const _rememberedUsernameKey = 'seleto.remembered_username';
+
   Future<bool> hasUsers() => _database.hasUsers();
 
+  Future<AuthSession?> restoreRememberedSession() async {
+    final preferences = await SharedPreferences.getInstance();
+    final userId = preferences.getString(_rememberedUserIdKey);
+    if (userId == null || userId.isEmpty) return null;
+    final user = await _database.userById(userId);
+    if (user == null || !user.isActive) {
+      await _clearRememberedLogin(preferences);
+      return null;
+    }
+    return _sessionFromUser(user);
+  }
+
+  Future<String?> rememberedUsername() async {
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getString(_rememberedUsernameKey);
+  }
+
   @override
-  Future<AuthSession> signIn(String username, String password) async {
+  Future<AuthSession> signIn(
+    String username,
+    String password, {
+    bool rememberLogin = false,
+  }) async {
     final normalizedUsername = username.trim().toLowerCase();
     final existing = await _database.userByUsername(normalizedUsername);
     if (existing == null) {
@@ -39,18 +65,16 @@ class LocalAuthRepository implements AuthRepository {
         'Não foi possível entrar. Revise usuário e senha.',
       );
     }
-    return AuthSession(
-      userId: user.id,
-      displayName: user.displayName,
-      isSuperuser: user.isSuperuser,
-      permissions: (await _database.permissionsOf(user.id)).toSet(),
-    );
+    final session = await _sessionFromUser(user);
+    await _setRememberedLogin(user: user, rememberLogin: rememberLogin);
+    return session;
   }
 
   Future<AccountCreationResult> createAccount({
     required String username,
     required String displayName,
     required String password,
+    bool rememberLogin = false,
   }) async {
     final hadUsers = await _database.hasUsers();
     final user = await _database.createSelfServiceAccount(
@@ -64,17 +88,41 @@ class LocalAuthRepository implements AuthRepository {
             'Conta criada, mas ainda não está ativa. Peça ao administrador para ativar seu usuário e liberar as permissões.',
       );
     }
+    await _setRememberedLogin(user: user, rememberLogin: rememberLogin);
     return AccountCreationResult(
       message: 'Conta administradora criada com sucesso.',
-      session: AuthSession(
-        userId: user.id,
-        displayName: user.displayName,
-        isSuperuser: user.isSuperuser,
-        permissions: (await _database.permissionsOf(user.id)).toSet(),
-      ),
+      session: await _sessionFromUser(user),
     );
   }
 
   @override
-  Future<void> signOut() async {}
+  Future<void> signOut() async {
+    final preferences = await SharedPreferences.getInstance();
+    await _clearRememberedLogin(preferences);
+  }
+
+  Future<AuthSession> _sessionFromUser(User user) async => AuthSession(
+    userId: user.id,
+    displayName: user.displayName,
+    isSuperuser: user.isSuperuser,
+    permissions: (await _database.permissionsOf(user.id)).toSet(),
+  );
+
+  Future<void> _setRememberedLogin({
+    required User user,
+    required bool rememberLogin,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!rememberLogin) {
+      await _clearRememberedLogin(preferences);
+      return;
+    }
+    await preferences.setString(_rememberedUserIdKey, user.id);
+    await preferences.setString(_rememberedUsernameKey, user.username);
+  }
+
+  Future<void> _clearRememberedLogin(SharedPreferences preferences) async {
+    await preferences.remove(_rememberedUserIdKey);
+    await preferences.remove(_rememberedUsernameKey);
+  }
 }

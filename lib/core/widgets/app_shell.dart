@@ -227,7 +227,9 @@ class AppShell extends ConsumerWidget {
       ),
     );
     final mobile = width < SeletoTokens.compactBreakpoint;
+    final scaffoldKey = GlobalKey<ScaffoldState>();
     return Scaffold(
+      key: scaffoldKey,
       appBar: AppBar(
         title: Text(title),
         centerTitle: false,
@@ -258,6 +260,13 @@ class AppShell extends ConsumerWidget {
           const SizedBox(width: 4),
         ],
       ),
+      bottomNavigationBar: mobile
+          ? _MobileNavigationBar(
+              destinations: destinations,
+              path: path,
+              onMore: () => scaffoldKey.currentState?.openDrawer(),
+            )
+          : null,
       drawer: mobile
           ? Drawer(
               child: SafeArea(
@@ -279,7 +288,7 @@ class AppShell extends ConsumerWidget {
               _SideNavigation(
                 destinations: destinations,
                 path: path,
-                extended: width >= 1180,
+                extended: width >= 1120,
               ),
             Expanded(
               child: Center(child: SingleChildScrollView(child: content)),
@@ -287,6 +296,92 @@ class AppShell extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+const _mobilePriorityRoutes = [
+  '/dashboard',
+  '/lots',
+  '/egg-collection',
+  '/feed',
+];
+
+List<SeletoDestination> _mobilePrimaryDestinations(
+  List<SeletoDestination> destinations,
+) {
+  final byRoute = {
+    for (final destination in destinations) destination.route: destination,
+  };
+  final primary = <SeletoDestination>[
+    for (final route in _mobilePriorityRoutes)
+      if (byRoute[route] != null) byRoute[route]!,
+  ];
+  for (final destination in destinations) {
+    if (primary.length >= 4) break;
+    if (!primary.any((item) => item.route == destination.route)) {
+      primary.add(destination);
+    }
+  }
+  return primary;
+}
+
+String _mobileLabel(SeletoDestination destination) {
+  return switch (destination.route) {
+    '/dashboard' => 'Visão',
+    '/egg-collection' => 'Coleta',
+    '/feed' => 'Ração',
+    '/egg-stock' => 'Ovos',
+    '/commercial' => 'Vendas',
+    '/calendar' => 'Agenda',
+    '/settings' => 'Ajustes',
+    _ => destination.label,
+  };
+}
+
+class _MobileNavigationBar extends StatelessWidget {
+  const _MobileNavigationBar({
+    required this.destinations,
+    required this.path,
+    required this.onMore,
+  });
+
+  final List<SeletoDestination> destinations;
+  final String path;
+  final VoidCallback onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = _mobilePrimaryDestinations(destinations);
+    final primaryIndex = primary.indexWhere((destination) {
+      return destination.route == path;
+    });
+    final moreIndex = primary.length;
+    return NavigationBar(
+      height: 72,
+      selectedIndex: primaryIndex >= 0 ? primaryIndex : moreIndex,
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      onDestinationSelected: (index) {
+        if (index == moreIndex) {
+          onMore();
+          return;
+        }
+        final route = primary[index].route;
+        if (route != path) context.go(route);
+      },
+      destinations: [
+        for (final destination in primary)
+          NavigationDestination(
+            icon: Icon(destination.icon),
+            selectedIcon: Icon(destination.selectedIcon),
+            label: _mobileLabel(destination),
+          ),
+        const NavigationDestination(
+          icon: Icon(Icons.apps_outlined),
+          selectedIcon: Icon(Icons.apps_rounded),
+          label: 'Mais',
+        ),
+      ],
     );
   }
 }
@@ -303,7 +398,9 @@ class _SideNavigation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final groups = _groupedDestinations(destinations);
-    return SizedBox(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
       width: extended ? 272 : 80,
       child: Material(
         color: Theme.of(
@@ -359,12 +456,26 @@ class _SideNavigation extends StatelessWidget {
                     message: d.label,
                     child: ListTile(
                       selected: path == d.route,
+                      selectedTileColor: Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withValues(alpha: .52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                       contentPadding: EdgeInsets.symmetric(
                         horizontal: extended ? 12 : 16,
                       ),
+                      minLeadingWidth: 24,
+                      horizontalTitleGap: 12,
+                      visualDensity: VisualDensity.compact,
                       leading: Icon(path == d.route ? d.selectedIcon : d.icon),
-                      title: extended ? Text(d.label) : null,
-                      onTap: () => context.go(d.route),
+                      iconColor: path == d.route
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                      title: extended
+                          ? Text(d.label, overflow: TextOverflow.ellipsis)
+                          : null,
+                      onTap: path == d.route ? null : () => context.go(d.route),
                     ),
                   ),
                 ),
@@ -403,14 +514,29 @@ class _DrawerNavigation extends StatelessWidget {
                   ),
                 ),
                 for (final d in group.value)
-                  ListTile(
-                    selected: path == d.route,
-                    leading: Icon(path == d.route ? d.selectedIcon : d.icon),
-                    title: Text(d.label),
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.go(d.route);
-                    },
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 2,
+                    ),
+                    child: ListTile(
+                      selected: path == d.route,
+                      selectedTileColor: Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withValues(alpha: .52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      leading: Icon(path == d.route ? d.selectedIcon : d.icon),
+                      iconColor: path == d.route
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                      title: Text(d.label),
+                      onTap: () {
+                        Navigator.pop(context);
+                        if (path != d.route) context.go(d.route);
+                      },
+                    ),
                   ),
               ],
             ],

@@ -19,11 +19,13 @@ import '../../features/operations/presentation/pages/settings_page.dart';
 import '../widgets/app_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final auth = ref.watch(authControllerProvider);
+  final auth = ref.read(authControllerProvider);
   return GoRouter(
     initialLocation: '/login',
+    refreshListenable: auth,
     redirect: (context, state) {
       final atLogin = state.uri.path == '/login';
+      if (auth.isRestoringSession) return null;
       if (!auth.isAuthenticated) {
         return atLogin ? null : '/login';
       }

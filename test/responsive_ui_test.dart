@@ -7,9 +7,12 @@ import 'package:seleto/app.dart';
 import 'package:seleto/core/database/app_database.dart';
 import 'package:seleto/core/widgets/app_shell.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUpAll(() => initializeDateFormatting('pt_BR'));
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   for (final width in [360.0, 412.0, 600.0, 1024.0, 1440.0]) {
     testWidgets('login has no overflow at ${width.toInt()} px', (tester) async {
       final db = AppDatabase(NativeDatabase.memory());
@@ -175,6 +178,50 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Visão geral'), findsWidgets);
     expect(find.text('Aves ativas'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets('remember login restores the administrator session', (
+    tester,
+  ) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    await db.seedInitialData();
+    await _createTestAdmin(db);
+    addTearDown(db.close);
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const SeletoApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).at(0), 'admin');
+    await tester.enterText(find.byType(TextFormField).at(1), 'Seleto@2026');
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Entrar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Visão geral'), findsWidgets);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const SeletoApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Visão geral'), findsWidgets);
+    expect(find.text('Bem-vindo de volta'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 1));

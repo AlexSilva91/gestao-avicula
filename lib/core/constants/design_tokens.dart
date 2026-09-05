@@ -12,7 +12,7 @@ abstract final class SeletoTokens {
   static const contentMaxWidth = 1360.0;
   static const formMaxWidth = 460.0;
   static const touchTargetMinimum = 48.0;
-  static const compactBreakpoint = 600.0;
+  static const compactBreakpoint = 720.0;
   static const expandedBreakpoint = 1024.0;
   static const cardShadow = [
     BoxShadow(color: Color(0x120A372B), blurRadius: 18, offset: Offset(0, 6)),

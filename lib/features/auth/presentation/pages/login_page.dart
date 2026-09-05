@@ -25,6 +25,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool _obscure = true;
   bool _obscureConfirm = true;
   bool _creatingFirstAccount = false;
+  bool _rememberLogin = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberedLogin();
+  }
 
   @override
   void dispose() {
@@ -54,9 +61,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           loading: auth.isLoading,
           error: auth.error,
           notice: auth.notice,
+          rememberLogin: _rememberLogin,
           onVisibility: () => setState(() => _obscure = !_obscure),
           onConfirmVisibility: () =>
               setState(() => _obscureConfirm = !_obscureConfirm),
+          onRememberLoginChanged: (value) =>
+              setState(() => _rememberLogin = value),
           onCreateAccount: _openCreateAccount,
           onBackToLogin: _backToLogin,
           onSubmit: _submit,
@@ -96,9 +106,25 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             username: _username.text,
             displayName: _displayName.text,
             password: _password.text,
+            rememberLogin: _rememberLogin,
           )
-        : await controller.signIn(_username.text, _password.text);
+        : await controller.signIn(
+            _username.text,
+            _password.text,
+            rememberLogin: _rememberLogin,
+          );
     if (authenticated && mounted) context.go('/dashboard');
+  }
+
+  Future<void> _loadRememberedLogin() async {
+    final username = await ref
+        .read(authControllerProvider)
+        .rememberedUsername();
+    if (!mounted || username == null || username.isEmpty) return;
+    setState(() {
+      if (_username.text.trim().isEmpty) _username.text = username;
+      _rememberLogin = true;
+    });
   }
 
   Future<void> _openCreateAccount() async {
@@ -164,8 +190,10 @@ class _LoginForm extends StatelessWidget {
     required this.loading,
     required this.error,
     required this.notice,
+    required this.rememberLogin,
     required this.onVisibility,
     required this.onConfirmVisibility,
+    required this.onRememberLoginChanged,
     required this.onCreateAccount,
     required this.onBackToLogin,
     required this.onSubmit,
@@ -177,10 +205,12 @@ class _LoginForm extends StatelessWidget {
   final TextEditingController confirmPassword;
   final bool creatingFirstAccount, checkingAccounts;
   final bool obscure, obscureConfirm, loading;
+  final bool rememberLogin;
   final String? error;
   final String? notice;
   final VoidCallback onVisibility;
   final VoidCallback onConfirmVisibility;
+  final ValueChanged<bool> onRememberLoginChanged;
   final Future<void> Function() onCreateAccount;
   final VoidCallback onBackToLogin;
   final Future<void> Function() onSubmit;
@@ -286,6 +316,25 @@ class _LoginForm extends StatelessWidget {
             },
           ),
         ],
+        const SizedBox(height: 8),
+        Material(
+          type: MaterialType.transparency,
+          child: CheckboxListTile(
+            value: rememberLogin,
+            onChanged: loading
+                ? null
+                : (value) => onRememberLoginChanged(value ?? false),
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text('Manter conectado neste dispositivo'),
+            subtitle: Text(
+              'Na próxima abertura, o app entra direto se este usuário ainda estiver ativo.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
         if (error != null)
           Padding(
             padding: const EdgeInsets.only(top: 16),

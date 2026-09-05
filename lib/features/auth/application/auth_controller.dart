@@ -7,22 +7,37 @@ import '../data/repositories/local_auth_repository.dart';
 import '../domain/entities/auth_session.dart';
 
 class AuthController extends ChangeNotifier {
-  AuthController(this._repository);
+  AuthController(this._repository) {
+    _restoreRememberedSession();
+  }
   final LocalAuthRepository _repository;
   AuthSession? session;
   bool isLoading = false;
+  bool isRestoringSession = true;
   String? error;
   String? notice;
+  int _sessionGeneration = 0;
+  bool _disposed = false;
   bool get isAuthenticated => session != null;
   Future<bool> hasUsers() => _repository.hasUsers();
+  Future<String?> rememberedUsername() => _repository.rememberedUsername();
 
-  Future<bool> signIn(String username, String password) async {
+  Future<bool> signIn(
+    String username,
+    String password, {
+    bool rememberLogin = false,
+  }) async {
+    _sessionGeneration++;
     isLoading = true;
     error = null;
     notice = null;
     notifyListeners();
     try {
-      session = await _repository.signIn(username, password);
+      session = await _repository.signIn(
+        username,
+        password,
+        rememberLogin: rememberLogin,
+      );
       return true;
     } catch (e) {
       error = _messageFrom(e, fallback: 'Não foi possível entrar.');
@@ -37,7 +52,9 @@ class AuthController extends ChangeNotifier {
     required String username,
     required String displayName,
     required String password,
+    bool rememberLogin = false,
   }) async {
+    _sessionGeneration++;
     isLoading = true;
     error = null;
     notice = null;
@@ -47,6 +64,7 @@ class AuthController extends ChangeNotifier {
         username: username,
         displayName: displayName,
         password: password,
+        rememberLogin: rememberLogin,
       );
       session = result.session;
       notice = result.message;
@@ -61,6 +79,7 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    _sessionGeneration++;
     await _repository.signOut();
     session = null;
     error = null;
@@ -69,6 +88,27 @@ class AuthController extends ChangeNotifier {
   }
 
   bool allows(String permission) => session?.allows(permission) ?? false;
+
+  Future<void> _restoreRememberedSession() async {
+    final restoreGeneration = _sessionGeneration;
+    try {
+      final restoredSession = await _repository.restoreRememberedSession();
+      if (restoreGeneration == _sessionGeneration) {
+        session = restoredSession;
+      }
+    } catch (_) {
+      if (restoreGeneration == _sessionGeneration) session = null;
+    } finally {
+      isRestoringSession = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   String _messageFrom(Object error, {required String fallback}) {
     if (error is AppFailure) return error.message;
