@@ -201,37 +201,62 @@ String _backgroundForPath(String path) {
   return 'assets/images/backgrounds/bg_production.png';
 }
 
-class AppShell extends ConsumerWidget {
-  const AppShell({super.key, required this.child, required this.title});
+class AppShell extends ConsumerStatefulWidget {
+  const AppShell({
+    super.key,
+    required this.child,
+    required this.title,
+    this.scrollable = true,
+  });
   final Widget child;
   final String title;
+  final bool scrollable;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends ConsumerState<AppShell> {
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  void _openMenu() => _scaffoldKey.currentState?.openDrawer();
+
+  @override
+  Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final path = GoRouterState.of(context).uri.path;
     final session = ref.watch(authControllerProvider).session;
     final destinations = seletoDestinations
         .where((d) => session?.allows(d.permission) ?? false)
         .toList();
-    final content = ConstrainedBox(
+    final mobile = width < SeletoTokens.compactBreakpoint;
+    final horizontalPadding = width < 600 ? 16.0 : 28.0;
+    Widget content({double? height}) => ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: SeletoTokens.contentMaxWidth),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          width < 600 ? 16 : 28,
-          24,
-          width < 600 ? 16 : 28,
-          48,
+      child: SizedBox(
+        height: height,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            24,
+            horizontalPadding,
+            48,
+          ),
+          child: widget.child,
         ),
-        child: child,
       ),
     );
-    final mobile = width < SeletoTokens.compactBreakpoint;
-    final scaffoldKey = GlobalKey<ScaffoldState>();
     return Scaffold(
-      key: scaffoldKey,
+      key: _scaffoldKey,
       appBar: AppBar(
-        title: Text(title),
+        leading: mobile
+            ? IconButton(
+                tooltip: 'Menu',
+                icon: const Icon(Icons.menu_rounded),
+                onPressed: _openMenu,
+              )
+            : null,
+        title: Text(widget.title),
         centerTitle: false,
         actions: [
           if (!mobile)
@@ -260,13 +285,6 @@ class AppShell extends ConsumerWidget {
           const SizedBox(width: 4),
         ],
       ),
-      bottomNavigationBar: mobile
-          ? _MobileNavigationBar(
-              destinations: destinations,
-              path: path,
-              onMore: () => scaffoldKey.currentState?.openDrawer(),
-            )
-          : null,
       drawer: mobile
           ? Drawer(
               child: SafeArea(
@@ -291,97 +309,19 @@ class AppShell extends ConsumerWidget {
                 extended: width >= 1120,
               ),
             Expanded(
-              child: Center(child: SingleChildScrollView(child: content)),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final page = content(
+                    height: widget.scrollable ? null : constraints.maxHeight,
+                  );
+                  if (!widget.scrollable) return Center(child: page);
+                  return Center(child: SingleChildScrollView(child: page));
+                },
+              ),
             ),
           ],
         ),
       ),
-    );
-  }
-}
-
-const _mobilePriorityRoutes = [
-  '/dashboard',
-  '/lots',
-  '/egg-collection',
-  '/feed',
-];
-
-List<SeletoDestination> _mobilePrimaryDestinations(
-  List<SeletoDestination> destinations,
-) {
-  final byRoute = {
-    for (final destination in destinations) destination.route: destination,
-  };
-  final primary = <SeletoDestination>[
-    for (final route in _mobilePriorityRoutes)
-      if (byRoute[route] != null) byRoute[route]!,
-  ];
-  for (final destination in destinations) {
-    if (primary.length >= 4) break;
-    if (!primary.any((item) => item.route == destination.route)) {
-      primary.add(destination);
-    }
-  }
-  return primary;
-}
-
-String _mobileLabel(SeletoDestination destination) {
-  return switch (destination.route) {
-    '/dashboard' => 'Visão',
-    '/egg-collection' => 'Coleta',
-    '/feed' => 'Ração',
-    '/egg-stock' => 'Ovos',
-    '/commercial' => 'Vendas',
-    '/calendar' => 'Agenda',
-    '/settings' => 'Ajustes',
-    _ => destination.label,
-  };
-}
-
-class _MobileNavigationBar extends StatelessWidget {
-  const _MobileNavigationBar({
-    required this.destinations,
-    required this.path,
-    required this.onMore,
-  });
-
-  final List<SeletoDestination> destinations;
-  final String path;
-  final VoidCallback onMore;
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = _mobilePrimaryDestinations(destinations);
-    final primaryIndex = primary.indexWhere((destination) {
-      return destination.route == path;
-    });
-    final moreIndex = primary.length;
-    return NavigationBar(
-      height: 72,
-      selectedIndex: primaryIndex >= 0 ? primaryIndex : moreIndex,
-      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      onDestinationSelected: (index) {
-        if (index == moreIndex) {
-          onMore();
-          return;
-        }
-        final route = primary[index].route;
-        if (route != path) context.go(route);
-      },
-      destinations: [
-        for (final destination in primary)
-          NavigationDestination(
-            icon: Icon(destination.icon),
-            selectedIcon: Icon(destination.selectedIcon),
-            label: _mobileLabel(destination),
-          ),
-        const NavigationDestination(
-          icon: Icon(Icons.apps_outlined),
-          selectedIcon: Icon(Icons.apps_rounded),
-          label: 'Mais',
-        ),
-      ],
     );
   }
 }

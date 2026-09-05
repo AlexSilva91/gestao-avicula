@@ -12,12 +12,14 @@ class CommercialPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => AppShell(
     title: 'Comercial',
+    scrollable: false,
     child: DefaultTabController(
       length: 3,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const TabBar(
+            isScrollable: true,
             tabs: [
               Tab(icon: Icon(Icons.receipt_long_outlined), text: 'Pedidos'),
               Tab(icon: Icon(Icons.point_of_sale_outlined), text: 'Vendas'),
@@ -25,8 +27,7 @@ class CommercialPage extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 18),
-          SizedBox(
-            height: MediaQuery.sizeOf(context).height.clamp(560, 820),
+          Expanded(
             child: TabBarView(
               children: [
                 _OrdersTab(ref: ref),
@@ -67,7 +68,7 @@ class _OrdersTab extends StatelessWidget {
       .when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => const SeletoAsyncError(),
-        data: (items) => ListView(
+        data: (items) => SeletoTabList(
           children: [
             Align(
               alignment: Alignment.centerRight,
@@ -165,7 +166,7 @@ class _SalesTab extends StatelessWidget {
           final total = items
               .where((s) => s.status == 'CONFIRMED')
               .fold<int>(0, (sum, s) => sum + s.totalCents);
-          return ListView(
+          return SeletoTabList(
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -279,7 +280,7 @@ class _CustomersTab extends StatelessWidget {
       .when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => const SeletoAsyncError(),
-        data: (items) => ListView(
+        data: (items) => SeletoTabList(
           children: [
             Align(
               alignment: Alignment.centerRight,

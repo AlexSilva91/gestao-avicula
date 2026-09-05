@@ -154,6 +154,42 @@ void main() {
     expect(batch.batch.costPerKgCents, closeTo(116.67, .01));
   });
 
+  test('ingredients and formulas can be edited and deactivated', () async {
+    final ingredient = (await db.watchIngredientOverviews().first).first;
+    await db.updateIngredient(
+      ingredientId: ingredient.ingredient.id,
+      name: 'Insumo editado',
+      unit: 'kg',
+      isActive: false,
+      notes: 'Desativado no teste',
+      actorId: actor,
+    );
+    final editedIngredient = (await db.watchIngredientOverviews().first)
+        .firstWhere((item) => item.ingredient.id == ingredient.ingredient.id);
+    expect(editedIngredient.ingredient.name, 'Insumo editado');
+    expect(editedIngredient.ingredient.isActive, isFalse);
+
+    final formula = (await db.watchFormulaOverviews().first).first;
+    await db.updateFormula(
+      source: formula,
+      name: 'Formula editada',
+      phase: 'teste',
+      isActive: false,
+      quantities: {
+        for (final item in formula.items) item.ingredientId: item.quantityKg,
+      },
+      notes: 'Desativada no teste',
+      actorId: actor,
+    );
+    final editedFormula = (await db.watchFormulaOverviews().first).firstWhere(
+      (item) => item.formula.id == formula.formula.id,
+    );
+    expect(editedFormula.formula.name, 'Formula editada');
+    expect(editedFormula.formula.phase, 'TESTE');
+    expect(editedFormula.formula.isActive, isFalse);
+    expect(editedFormula.items.length, formula.items.length);
+  });
+
   test('laying rate history is calculated daily and monthly per lot', () async {
     await db.registerLotPurchase(
       name: 'Postura',

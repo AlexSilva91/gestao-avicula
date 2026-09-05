@@ -167,6 +167,15 @@ class SeletoKpiGrid extends StatelessWidget {
   );
 }
 
+class SeletoTabList extends StatelessWidget {
+  const SeletoTabList({super.key, required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) =>
+      ListView(padding: const EdgeInsets.only(bottom: 24), children: children);
+}
+
 class SeletoAsyncError extends StatelessWidget {
   const SeletoAsyncError({
     super.key,

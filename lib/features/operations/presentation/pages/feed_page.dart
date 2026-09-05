@@ -15,6 +15,7 @@ class FeedPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => AppShell(
     title: 'Ração e alimentação',
+    scrollable: false,
     child: DefaultTabController(
       length: 5,
       child: Column(
@@ -31,8 +32,7 @@ class FeedPage extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 18),
-          SizedBox(
-            height: MediaQuery.sizeOf(context).height.clamp(560, 820),
+          Expanded(
             child: TabBarView(
               children: [
                 _IngredientsTab(ref: ref),
@@ -60,7 +60,7 @@ class _IngredientsTab extends StatelessWidget {
         error: (_, _) => const SeletoAsyncError(),
         data: (items) {
           final lots = ref.watch(ingredientLotsProvider).asData?.value ?? [];
-          return ListView(
+          return SeletoTabList(
             children: [
               Align(
                 alignment: Alignment.centerRight,
@@ -100,48 +100,23 @@ class _IngredientsTab extends StatelessWidget {
                   message: 'Cadastre os ingredientes usados nas formulações.',
                 )
               else
-                Card(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: items.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final item = items[i];
-                      return ListTile(
-                        leading: const CircleAvatar(child: Icon(Icons.grain)),
-                        title: Text(item.ingredient.name),
-                        subtitle: Text(
-                          item.currentPriceCents == null
-                              ? 'Saldo ${kg(item.stockKg)} · sem preço cadastrado'
-                              : 'Saldo ${kg(item.stockKg)} em ${item.activeLotCount} lote(s) · atual ${money(item.currentPriceCents!)} / kg${item.variationPercent == null ? '' : ' · ${percent(item.variationPercent!)}'}',
-                        ),
-                        trailing: Wrap(
-                          spacing: 4,
-                          children: [
-                            IconButton(
-                              tooltip: 'Histórico de preços',
-                              onPressed: () => showDialog<void>(
-                                context: context,
-                                builder: (_) =>
-                                    _PriceHistoryDialog(ref: ref, item: item),
-                              ),
-                              icon: const Icon(Icons.history),
-                            ),
-                            IconButton(
-                              tooltip: 'Registrar preço',
-                              onPressed: () => showDialog<void>(
-                                context: context,
-                                builder: (_) =>
-                                    _PriceDialog(ref: ref, item: item),
-                              ),
-                              icon: const Icon(Icons.price_change_outlined),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                LayoutBuilder(
+                  builder: (context, box) {
+                    final width = box.maxWidth >= 850
+                        ? (box.maxWidth - 12) / 2
+                        : box.maxWidth;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        for (final item in items)
+                          SizedBox(
+                            width: width,
+                            child: _IngredientCard(ref: ref, item: item),
+                          ),
+                      ],
+                    );
+                  },
                 ),
               const SizedBox(height: 18),
               if (lots.isNotEmpty) ...[
@@ -150,54 +125,231 @@ class _IngredientsTab extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 8),
-                Card(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: lots.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final lot = lots[i];
-                      return ListTile(
-                        leading: Icon(
-                          lot.balanceKg > 0
-                              ? Icons.inventory_2_outlined
-                              : Icons.inventory_outlined,
-                        ),
-                        title: Text('${lot.ingredientName} · ${lot.lot.code}'),
-                        subtitle: Text(
-                          '${shortDate.format(lot.lot.entryDate)} · ${lot.lot.packageUnit == 'SACO' ? '${lot.lot.packageQuantity.toStringAsFixed(0)} saco(s) de ${kg(lot.lot.packageWeightKg)}' : kg(lot.lot.initialQuantityKg)} · ${money(lot.lot.pricePerKgCents)}/kg',
-                        ),
-                        trailing: Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 4,
-                          children: [
-                            Text(
-                              kg(lot.balanceKg),
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
-                            IconButton(
-                              tooltip: 'Correção de estoque',
-                              onPressed: () => showDialog<void>(
-                                context: context,
-                                builder: (_) => _IngredientCorrectionDialog(
-                                  ref: ref,
-                                  lot: lot,
-                                ),
-                              ),
-                              icon: const Icon(Icons.tune),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                LayoutBuilder(
+                  builder: (context, box) {
+                    final width = box.maxWidth >= 850
+                        ? (box.maxWidth - 12) / 2
+                        : box.maxWidth;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        for (final lot in lots)
+                          SizedBox(
+                            width: width,
+                            child: _IngredientLotCard(ref: ref, lot: lot),
+                          ),
+                      ],
+                    );
+                  },
                 ),
               ],
             ],
           );
         },
       );
+}
+
+class _IngredientCard extends StatelessWidget {
+  const _IngredientCard({required this.ref, required this.item});
+  final WidgetRef ref;
+  final IngredientOverview item;
+
+  @override
+  Widget build(BuildContext context) {
+    final price = item.currentPriceCents == null
+        ? 'Sem preço cadastrado'
+        : '${money(item.currentPriceCents!)} / kg';
+    final variation = item.variationPercent == null
+        ? null
+        : percent(item.variationPercent!);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    item.ingredient.name,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                Chip(
+                  label: Text(item.ingredient.isActive ? 'Ativo' : 'Inativo'),
+                ),
+              ],
+            ),
+            Text(
+              item.ingredient.unit,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const Divider(),
+            _IngredientInfoRow(label: 'Saldo', value: kg(item.stockKg)),
+            _IngredientInfoRow(
+              label: 'Lotes com saldo',
+              value: '${item.activeLotCount}',
+            ),
+            _IngredientInfoRow(label: 'Preço atual', value: price),
+            if (variation != null)
+              _IngredientInfoRow(label: 'Variação', value: variation),
+            if ((item.ingredient.notes ?? '').trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  item.ingredient.notes!,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _IngredientDialog(ref: ref, item: item),
+                  ),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Editar'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    try {
+                      await ref
+                          .read(operationsControllerProvider)
+                          .updateIngredient(
+                            ingredientId: item.ingredient.id,
+                            name: item.ingredient.name,
+                            unit: item.ingredient.unit,
+                            isActive: !item.ingredient.isActive,
+                            notes: item.ingredient.notes,
+                          );
+                    } catch (e) {
+                      if (context.mounted) await showOperationError(context, e);
+                    }
+                  },
+                  icon: Icon(
+                    item.ingredient.isActive
+                        ? Icons.block
+                        : Icons.check_circle_outline,
+                  ),
+                  label: Text(
+                    item.ingredient.isActive ? 'Desativar' : 'Ativar',
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _PriceHistoryDialog(ref: ref, item: item),
+                  ),
+                  icon: const Icon(Icons.history),
+                  label: const Text('Histórico'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _PriceDialog(ref: ref, item: item),
+                  ),
+                  icon: const Icon(Icons.price_change_outlined),
+                  label: const Text('Preço'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IngredientLotCard extends StatelessWidget {
+  const _IngredientLotCard({required this.ref, required this.lot});
+  final WidgetRef ref;
+  final IngredientLotBalance lot;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  lot.ingredientName,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              Chip(label: Text(kg(lot.balanceKg))),
+            ],
+          ),
+          Text(
+            lot.lot.code,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const Divider(),
+          _IngredientInfoRow(
+            label: 'Entrada',
+            value: shortDate.format(lot.lot.entryDate),
+          ),
+          _IngredientInfoRow(
+            label: 'Quantidade inicial',
+            value: lot.lot.packageUnit == 'SACO'
+                ? '${lot.lot.packageQuantity.toStringAsFixed(0)} saco(s) de ${kg(lot.lot.packageWeightKg)}'
+                : kg(lot.lot.initialQuantityKg),
+          ),
+          _IngredientInfoRow(
+            label: 'Preço',
+            value: '${money(lot.lot.pricePerKgCents)}/kg',
+          ),
+          _IngredientInfoRow(label: 'Consumido', value: kg(lot.consumedKg)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => _IngredientCorrectionDialog(ref: ref, lot: lot),
+            ),
+            icon: const Icon(Icons.tune),
+            label: const Text('Correção de estoque'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _IngredientInfoRow extends StatelessWidget {
+  const _IngredientInfoRow({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      children: [
+        Expanded(child: Text(label)),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _FormulasTab extends StatelessWidget {
@@ -209,7 +361,7 @@ class _FormulasTab extends StatelessWidget {
       .when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => const SeletoAsyncError(),
-        data: (items) => ListView(
+        data: (items) => SeletoTabList(
           children: [
             if (items.isEmpty)
               const SeletoEmptyState(
@@ -249,6 +401,57 @@ class _FormulasTab extends StatelessWidget {
                                       ),
                                       Chip(
                                         label: Text('v${item.formula.version}'),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Editar formulação',
+                                        onPressed: () => showDialog<void>(
+                                          context: context,
+                                          builder: (_) => _FormulaDialog(
+                                            ref: ref,
+                                            formula: item,
+                                            editCurrent: true,
+                                          ),
+                                        ),
+                                        icon: const Icon(Icons.edit_outlined),
+                                      ),
+                                      IconButton(
+                                        tooltip: item.formula.isActive
+                                            ? 'Desativar formulação'
+                                            : 'Ativar formulação',
+                                        onPressed: () async {
+                                          try {
+                                            await ref
+                                                .read(
+                                                  operationsControllerProvider,
+                                                )
+                                                .updateFormula(
+                                                  source: item,
+                                                  name: item.formula.name,
+                                                  phase: item.formula.phase,
+                                                  isActive:
+                                                      !item.formula.isActive,
+                                                  values: {
+                                                    for (final ingredient
+                                                        in item.items)
+                                                      ingredient.ingredientId:
+                                                          ingredient.quantityKg,
+                                                  },
+                                                  notes: item.formula.notes,
+                                                );
+                                          } catch (e) {
+                                            if (context.mounted) {
+                                              await showOperationError(
+                                                context,
+                                                e,
+                                              );
+                                            }
+                                          }
+                                        },
+                                        icon: Icon(
+                                          item.formula.isActive
+                                              ? Icons.block
+                                              : Icons.check_circle_outline,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -295,17 +498,22 @@ class _FormulasTab extends StatelessWidget {
                                                 ),
                                               )
                                             : null,
-                                        icon: const Icon(Icons.edit_outlined),
+                                        icon: const Icon(
+                                          Icons.fork_right_outlined,
+                                        ),
                                         label: const Text('Nova versão'),
                                       ),
                                       FilledButton.icon(
-                                        onPressed: () => showDialog<void>(
-                                          context: context,
-                                          builder: (_) => _ManufactureDialog(
-                                            ref: ref,
-                                            formula: item,
-                                          ),
-                                        ),
+                                        onPressed: item.formula.isActive
+                                            ? () => showDialog<void>(
+                                                context: context,
+                                                builder: (_) =>
+                                                    _ManufactureDialog(
+                                                      ref: ref,
+                                                      formula: item,
+                                                    ),
+                                              )
+                                            : null,
                                         icon: const Icon(
                                           Icons.factory_outlined,
                                         ),
@@ -336,7 +544,7 @@ class _BatchesTab extends StatelessWidget {
       .when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => const SeletoAsyncError(),
-        data: (items) => ListView(
+        data: (items) => SeletoTabList(
           children: [
             if (items.isEmpty)
               const SeletoEmptyState(
@@ -399,7 +607,7 @@ class _FeedStockTab extends StatelessWidget {
             0,
             (s, b) => s + b.batch.producedQuantityKg,
           );
-          return ListView(
+          return SeletoTabList(
             children: [
               SeletoKpiGrid(
                 children: [
@@ -477,7 +685,7 @@ class _FeedingsTab extends StatelessWidget {
       .when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => const SeletoAsyncError(),
-        data: (items) => ListView(
+        data: (items) => SeletoTabList(
           children: [
             Align(
               alignment: Alignment.centerRight,
@@ -522,8 +730,9 @@ class _FeedingsTab extends StatelessWidget {
 }
 
 class _IngredientDialog extends StatefulWidget {
-  const _IngredientDialog({required this.ref});
+  const _IngredientDialog({required this.ref, this.item});
   final WidgetRef ref;
+  final IngredientOverview? item;
   @override
   State<_IngredientDialog> createState() => _IngredientDialogState();
 }
@@ -532,7 +741,20 @@ class _IngredientDialogState extends State<_IngredientDialog> {
   final name = TextEditingController();
   final unit = TextEditingController(text: 'kg');
   final notes = TextEditingController();
+  bool isActive = true;
   bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final item = widget.item?.ingredient;
+    if (item == null) return;
+    name.text = item.name;
+    unit.text = item.unit;
+    notes.text = item.notes ?? '';
+    isActive = item.isActive;
+  }
+
   @override
   void dispose() {
     name.dispose();
@@ -543,7 +765,7 @@ class _IngredientDialogState extends State<_IngredientDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Novo insumo'),
+    title: Text(widget.item == null ? 'Novo insumo' : 'Editar insumo'),
     content: SizedBox(
       width: 420,
       child: Column(
@@ -563,15 +785,38 @@ class _IngredientDialogState extends State<_IngredientDialog> {
             controller: notes,
             decoration: const InputDecoration(labelText: 'Observação'),
           ),
+          if (widget.item != null) ...[
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: isActive,
+              onChanged: saving
+                  ? null
+                  : (value) => setState(() => isActive = value),
+              title: const Text('Insumo ativo'),
+            ),
+          ],
         ],
       ),
     ),
-    actions: _actions(
-      context,
-      () async => widget.ref
+    actions: _actions(context, () async {
+      final item = widget.item?.ingredient;
+      if (item == null) {
+        await widget.ref
+            .read(operationsControllerProvider)
+            .addIngredient(name.text, unit.text, notes.text);
+        return;
+      }
+      await widget.ref
           .read(operationsControllerProvider)
-          .addIngredient(name.text, unit.text, notes.text),
-    ),
+          .updateIngredient(
+            ingredientId: item.id,
+            name: name.text,
+            unit: unit.text,
+            isActive: isActive,
+            notes: notes.text,
+          );
+    }),
   );
   List<Widget> _actions(BuildContext context, Future<void> Function() save) => [
     TextButton(
@@ -1099,21 +1344,35 @@ class _ManufactureDialogState extends State<_ManufactureDialog> {
 }
 
 class _FormulaDialog extends StatefulWidget {
-  const _FormulaDialog({required this.ref, required this.formula});
+  const _FormulaDialog({
+    required this.ref,
+    required this.formula,
+    this.editCurrent = false,
+  });
   final WidgetRef ref;
   final FormulaOverview formula;
+  final bool editCurrent;
   @override
   State<_FormulaDialog> createState() => _FormulaDialogState();
 }
 
 class _FormulaDialogState extends State<_FormulaDialog> {
+  late final name = TextEditingController(text: widget.formula.formula.name);
+  late final phase = TextEditingController(text: widget.formula.formula.phase);
+  late final notes = TextEditingController(
+    text: widget.formula.formula.notes ?? '',
+  );
   late final Map<String, TextEditingController> values = {
     for (final i in widget.formula.items)
       i.ingredientId: TextEditingController(text: i.quantityKg.toString()),
   };
+  late bool isActive = widget.formula.formula.isActive;
   bool saving = false;
   @override
   void dispose() {
+    name.dispose();
+    phase.dispose();
+    notes.dispose();
     for (final c in values.values) {
       c.dispose();
     }
@@ -1122,18 +1381,37 @@ class _FormulaDialogState extends State<_FormulaDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text('Nova versão · ${widget.formula.formula.name}'),
+    title: Text(
+      widget.editCurrent
+          ? 'Editar formulação'
+          : 'Nova versão · ${widget.formula.formula.name}',
+    ),
     content: SizedBox(
       width: 460,
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (widget.editCurrent) ...[
+              TextField(
+                controller: name,
+                enabled: !saving,
+                decoration: const InputDecoration(labelText: 'Nome'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: phase,
+                enabled: !saving,
+                decoration: const InputDecoration(labelText: 'Fase'),
+              ),
+              const SizedBox(height: 10),
+            ],
             for (final i in widget.formula.items)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: TextField(
                   controller: values[i.ingredientId],
+                  enabled: !saving,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
@@ -1143,8 +1421,27 @@ class _FormulaDialogState extends State<_FormulaDialog> {
                   ),
                 ),
               ),
-            const Text(
-              'A soma deve totalizar 100 kg. O histórico anterior será preservado.',
+            TextField(
+              controller: notes,
+              enabled: !saving,
+              decoration: const InputDecoration(labelText: 'Observação'),
+            ),
+            if (widget.editCurrent) ...[
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: isActive,
+                onChanged: saving
+                    ? null
+                    : (value) => setState(() => isActive = value),
+                title: const Text('Formulação ativa'),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              widget.editCurrent
+                  ? 'A soma deve totalizar 100 kg.'
+                  : 'A soma deve totalizar 100 kg. O histórico anterior será preservado.',
             ),
           ],
         ),
@@ -1161,19 +1458,35 @@ class _FormulaDialogState extends State<_FormulaDialog> {
             : () async {
                 setState(() => saving = true);
                 try {
-                  await widget.ref
-                      .read(operationsControllerProvider)
-                      .saveFormula(widget.formula, {
-                        for (final e in values.entries)
-                          e.key: parseDecimal(e.value.text),
-                      }, null);
+                  if (widget.editCurrent) {
+                    await widget.ref
+                        .read(operationsControllerProvider)
+                        .updateFormula(
+                          source: widget.formula,
+                          name: name.text,
+                          phase: phase.text,
+                          isActive: isActive,
+                          values: {
+                            for (final e in values.entries)
+                              e.key: parseDecimal(e.value.text),
+                          },
+                          notes: notes.text,
+                        );
+                  } else {
+                    await widget.ref
+                        .read(operationsControllerProvider)
+                        .saveFormula(widget.formula, {
+                          for (final e in values.entries)
+                            e.key: parseDecimal(e.value.text),
+                        }, notes.text);
+                  }
                   if (context.mounted) Navigator.pop(context);
                 } catch (e) {
                   await showOperationError(context, e);
                   if (mounted) setState(() => saving = false);
                 }
               },
-        child: const Text('Criar versão'),
+        child: Text(widget.editCurrent ? 'Salvar' : 'Criar versão'),
       ),
     ],
   );

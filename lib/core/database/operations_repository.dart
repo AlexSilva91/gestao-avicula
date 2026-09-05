@@ -490,6 +490,38 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
+  Future<void> updateIngredient({
+    required String ingredientId,
+    required String name,
+    required String unit,
+    required bool isActive,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (name.trim().isEmpty || unit.trim().isEmpty) {
+      throw ArgumentError('Informe nome e unidade do insumo.');
+    }
+    await transaction(() async {
+      await (update(
+        ingredients,
+      )..where((i) => i.id.equals(ingredientId))).write(
+        IngredientsCompanion(
+          name: Value(name.trim()),
+          unit: Value(unit.trim()),
+          isActive: Value(isActive),
+          notes: Value(_cleanValue(notes)),
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'ingredients.update',
+        entityType: 'ingredient',
+        entityId: ingredientId,
+        description: 'Insumo ${name.trim()} atualizado.',
+      );
+    });
+  }
+
   Future<void> registerIngredientPrice({
     required String ingredientId,
     required int priceCents,
@@ -618,6 +650,62 @@ extension OperationsRepository on AppDatabase {
         entityType: 'feed_formula',
         entityId: id,
         description: 'Nova versão da formulação ${source.formula.name} criada.',
+      );
+    });
+  }
+
+  Future<void> updateFormula({
+    required FormulaOverview source,
+    required String name,
+    required String phase,
+    required bool isActive,
+    required Map<String, double> quantities,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (name.trim().isEmpty || phase.trim().isEmpty) {
+      throw ArgumentError('Informe nome e fase da fórmula.');
+    }
+    final total = quantities.values.fold<double>(
+      0,
+      (sum, value) => sum + value,
+    );
+    if ((total - 100).abs() > .01 ||
+        quantities.values.any((value) => value < 0)) {
+      throw ArgumentError(
+        'A formulação base deve totalizar exatamente 100 kg.',
+      );
+    }
+    await transaction(() async {
+      await (update(
+        feedFormulas,
+      )..where((f) => f.id.equals(source.formula.id))).write(
+        FeedFormulasCompanion(
+          name: Value(name.trim()),
+          phase: Value(phase.trim().toUpperCase()),
+          isActive: Value(isActive),
+          notes: Value(_cleanValue(notes)),
+        ),
+      );
+      await (delete(
+        feedFormulaItems,
+      )..where((i) => i.formulaId.equals(source.formula.id))).go();
+      for (final entry in quantities.entries) {
+        await into(feedFormulaItems).insert(
+          FeedFormulaItemsCompanion.insert(
+            id: _uuid.v4(),
+            formulaId: source.formula.id,
+            ingredientId: entry.key,
+            baseQuantityKg: entry.value,
+          ),
+        );
+      }
+      await addAudit(
+        userId: actorId,
+        action: 'feed_formulas.update',
+        entityType: 'feed_formula',
+        entityId: source.formula.id,
+        description: 'Formulação ${name.trim()} atualizada.',
       );
     });
   }

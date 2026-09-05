@@ -106,6 +106,20 @@ class OperationsController {
         notes: notes,
         actorId: _actor('ingredients.manage'),
       );
+  Future<void> updateIngredient({
+    required String ingredientId,
+    required String name,
+    required String unit,
+    required bool isActive,
+    String? notes,
+  }) => _db.updateIngredient(
+    ingredientId: ingredientId,
+    name: name,
+    unit: unit,
+    isActive: isActive,
+    notes: notes,
+    actorId: _actor('ingredients.manage'),
+  );
   Future<void> addPrice(
     String ingredientId,
     int cents,
@@ -170,6 +184,22 @@ class OperationsController {
     String? notes,
   ) => _db.createFormulaVersion(
     source: source,
+    quantities: values,
+    notes: notes,
+    actorId: _actor('feed_formulas.manage'),
+  );
+  Future<void> updateFormula({
+    required FormulaOverview source,
+    required String name,
+    required String phase,
+    required bool isActive,
+    required Map<String, double> values,
+    String? notes,
+  }) => _db.updateFormula(
+    source: source,
+    name: name,
+    phase: phase,
+    isActive: isActive,
     quantities: values,
     notes: notes,
     actorId: _actor('feed_formulas.manage'),

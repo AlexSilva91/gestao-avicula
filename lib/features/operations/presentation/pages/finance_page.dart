@@ -12,12 +12,14 @@ class FinancePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => AppShell(
     title: 'Financeiro',
+    scrollable: false,
     child: DefaultTabController(
       length: 3,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const TabBar(
+            isScrollable: true,
             tabs: [
               Tab(icon: Icon(Icons.receipt_long), text: 'Lançamentos'),
               Tab(icon: Icon(Icons.foundation), text: 'Investimentos'),
@@ -25,8 +27,7 @@ class FinancePage extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 18),
-          SizedBox(
-            height: MediaQuery.sizeOf(context).height.clamp(580, 820),
+          Expanded(
             child: TabBarView(
               children: [
                 _TransactionsTab(ref: ref),
@@ -47,7 +48,7 @@ class _TransactionsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final metrics = ref.watch(financeMetricsProvider).asData?.value;
-    return ListView(
+    return SeletoTabList(
       children: [
         SeletoKpiGrid(
           children: [
@@ -202,7 +203,7 @@ class _InvestmentsTab extends StatelessWidget {
         error: (_, _) => const SeletoAsyncError(),
         data: (items) {
           final total = items.fold<int>(0, (s, i) => s + i.amountCents);
-          return ListView(
+          return SeletoTabList(
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -278,7 +279,7 @@ class _SimulatorTabState extends State<_SimulatorTab> {
     final result = monthly - costs;
     final investment = (metrics?.investmentCents ?? 0) / 100;
     final payback = result <= 0 ? null : investment / result;
-    return ListView(
+    return SeletoTabList(
       children: [
         Card(
           child: Padding(

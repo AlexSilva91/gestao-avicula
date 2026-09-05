@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 
@@ -190,6 +191,11 @@ class _BackupCard extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Backup exportado: $path')),
                   );
+                  await _showExportPath(
+                    context,
+                    title: 'Backup salvo',
+                    path: path,
+                  );
                 }
               } catch (e) {
                 await showOperationError(context, e);
@@ -210,6 +216,11 @@ class _BackupCard extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Backup pronto para envio: $path')),
                   );
+                  await _showExportPath(
+                    context,
+                    title: 'Backup pronto',
+                    path: path,
+                  );
                 }
               } catch (e) {
                 await showOperationError(context, e);
@@ -221,19 +232,30 @@ class _BackupCard extends StatelessWidget {
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () async {
-              final items = ref.read(financeProvider).asData?.value ?? [];
-              final csv = StringBuffer(
-                'data,tipo,categoria,descricao,valor_centavos\n',
-              );
-              for (final item in items) {
-                csv.writeln(
-                  '${shortDate.format(item.occurredAt)},${item.type},${item.category},"${item.description.replaceAll('"', '""')}",${item.amountCents}',
+              try {
+                final items = ref.read(financeProvider).asData?.value ?? [];
+                final csv = StringBuffer(
+                  'data,tipo,categoria,descricao,valor_centavos\n',
                 );
+                for (final item in items) {
+                  csv.writeln(
+                    '${shortDate.format(item.occurredAt)},${item.type},${item.category},"${item.description.replaceAll('"', '""')}",${item.amountCents}',
+                  );
+                }
+                final path = await FileExportService().saveText(
+                  'seleto-financeiro.csv',
+                  csv.toString(),
+                );
+                if (context.mounted) {
+                  await _showExportPath(
+                    context,
+                    title: 'CSV salvo',
+                    path: path,
+                  );
+                }
+              } catch (e) {
+                await showOperationError(context, e);
               }
-              await FileExportService().saveText(
-                'seleto-financeiro.csv',
-                csv.toString(),
-              );
             },
             icon: const Icon(Icons.table_view),
             label: const Text('Exportar financeiro CSV'),
@@ -368,6 +390,42 @@ class _BackupCard extends StatelessWidget {
       await showOperationError(context, e);
     }
   }
+}
+
+Future<void> _showExportPath(
+  BuildContext context, {
+  required String title,
+  required String path,
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Arquivo salvo em:'),
+          const SizedBox(height: 8),
+          SelectableText(path),
+        ],
+      ),
+      actions: [
+        TextButton.icon(
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: path));
+            Navigator.pop(context);
+          },
+          icon: const Icon(Icons.copy),
+          label: const Text('Copiar caminho'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _NotificationsCard extends StatelessWidget {
