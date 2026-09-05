@@ -546,12 +546,24 @@ class _BatchesTab extends StatelessWidget {
         error: (_, _) => const SeletoAsyncError(),
         data: (items) => SeletoTabList(
           children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => _ReadyFeedDialog(ref: ref),
+                ),
+                icon: const Icon(Icons.add_shopping_cart_outlined),
+                label: const Text('Ração pronta'),
+              ),
+            ),
+            const SizedBox(height: 12),
             if (items.isEmpty)
               const SeletoEmptyState(
-                icon: Icons.factory_outlined,
-                title: 'Nenhuma fabricação',
+                icon: Icons.inventory_2_outlined,
+                title: 'Nenhuma ração em estoque',
                 message:
-                    'Registre uma fabricação a partir da formulação desejada.',
+                    'Fabrique uma formulação ou cadastre uma ração pronta.',
               )
             else
               Card(
@@ -563,14 +575,20 @@ class _BatchesTab extends StatelessWidget {
                   itemBuilder: (_, i) {
                     final b = items[i];
                     return ListTile(
-                      leading: const CircleAvatar(
-                        child: Icon(Icons.factory_outlined),
+                      leading: CircleAvatar(
+                        child: Icon(
+                          b.isReadyFeed
+                              ? Icons.shopping_bag_outlined
+                              : Icons.factory_outlined,
+                        ),
                       ),
                       title: Text(
-                        '${b.batch.code} · ${b.batch.phase.replaceAll('_', ' ')}',
+                        b.isReadyFeed
+                            ? '${b.displayName} · ${b.batch.code}'
+                            : '${b.batch.code} · ${b.batch.phase.replaceAll('_', ' ')}',
                       ),
                       subtitle: Text(
-                        '${shortDate.format(b.batch.producedAt)} · ${kg(b.batch.producedQuantityKg)} · ${money(b.batch.totalCostCents)}',
+                        '${b.isReadyFeed ? 'Pronta' : 'Fabricada'} · ${shortDate.format(b.batch.producedAt)} · ${kg(b.batch.producedQuantityKg)} · ${money(b.batch.totalCostCents)}',
                       ),
                       trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -644,9 +662,13 @@ class _FeedStockTab extends StatelessWidget {
                     itemBuilder: (_, i) {
                       final b = items[i];
                       return ListTile(
-                        title: Text(b.batch.code),
+                        title: Text(
+                          b.isReadyFeed
+                              ? '${b.displayName} · ${b.batch.code}'
+                              : b.batch.code,
+                        ),
                         subtitle: Text(
-                          '${b.batch.phase.replaceAll('_', ' ')} · Produzido ${kg(b.batch.producedQuantityKg)} · Consumido ${kg(b.consumedKg)}',
+                          '${b.isReadyFeed ? 'Pronta' : 'Fabricada'} · ${b.batch.phase.replaceAll('_', ' ')} · Entrada ${kg(b.batch.producedQuantityKg)} · Consumido ${kg(b.consumedKg)}',
                         ),
                         trailing: Wrap(
                           crossAxisAlignment: WrapCrossAlignment.center,
@@ -1260,6 +1282,167 @@ class _ManufactureDialog extends StatefulWidget {
   State<_ManufactureDialog> createState() => _ManufactureDialogState();
 }
 
+class _ReadyFeedDialog extends StatefulWidget {
+  const _ReadyFeedDialog({required this.ref});
+  final WidgetRef ref;
+  @override
+  State<_ReadyFeedDialog> createState() => _ReadyFeedDialogState();
+}
+
+class _ReadyFeedDialogState extends State<_ReadyFeedDialog> {
+  final name = TextEditingController();
+  final quantity = TextEditingController();
+  final totalCost = TextEditingController();
+  final supplier = TextEditingController();
+  final notes = TextEditingController();
+  String phase = 'CRESCIMENTO';
+  DateTime date = DateTime.now();
+  bool saving = false;
+
+  @override
+  void dispose() {
+    name.dispose();
+    quantity.dispose();
+    totalCost.dispose();
+    supplier.dispose();
+    notes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Ração pronta'),
+    content: SizedBox(
+      width: 460,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: name,
+              enabled: !saving,
+              decoration: const InputDecoration(labelText: 'Nome'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: phase,
+              decoration: const InputDecoration(labelText: 'Fase'),
+              items: const [
+                DropdownMenuItem(value: 'CRIA', child: Text('Cria')),
+                DropdownMenuItem(
+                  value: 'CRESCIMENTO',
+                  child: Text('Crescimento'),
+                ),
+                DropdownMenuItem(value: 'POSTURA', child: Text('Postura')),
+                DropdownMenuItem(
+                  value: 'MANUTENCAO',
+                  child: Text('Manutenção'),
+                ),
+              ],
+              onChanged: saving
+                  ? null
+                  : (value) => setState(() => phase = value!),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: quantity,
+                    enabled: !saving,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Quantidade',
+                      suffixText: 'kg',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: totalCost,
+                    enabled: !saving,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Valor total',
+                      prefixText: 'R\$ ',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              enabled: !saving,
+              title: const Text('Data da compra'),
+              subtitle: Text(shortDate.format(date)),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: saving
+                  ? null
+                  : () async {
+                      final selected = await pickSeletoDate(context, date);
+                      if (selected != null) setState(() => date = selected);
+                    },
+            ),
+            TextField(
+              controller: supplier,
+              enabled: !saving,
+              decoration: const InputDecoration(labelText: 'Fornecedor'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: notes,
+              enabled: !saving,
+              decoration: const InputDecoration(labelText: 'Observações'),
+            ),
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: saving ? null : () => Navigator.pop(context),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton(
+        onPressed: saving
+            ? null
+            : () async {
+                setState(() => saving = true);
+                try {
+                  await widget.ref
+                      .read(operationsControllerProvider)
+                      .addReadyFeed(
+                        name: name.text,
+                        phase: phase,
+                        quantityKg: parseDecimal(quantity.text),
+                        totalCost: parseMoneyToCents(totalCost.text),
+                        date: date,
+                        supplier: supplier.text,
+                        notes: notes.text,
+                      );
+                  if (context.mounted) Navigator.pop(context);
+                } catch (e) {
+                  await showOperationError(context, e);
+                  if (mounted) setState(() => saving = false);
+                }
+              },
+        child: saving
+            ? const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Text('Cadastrar'),
+      ),
+    ],
+  );
+}
+
 class _ManufactureDialogState extends State<_ManufactureDialog> {
   final quantity = TextEditingController(text: '100');
   final notes = TextEditingController();
@@ -1663,7 +1846,7 @@ class _FeedingDialogState extends State<_FeedingDialog> {
                   DropdownMenuItem(
                     value: b.batch.id,
                     child: Text(
-                      '${b.batch.code} · ${b.batch.phase.replaceAll('_', ' ')} · ${kg(b.balanceKg)}',
+                      '${b.displayName} · ${b.batch.phase.replaceAll('_', ' ')} · ${kg(b.balanceKg)}',
                     ),
                   ),
               ],

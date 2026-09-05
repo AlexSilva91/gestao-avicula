@@ -76,10 +76,18 @@ class FormulaIngredient {
 }
 
 class FeedBatchBalance {
-  const FeedBatchBalance({required this.batch, required this.balanceKg});
+  const FeedBatchBalance({
+    required this.batch,
+    required this.balanceKg,
+    this.formulaName,
+  });
   final FeedBatche batch;
   final double balanceKg;
+  final String? formulaName;
   double get consumedKg => batch.producedQuantityKg - balanceKg;
+  bool get isReadyFeed => batch.formulaId.startsWith('ready-feed-');
+  String get displayName =>
+      isReadyFeed ? formulaName ?? batch.code : batch.code;
 }
 
 class FinanceMetrics {
@@ -897,13 +905,111 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
+  Future<void> registerReadyFeedPurchase({
+    required String name,
+    required String phase,
+    required double quantityKg,
+    required int totalCostCents,
+    required DateTime date,
+    String? supplier,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (name.trim().isEmpty || phase.trim().isEmpty) {
+      throw ArgumentError('Informe nome e fase da ração.');
+    }
+    if (quantityKg <= 0 || totalCostCents <= 0) {
+      throw ArgumentError('Informe quantidade e valor válidos.');
+    }
+    final now = DateTime.now();
+    final batchId = _uuid.v4();
+    final formulaId = 'ready-feed-${_uuid.v4()}';
+    final code =
+        'RP${date.millisecondsSinceEpoch.toString().substring(5)}-${batchId.substring(0, 4)}';
+    final cleanSupplier = _cleanValue(supplier);
+    final cleanNotes = _cleanValue(notes);
+    final batchNotes = [
+      if (cleanSupplier != null) 'Fornecedor: $cleanSupplier',
+      ?cleanNotes,
+    ].join('\n');
+    await transaction(() async {
+      await into(feedFormulas).insert(
+        FeedFormulasCompanion.insert(
+          id: formulaId,
+          name: name.trim(),
+          phase: phase.trim().toUpperCase(),
+          version: const Value(1),
+          isActive: const Value(false),
+          validFrom: date,
+          notes: Value(cleanNotes),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(feedBatches).insert(
+        FeedBatchesCompanion.insert(
+          id: batchId,
+          code: code,
+          phase: phase.trim().toUpperCase(),
+          formulaId: formulaId,
+          producedAt: date,
+          producedQuantityKg: quantityKg,
+          totalCostCents: totalCostCents,
+          costPerKgCents: totalCostCents / quantityKg,
+          notes: Value(batchNotes.isEmpty ? null : batchNotes),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(feedStockMovements).insert(
+        FeedStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          type: 'PRODUCTION_IN',
+          occurredAt: date,
+          batchId: batchId,
+          quantityKg: quantityKg,
+          notes: Value(cleanNotes),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(financeTransactions).insert(
+        FinanceTransactionsCompanion.insert(
+          id: _uuid.v4(),
+          occurredAt: date,
+          type: 'EXPENSE',
+          category: 'Ração',
+          description: 'Compra de ração pronta ${name.trim()}',
+          amountCents: totalCostCents,
+          referenceType: const Value('feed_batch'),
+          referenceId: Value(batchId),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'feed_batches.ready_purchase',
+        entityType: 'feed_batch',
+        entityId: batchId,
+        description:
+            'Compra de ${quantityKg.toStringAsFixed(2)} kg de ração pronta registrada.',
+      );
+    });
+  }
+
   Stream<List<FeedBatchBalance>> watchFeedBatchBalances() {
     final query = customSelect(
       '''
-      SELECT b.*, COALESCE(SUM(CASE WHEN m.type IN ('PRODUCTION_IN','ADJUSTMENT_IN') THEN m.quantity_kg ELSE -m.quantity_kg END),0) balance_kg
-      FROM feed_batches b LEFT JOIN feed_stock_movements m ON m.batch_id=b.id GROUP BY b.id ORDER BY b.produced_at DESC
+      SELECT b.*, f.name formula_name,
+        COALESCE(SUM(CASE WHEN m.type IN ('PRODUCTION_IN','ADJUSTMENT_IN') THEN m.quantity_kg ELSE -m.quantity_kg END),0) balance_kg
+      FROM feed_batches b
+      LEFT JOIN feed_formulas f ON f.id=b.formula_id
+      LEFT JOIN feed_stock_movements m ON m.batch_id=b.id
+      GROUP BY b.id
+      ORDER BY b.produced_at DESC
     ''',
-      readsFrom: {feedBatches, feedStockMovements},
+      readsFrom: {feedBatches, feedFormulas, feedStockMovements},
     );
     return query.watch().map(
       (rows) => rows
@@ -923,6 +1029,7 @@ extension OperationsRepository on AppDatabase {
                 createdAt: r.read<DateTime>('created_at'),
               ),
               balanceKg: r.read<double>('balance_kg'),
+              formulaName: r.readNullable<String>('formula_name'),
             ),
           )
           .toList(),

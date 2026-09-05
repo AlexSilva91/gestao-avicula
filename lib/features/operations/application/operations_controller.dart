@@ -178,6 +178,24 @@ class OperationsController {
     notes: notes,
     actorId: _actor('feed_batches.create'),
   );
+  Future<void> addReadyFeed({
+    required String name,
+    required String phase,
+    required double quantityKg,
+    required int totalCost,
+    required DateTime date,
+    String? supplier,
+    String? notes,
+  }) => _db.registerReadyFeedPurchase(
+    name: name,
+    phase: phase,
+    quantityKg: quantityKg,
+    totalCostCents: totalCost,
+    date: date,
+    supplier: supplier,
+    notes: notes,
+    actorId: _actor('feed_batches.create'),
+  );
   Future<void> saveFormula(
     FormulaOverview source,
     Map<String, double> values,

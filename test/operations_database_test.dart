@@ -154,6 +154,30 @@ void main() {
     expect(batch.batch.costPerKgCents, closeTo(116.67, .01));
   });
 
+  test('ready feed purchase enters stock and creates expense', () async {
+    await db.registerReadyFeedPurchase(
+      name: 'Ração crescimento pronta',
+      phase: 'crescimento',
+      quantityKg: 40,
+      totalCostCents: 9600,
+      date: DateTime(2026, 8, 5),
+      supplier: 'Agro Seleto',
+      actorId: actor,
+    );
+
+    final batch = (await db.watchFeedBatchBalances().first).single;
+    expect(batch.isReadyFeed, isTrue);
+    expect(batch.displayName, 'Ração crescimento pronta');
+    expect(batch.batch.phase, 'CRESCIMENTO');
+    expect(batch.balanceKg, 40);
+    expect(batch.batch.costPerKgCents, 240);
+
+    final finance = await db.watchFinance().first;
+    expect(finance.single.type, 'EXPENSE');
+    expect(finance.single.category, 'Ração');
+    expect(finance.single.amountCents, 9600);
+  });
+
   test('ingredients and formulas can be edited and deactivated', () async {
     final ingredient = (await db.watchIngredientOverviews().first).first;
     await db.updateIngredient(
