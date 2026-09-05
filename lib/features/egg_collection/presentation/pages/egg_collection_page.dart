@@ -6,6 +6,7 @@ import '../../../../core/constants/design_tokens.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
+import '../../../../core/widgets/seleto_widgets.dart';
 import '../../../lots/application/lots_controller.dart';
 import '../../application/egg_collection_controller.dart';
 
@@ -523,9 +524,9 @@ class _DateSelector extends StatelessWidget {
   Widget build(BuildContext context) => InkWell(
     borderRadius: BorderRadius.circular(SeletoTokens.radiusSm),
     onTap: () async {
-      final picked = await showDatePicker(
-        context: context,
-        initialDate: date,
+      final picked = await pickSeletoDate(
+        context,
+        date,
         firstDate: DateTime(2010),
         lastDate: DateTime.now(),
       );

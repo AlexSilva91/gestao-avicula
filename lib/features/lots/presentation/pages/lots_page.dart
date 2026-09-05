@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/design_tokens.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/widgets/app_shell.dart';
+import '../../../../core/widgets/seleto_widgets.dart';
 import '../../application/lots_controller.dart';
 import '../../domain/value_objects/lot_lifecycle.dart';
 
@@ -821,9 +822,9 @@ class _DateField extends StatelessWidget {
   Widget build(BuildContext context) => InkWell(
     borderRadius: BorderRadius.circular(SeletoTokens.radiusSm),
     onTap: () async {
-      final picked = await showDatePicker(
-        context: context,
-        initialDate: date,
+      final picked = await pickSeletoDate(
+        context,
+        date,
         firstDate: DateTime(2010),
         lastDate: DateTime.now().add(const Duration(days: 365)),
       );

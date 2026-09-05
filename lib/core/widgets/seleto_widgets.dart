@@ -203,11 +203,63 @@ Future<void> showOperationError(BuildContext context, Object error) async {
   ).showSnackBar(SnackBar(content: Text(friendlyError(error))));
 }
 
-Future<DateTime?> pickSeletoDate(BuildContext context, DateTime initial) =>
-    showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      locale: const Locale('pt', 'BR'),
-    );
+Future<DateTime?> pickSeletoDate(
+  BuildContext context,
+  DateTime initial, {
+  DateTime? firstDate,
+  DateTime? lastDate,
+}) {
+  final first = firstDate ?? DateTime(2010);
+  final last = lastDate ?? DateTime(2100);
+  final selected = initial.isBefore(first)
+      ? first
+      : initial.isAfter(last)
+      ? last
+      : initial;
+  final theme = Theme.of(context);
+  final scheme = theme.colorScheme;
+  return showDatePicker(
+    context: context,
+    initialDate: selected,
+    firstDate: first,
+    lastDate: last,
+    locale: const Locale('pt', 'BR'),
+    builder: (context, child) => Theme(
+      data: theme.copyWith(
+        dialogTheme: DialogThemeData(
+          backgroundColor: scheme.surface,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        datePickerTheme: DatePickerThemeData(
+          backgroundColor: scheme.surface,
+          surfaceTintColor: Colors.transparent,
+          headerBackgroundColor: scheme.primary,
+          headerForegroundColor: scheme.onPrimary,
+          dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return scheme.onPrimary;
+            if (states.contains(WidgetState.disabled)) {
+              return scheme.onSurface.withValues(alpha: .38);
+            }
+            return scheme.onSurface;
+          }),
+          dayBackgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return scheme.primary;
+            return Colors.transparent;
+          }),
+          todayForegroundColor: WidgetStateProperty.all(scheme.primary),
+          todayBorder: BorderSide(color: scheme.primary),
+          yearForegroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return scheme.onPrimary;
+            return scheme.onSurface;
+          }),
+          yearBackgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return scheme.primary;
+            return Colors.transparent;
+          }),
+        ),
+      ),
+      child: child ?? const SizedBox.shrink(),
+    ),
+  );
+}

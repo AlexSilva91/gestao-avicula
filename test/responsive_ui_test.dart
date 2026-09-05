@@ -299,6 +299,49 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
   });
 
+  testWidgets('date picker opens with visible controls on mobile', (
+    tester,
+  ) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    await db.seedInitialData();
+    await _createTestAdmin(db);
+    addTearDown(db.close);
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const SeletoApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _loginAsAdmin(tester);
+    await tester.pumpAndSettle();
+    GoRouter.of(tester.element(find.byType(AppShell))).go('/lots');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.tap(find.widgetWithText(FilledButton, 'Novo lote').first);
+    await tester.pumpAndSettle();
+    final dateField = find.ancestor(
+      of: find.text('Data de recebimento *'),
+      matching: find.byType(InkWell),
+    );
+    await tester.tap(dateField);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    expect(find.text('OK'), findsOneWidget);
+    expect(find.text('Cancelar'), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Cancelar').last);
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
   testWidgets('lighting assignment dialog has no overflow on mobile', (
     tester,
   ) async {
