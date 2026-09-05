@@ -177,19 +177,52 @@ class _IngredientCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
-                Chip(
-                  label: Text(item.ingredient.isActive ? 'Ativo' : 'Inativo'),
+                Chip(label: Text(kg(item.stockKg))),
+                IconButton(
+                  tooltip: 'Editar insumo',
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _IngredientDialog(ref: ref, item: item),
+                  ),
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+                IconButton(
+                  tooltip: item.ingredient.isActive
+                      ? 'Desativar insumo'
+                      : 'Ativar insumo',
+                  onPressed: () async {
+                    try {
+                      await ref
+                          .read(operationsControllerProvider)
+                          .updateIngredient(
+                            ingredientId: item.ingredient.id,
+                            name: item.ingredient.name,
+                            unit: item.ingredient.unit,
+                            isActive: !item.ingredient.isActive,
+                            notes: item.ingredient.notes,
+                          );
+                    } catch (e) {
+                      if (context.mounted) await showOperationError(context, e);
+                    }
+                  },
+                  icon: Icon(
+                    item.ingredient.isActive
+                        ? Icons.block
+                        : Icons.check_circle_outline,
+                  ),
                 ),
               ],
             ),
             Text(
-              item.ingredient.unit,
+              item.ingredient.isActive ? 'Insumo ativo' : 'Histórico',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                color: item.ingredient.isActive
+                    ? Colors.green
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const Divider(),
-            _IngredientInfoRow(label: 'Saldo', value: kg(item.stockKg)),
+            _IngredientInfoRow(label: 'Unidade', value: item.ingredient.unit),
             _IngredientInfoRow(
               label: 'Lotes com saldo',
               value: '${item.activeLotCount}',
@@ -211,39 +244,6 @@ class _IngredientCard extends StatelessWidget {
               runSpacing: 8,
               children: [
                 OutlinedButton.icon(
-                  onPressed: () => showDialog<void>(
-                    context: context,
-                    builder: (_) => _IngredientDialog(ref: ref, item: item),
-                  ),
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('Editar'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    try {
-                      await ref
-                          .read(operationsControllerProvider)
-                          .updateIngredient(
-                            ingredientId: item.ingredient.id,
-                            name: item.ingredient.name,
-                            unit: item.ingredient.unit,
-                            isActive: !item.ingredient.isActive,
-                            notes: item.ingredient.notes,
-                          );
-                    } catch (e) {
-                      if (context.mounted) await showOperationError(context, e);
-                    }
-                  },
-                  icon: Icon(
-                    item.ingredient.isActive
-                        ? Icons.block
-                        : Icons.check_circle_outline,
-                  ),
-                  label: Text(
-                    item.ingredient.isActive ? 'Desativar' : 'Ativar',
-                  ),
-                ),
-                TextButton.icon(
                   onPressed: () => showDialog<void>(
                     context: context,
                     builder: (_) => _PriceHistoryDialog(ref: ref, item: item),
