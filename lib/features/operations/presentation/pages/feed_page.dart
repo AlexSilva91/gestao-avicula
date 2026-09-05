@@ -1766,6 +1766,7 @@ class _FeedingDialogState extends State<_FeedingDialog> {
   String? batch;
   final qty = TextEditingController();
   final notes = TextEditingController();
+  DateTime date = DateTime.now();
   bool saving = false;
   @override
   void dispose() {
@@ -1781,6 +1782,30 @@ class _FeedingDialogState extends State<_FeedingDialog> {
     final batches =
         widget.ref.watch(feedBatchesProvider).asData?.value ??
         <FeedBatchBalance>[];
+    void selectBatchForLot(String? lotId) {
+      final summary = lots.where((item) => item.lot.id == lotId).firstOrNull;
+      if (summary == null) return;
+      final age = LotLifecycle.ageInDays(
+        receivedAt: summary.lot.receivedAt,
+        arrivalAgeDays: summary.lot.arrivalAgeDays,
+        on: date,
+      );
+      final phase = switch (LotLifecycle.phaseForAge(age)) {
+        FeedingPhase.cria => 'CRIA',
+        FeedingPhase.recria => 'RECRIA',
+        FeedingPhase.prePostura => 'PRE_POSTURA',
+        FeedingPhase.producaoI => 'PRODUCAO_I',
+        FeedingPhase.producaoII => 'PRODUCAO_II',
+        FeedingPhase.producaoIII => 'PRODUCAO_III',
+      };
+      final compatible =
+          batches
+              .where((item) => item.balanceKg > 0 && item.batch.phase == phase)
+              .toList()
+            ..sort((a, b) => a.batch.producedAt.compareTo(b.batch.producedAt));
+      batch = compatible.firstOrNull?.batch.id;
+    }
+
     return AlertDialog(
       title: const Text('Registrar alimentação'),
       content: SizedBox(
@@ -1801,39 +1826,32 @@ class _FeedingDialogState extends State<_FeedingDialog> {
               onChanged: (v) {
                 setState(() {
                   lot = v;
-                  final summary = lots
-                      .where((item) => item.lot.id == v)
-                      .firstOrNull;
-                  if (summary != null) {
-                    final age = LotLifecycle.ageInDays(
-                      receivedAt: summary.lot.receivedAt,
-                      arrivalAgeDays: summary.lot.arrivalAgeDays,
-                    );
-                    final phase = switch (LotLifecycle.phaseForAge(age)) {
-                      FeedingPhase.cria => 'CRIA',
-                      FeedingPhase.recria => 'RECRIA',
-                      FeedingPhase.prePostura => 'PRE_POSTURA',
-                      FeedingPhase.producaoI => 'PRODUCAO_I',
-                      FeedingPhase.producaoII => 'PRODUCAO_II',
-                      FeedingPhase.producaoIII => 'PRODUCAO_III',
-                    };
-                    final compatible =
-                        batches
-                            .where(
-                              (item) =>
-                                  item.balanceKg > 0 &&
-                                  item.batch.phase == phase,
-                            )
-                            .toList()
-                          ..sort(
-                            (a, b) => a.batch.producedAt.compareTo(
-                              b.batch.producedAt,
-                            ),
-                          );
-                    batch = compatible.firstOrNull?.batch.id;
-                  }
+                  selectBatchForLot(v);
                 });
               },
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              enabled: !saving,
+              title: const Text('Data da alimentação'),
+              subtitle: Text(shortDate.format(date)),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: saving
+                  ? null
+                  : () async {
+                      final picked = await pickSeletoDate(
+                        context,
+                        date,
+                        firstDate: DateTime(2010),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked == null) return;
+                      setState(() {
+                        date = picked;
+                        selectBatchForLot(lot);
+                      });
+                    },
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -1888,7 +1906,7 @@ class _FeedingDialogState extends State<_FeedingDialog> {
                           lot!,
                           batch!,
                           parseDecimal(qty.text),
-                          DateTime.now(),
+                          date,
                           notes.text,
                         );
                     if (context.mounted) Navigator.pop(context);
