@@ -35,6 +35,69 @@ void main() {
     },
   );
 
+  test('lot transfer can unify and be undone with history', () async {
+    final fromId = await db.registerLotPurchase(
+      name: 'Origem',
+      quantity: 10,
+      receivedAt: DateTime(2026, 8),
+      arrivalAgeDays: 30,
+      actorId: actor,
+    );
+    final toId = await db.registerLotPurchase(
+      name: 'Destino',
+      quantity: 3,
+      receivedAt: DateTime(2026, 8),
+      arrivalAgeDays: 30,
+      actorId: actor,
+    );
+
+    await db.transferBirds(
+      fromLotId: fromId,
+      toLotId: toId,
+      quantity: 10,
+      date: DateTime(2026, 8, 10),
+      notes: 'Unificação',
+      deactivateFromLot: true,
+      actorId: actor,
+    );
+
+    var lots = await db.watchLotSummaries().first;
+    expect(lots.firstWhere((l) => l.lot.id == fromId).activeBirds, 0);
+    expect(lots.firstWhere((l) => l.lot.id == fromId).lot.status, 'INACTIVE');
+    expect(lots.firstWhere((l) => l.lot.id == toId).activeBirds, 13);
+    final transferOut = (await db.watchBirdMovementOverviews().first)
+        .firstWhere((item) => item.movement.type == 'TRANSFER_OUT');
+    expect(transferOut.lotName, 'ORIGEM');
+    expect(transferOut.relatedLotName, 'DESTINO');
+    expect(transferOut.canUndoTransfer, isTrue);
+
+    await db.undoBirdTransfer(
+      reference: transferOut.movement.reference!,
+      actorId: actor,
+    );
+
+    lots = await db.watchLotSummaries().first;
+    expect(lots.firstWhere((l) => l.lot.id == fromId).activeBirds, 10);
+    expect(lots.firstWhere((l) => l.lot.id == fromId).lot.status, 'ACTIVE');
+    expect(lots.firstWhere((l) => l.lot.id == toId).activeBirds, 3);
+    final movements = await db.watchBirdMovementOverviews().first;
+    expect(
+      movements
+          .firstWhere(
+            (item) => item.movement.reference == transferOut.movement.reference,
+          )
+          .transferUndone,
+      isTrue,
+    );
+    expect(
+      movements.where(
+        (item) => item.movement.reference?.startsWith('undo:') ?? false,
+      ),
+      isNotEmpty,
+    );
+    expect(movements.where((item) => item.canUndoTransfer), isEmpty);
+  });
+
   test(
     'feed manufacture snapshots prices and feeding cannot make stock negative',
     () async {

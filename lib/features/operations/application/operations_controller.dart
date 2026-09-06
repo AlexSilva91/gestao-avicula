@@ -58,7 +58,7 @@ final auditLogsProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchAuditLogs(),
 );
 final birdMovementsProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchBirdMovements(),
+  (ref) => ref.watch(databaseProvider).watchBirdMovementOverviews(),
 );
 final birdMetricsProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchBirdMetrics(),
@@ -455,14 +455,23 @@ class OperationsController {
     int quantity,
     DateTime date,
     String? notes,
+    bool deactivateFromLot,
   ) => _db.transferBirds(
     fromLotId: from,
     toLotId: to,
     quantity: quantity,
     date: date,
     notes: notes,
+    deactivateFromLot: deactivateFromLot,
     actorId: _actor('birds.transfer'),
   );
+
+  Future<void> undoTransfer(String reference, String? notes) =>
+      _db.undoBirdTransfer(
+        reference: reference,
+        notes: notes,
+        actorId: _actor('birds.transfer'),
+      );
 }
 
 final operationsControllerProvider = Provider(OperationsController.new);

@@ -126,6 +126,27 @@ class DashboardMetrics {
   final double monthFeedKg;
 }
 
+class BirdMovementOverview {
+  const BirdMovementOverview({
+    required this.movement,
+    required this.lotName,
+    this.relatedLotName,
+    required this.transferUndone,
+  });
+  final BirdMovement movement;
+  final String lotName;
+  final String? relatedLotName;
+  final bool transferUndone;
+
+  bool get isTransfer =>
+      movement.type == 'TRANSFER_OUT' || movement.type == 'TRANSFER_IN';
+  bool get canUndoTransfer =>
+      movement.type == 'TRANSFER_OUT' &&
+      movement.reference != null &&
+      !movement.reference!.startsWith('undo:') &&
+      !transferUndone;
+}
+
 class EggStockMetrics {
   const EggStockMetrics({
     required this.balance,
@@ -1957,12 +1978,59 @@ extension OperationsRepository on AppDatabase {
             ..limit(limit))
           .watch();
 
+  Stream<List<BirdMovementOverview>> watchBirdMovementOverviews({
+    int limit = 200,
+  }) {
+    final query = customSelect(
+      '''
+      SELECT m.*, l.name lot_name, rl.name related_lot_name,
+        EXISTS(
+          SELECT 1 FROM bird_movements undo
+          WHERE undo.reference = 'undo:' || m.reference
+        ) transfer_undone
+      FROM bird_movements m
+      LEFT JOIN lots l ON l.id = m.lot_id
+      LEFT JOIN lots rl ON rl.id = m.related_lot_id
+      ORDER BY m.occurred_at DESC, m.created_at DESC
+      LIMIT ?
+    ''',
+      variables: [Variable.withInt(limit)],
+      readsFrom: {birdMovements, lots},
+    );
+    return query.watch().map(
+      (rows) => rows
+          .map(
+            (row) => BirdMovementOverview(
+              movement: BirdMovement(
+                id: row.read<String>('id'),
+                type: row.read<String>('type'),
+                occurredAt: row.read<DateTime>('occurred_at'),
+                lotId: row.read<String>('lot_id'),
+                relatedLotId: row.readNullable<String>('related_lot_id'),
+                quantity: row.read<int>('quantity'),
+                unitValueCents: row.readNullable<int>('unit_value_cents'),
+                totalValueCents: row.readNullable<int>('total_value_cents'),
+                reference: row.readNullable<String>('reference'),
+                notes: row.readNullable<String>('notes'),
+                createdBy: row.read<String>('created_by'),
+                createdAt: row.read<DateTime>('created_at'),
+              ),
+              lotName: row.readNullable<String>('lot_name') ?? 'Lote removido',
+              relatedLotName: row.readNullable<String>('related_lot_name'),
+              transferUndone: row.read<int>('transfer_undone') == 1,
+            ),
+          )
+          .toList(),
+    );
+  }
+
   Future<void> transferBirds({
     required String fromLotId,
     required String toLotId,
     required int quantity,
     required DateTime date,
     String? notes,
+    bool deactivateFromLot = false,
     required String actorId,
   }) async {
     if (fromLotId == toLotId || quantity <= 0) {
@@ -1970,8 +2038,12 @@ extension OperationsRepository on AppDatabase {
         'Selecione lotes diferentes e uma quantidade válida.',
       );
     }
-    if (quantity > await activeBirdsFor(fromLotId)) {
+    final activeFrom = await activeBirdsFor(fromLotId);
+    if (quantity > activeFrom) {
       throw StateError('Saldo insuficiente no lote de origem.');
+    }
+    if (deactivateFromLot && quantity != activeFrom) {
+      throw StateError('Para unificar, transfira todo o saldo do lote.');
     }
     final reference = _uuid.v4();
     final now = DateTime.now();
@@ -2004,12 +2076,96 @@ extension OperationsRepository on AppDatabase {
           createdAt: now,
         ),
       );
+      if (deactivateFromLot) {
+        await (update(lots)..where((l) => l.id.equals(fromLotId))).write(
+          const LotsCompanion(status: Value('INACTIVE')),
+        );
+      }
       await addAudit(
         userId: actorId,
         action: 'birds.transfer',
         entityType: 'bird_transfer',
         entityId: reference,
-        description: 'Transferência de $quantity aves entre lotes.',
+        description: deactivateFromLot
+            ? 'Unificação de $quantity aves entre lotes.'
+            : 'Transferência de $quantity aves entre lotes.',
+      );
+    });
+  }
+
+  Future<void> undoBirdTransfer({
+    required String reference,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (reference.trim().isEmpty || reference.startsWith('undo:')) {
+      throw ArgumentError('Transferência inválida para desfazer.');
+    }
+    final undoReference = 'undo:$reference';
+    final existingUndo = await (select(
+      birdMovements,
+    )..where((m) => m.reference.equals(undoReference))).get();
+    if (existingUndo.isNotEmpty) {
+      throw StateError('Esta transferência já foi desfeita.');
+    }
+    final movements = await (select(
+      birdMovements,
+    )..where((m) => m.reference.equals(reference))).get();
+    final out = movements
+        .where((movement) => movement.type == 'TRANSFER_OUT')
+        .firstOrNull;
+    final input = movements
+        .where((movement) => movement.type == 'TRANSFER_IN')
+        .firstOrNull;
+    if (out == null || input == null || out.quantity != input.quantity) {
+      throw StateError('Histórico da transferência está incompleto.');
+    }
+    final destinationBalance = await activeBirdsFor(input.lotId);
+    if (out.quantity > destinationBalance) {
+      throw StateError(
+        'Não há saldo suficiente no lote de destino para desfazer.',
+      );
+    }
+    final now = DateTime.now();
+    final cleanNotes = _cleanValue(notes);
+    await transaction(() async {
+      await into(birdMovements).insert(
+        BirdMovementsCompanion.insert(
+          id: _uuid.v4(),
+          type: 'TRANSFER_OUT',
+          occurredAt: now,
+          lotId: input.lotId,
+          relatedLotId: Value(out.lotId),
+          quantity: out.quantity,
+          reference: Value(undoReference),
+          notes: Value(cleanNotes ?? 'Desfaz transferência $reference'),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(birdMovements).insert(
+        BirdMovementsCompanion.insert(
+          id: _uuid.v4(),
+          type: 'TRANSFER_IN',
+          occurredAt: now,
+          lotId: out.lotId,
+          relatedLotId: Value(input.lotId),
+          quantity: out.quantity,
+          reference: Value(undoReference),
+          notes: Value(cleanNotes ?? 'Desfaz transferência $reference'),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await (update(lots)..where((l) => l.id.equals(out.lotId))).write(
+        const LotsCompanion(status: Value('ACTIVE')),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'birds.transfer.undo',
+        entityType: 'bird_transfer',
+        entityId: reference,
+        description: 'Transferência de ${out.quantity} aves desfeita.',
       );
     });
   }

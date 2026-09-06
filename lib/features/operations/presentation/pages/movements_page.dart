@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/database/operations_repository.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
@@ -69,7 +70,8 @@ class MovementsPage extends ConsumerWidget {
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: items.length,
                         separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (_, i) => _MovementTile(item: items[i]),
+                        itemBuilder: (_, i) =>
+                            _MovementTile(ref: ref, item: items[i]),
                       ),
                     ),
             ),
@@ -84,8 +86,9 @@ class MovementsPage extends ConsumerWidget {
 }
 
 class _MovementTile extends StatelessWidget {
-  const _MovementTile({required this.item});
-  final BirdMovement item;
+  const _MovementTile({required this.ref, required this.item});
+  final WidgetRef ref;
+  final BirdMovementOverview item;
   static const labels = {
     'PURCHASE': 'Compra',
     'SALE': 'Venda',
@@ -97,11 +100,19 @@ class _MovementTile extends StatelessWidget {
   };
   @override
   Widget build(BuildContext context) {
+    final movement = item.movement;
     final input = {
       'PURCHASE',
       'TRANSFER_IN',
       'ADJUSTMENT_IN',
-    }.contains(item.type);
+    }.contains(movement.type);
+    final isUndo = movement.reference?.startsWith('undo:') ?? false;
+    final route = switch (movement.type) {
+      'TRANSFER_OUT' =>
+        '${item.lotName} -> ${item.relatedLotName ?? 'destino'}',
+      'TRANSFER_IN' => '${item.relatedLotName ?? 'origem'} -> ${item.lotName}',
+      _ => item.lotName,
+    };
     return ListTile(
       leading: CircleAvatar(
         backgroundColor: (input ? Colors.green : Colors.red).withValues(
@@ -112,15 +123,59 @@ class _MovementTile extends StatelessWidget {
           color: input ? Colors.green : Colors.red,
         ),
       ),
-      title: Text(labels[item.type] ?? item.type),
+      title: Text(labels[movement.type] ?? movement.type),
       subtitle: Text(
-        '${shortDate.format(item.occurredAt)} · Lote ${item.lotId.substring(0, item.lotId.length.clamp(0, 8))}${item.notes == null ? '' : ' · ${item.notes}'}',
+        '${shortDate.format(movement.occurredAt)} · $route${item.transferUndone ? ' · desfeita' : ''}${isUndo ? ' · reversão' : ''}${movement.notes == null ? '' : ' · ${movement.notes}'}',
       ),
-      trailing: Text(
-        '${input ? '+' : '−'}${item.quantity}',
-        style: Theme.of(context).textTheme.titleMedium,
+      trailing: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 4,
+        children: [
+          Text(
+            '${input ? '+' : '−'}${movement.quantity}',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          if (item.canUndoTransfer)
+            IconButton(
+              tooltip: 'Desfazer transferência',
+              onPressed: () => _confirmUndo(context),
+              icon: const Icon(Icons.undo),
+            ),
+        ],
       ),
     );
+  }
+
+  Future<void> _confirmUndo(BuildContext context) async {
+    final reference = item.movement.reference;
+    if (reference == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Desfazer transferência'),
+        content: Text(
+          'Voltar ${item.movement.quantity} aves de ${item.relatedLotName ?? 'destino'} para ${item.lotName}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Desfazer'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await ref
+          .read(operationsControllerProvider)
+          .undoTransfer(reference, null);
+    } catch (e) {
+      if (context.mounted) await showOperationError(context, e);
+    }
   }
 }
 
@@ -135,10 +190,14 @@ class _TransferDialogState extends State<_TransferDialog> {
   String? from;
   String? to;
   final quantity = TextEditingController();
+  final notes = TextEditingController();
+  DateTime date = DateTime.now();
+  bool unify = false;
   bool saving = false;
   @override
   void dispose() {
     quantity.dispose();
+    notes.dispose();
     super.dispose();
   }
 
@@ -146,42 +205,97 @@ class _TransferDialogState extends State<_TransferDialog> {
   Widget build(BuildContext context) {
     final lots =
         widget.ref.watch(lotSummariesProvider).asData?.value ?? <LotSummary>[];
+    final fromLot = lots.where((l) => l.lot.id == from).firstOrNull;
     return AlertDialog(
       title: const Text('Transferir aves'),
       content: SizedBox(
         width: 440,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: from,
-              decoration: const InputDecoration(labelText: 'Lote de origem'),
-              items: [
-                for (final l in lots.where((l) => l.activeBirds > 0))
-                  DropdownMenuItem(
-                    value: l.lot.id,
-                    child: Text('${l.lot.name} · ${l.activeBirds} aves'),
-                  ),
-              ],
-              onChanged: (v) => setState(() => from = v),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: to,
-              decoration: const InputDecoration(labelText: 'Lote de destino'),
-              items: [
-                for (final l in lots)
-                  DropdownMenuItem(value: l.lot.id, child: Text(l.lot.name)),
-              ],
-              onChanged: (v) => setState(() => to = v),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: quantity,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Quantidade'),
-            ),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: from,
+                decoration: const InputDecoration(labelText: 'Lote de origem'),
+                items: [
+                  for (final l in lots.where((l) => l.activeBirds > 0))
+                    DropdownMenuItem(
+                      value: l.lot.id,
+                      child: Text('${l.lot.name} · ${l.activeBirds} aves'),
+                    ),
+                ],
+                onChanged: saving
+                    ? null
+                    : (v) => setState(() {
+                        from = v;
+                        if (to == v) to = null;
+                        final selected = lots
+                            .where((l) => l.lot.id == v)
+                            .firstOrNull;
+                        if (unify && selected != null) {
+                          quantity.text = '${selected.activeBirds}';
+                        }
+                      }),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: to,
+                decoration: const InputDecoration(labelText: 'Lote de destino'),
+                items: [
+                  for (final l in lots.where((l) => l.lot.id != from))
+                    DropdownMenuItem(value: l.lot.id, child: Text(l.lot.name)),
+                ],
+                onChanged: saving ? null : (v) => setState(() => to = v),
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: unify,
+                onChanged: saving
+                    ? null
+                    : (value) => setState(() {
+                        unify = value;
+                        if (value && fromLot != null) {
+                          quantity.text = '${fromLot.activeBirds}';
+                        }
+                      }),
+                title: const Text('Unificar lote de origem'),
+                subtitle: const Text('Move todo o saldo e inativa a origem.'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: quantity,
+                enabled: !saving && !unify,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Quantidade'),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                enabled: !saving,
+                title: const Text('Data da movimentação'),
+                subtitle: Text(shortDate.format(date)),
+                trailing: const Icon(Icons.calendar_today),
+                onTap: saving
+                    ? null
+                    : () async {
+                        final picked = await pickSeletoDate(
+                          context,
+                          date,
+                          firstDate: DateTime(2010),
+                          lastDate: DateTime.now(),
+                        );
+                        if (picked != null) setState(() => date = picked);
+                      },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notes,
+                enabled: !saving,
+                decoration: const InputDecoration(labelText: 'Observação'),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -206,8 +320,9 @@ class _TransferDialogState extends State<_TransferDialog> {
                           from!,
                           to!,
                           int.parse(quantity.text),
-                          DateTime.now(),
-                          null,
+                          date,
+                          notes.text,
+                          unify,
                         );
                     if (context.mounted) Navigator.pop(context);
                   } catch (e) {
