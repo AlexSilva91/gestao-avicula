@@ -44,13 +44,48 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         children: [
           Align(
             alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => _EventDialog(ref: ref, initial: selected),
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text('Novo evento'),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _EventDialog(
+                      ref: ref,
+                      initial: selected,
+                      initialType: 'LITTER_CHANGE',
+                      initialTitle: 'Troca de cama',
+                      initialAlertEnabled: false,
+                    ),
+                  ),
+                  icon: const Icon(Icons.cleaning_services_outlined),
+                  label: const Text('Troca de cama'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _EventDialog(
+                      ref: ref,
+                      initial: selected,
+                      initialType: 'SANITARY_TREATMENT',
+                      initialTitle: 'Tratamento sanitário',
+                      initialAlertEnabled: false,
+                    ),
+                  ),
+                  icon: const Icon(Icons.medical_services_outlined),
+                  label: const Text('Tratamento'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _EventDialog(ref: ref, initial: selected),
+                  ),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Novo evento'),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 22),
@@ -66,6 +101,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                         child: _Agenda(
                           date: selected,
                           events: forDay(selected),
+                          lots: lots,
                         ),
                       ),
                     ],
@@ -74,7 +110,11 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                     children: [
                       _calendar(events, forDay),
                       const SizedBox(height: 16),
-                      _Agenda(date: selected, events: forDay(selected)),
+                      _Agenda(
+                        date: selected,
+                        events: forDay(selected),
+                        lots: lots,
+                      ),
                     ],
                   ),
           ),
@@ -158,9 +198,10 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
 }
 
 class _Agenda extends StatelessWidget {
-  const _Agenda({required this.date, required this.events});
+  const _Agenda({required this.date, required this.events, required this.lots});
   final DateTime date;
   final List<CalendarEvent> events;
+  final List<LotSummary> lots;
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
@@ -184,28 +225,56 @@ class _Agenda extends StatelessWidget {
             for (final e in events)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  _eventIcon(e.type),
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                leading: Icon(_eventIcon(e.type), color: _eventColor(e.type)),
                 title: Text(e.title),
-                subtitle: Text(
-                  e.alertEnabled
-                      ? '${e.type.replaceAll('_', ' ')} · ${_recurrenceLabel(e.recurrence)} às ${e.alertTime}'
-                      : e.type.replaceAll('_', ' '),
-                ),
+                subtitle: Text(_subtitle(e)),
               ),
         ],
       ),
     ),
   );
+
+  String _subtitle(CalendarEvent event) {
+    final lotName = lots
+        .where((summary) => summary.lot.id == event.lotId)
+        .firstOrNull
+        ?.lot
+        .name;
+    final parts = [
+      _eventTypeLabel(event.type),
+      ?lotName,
+      if (event.alertEnabled)
+        '${_recurrenceLabel(event.recurrence)} às ${event.alertTime}',
+      if ((event.notes ?? '').trim().isNotEmpty) event.notes!.trim(),
+    ];
+    return parts.join(' · ');
+  }
+
   IconData _eventIcon(String type) => switch (type) {
     'PHASE_CHANGE' => Icons.timeline,
     'LIGHTING' => Icons.light_mode_outlined,
     'ORDER' => Icons.receipt_long,
     'DELIVERY' => Icons.local_shipping_outlined,
     'FEED' => Icons.restaurant,
+    'LITTER_CHANGE' => Icons.cleaning_services_outlined,
+    'SANITARY_TREATMENT' => Icons.medical_services_outlined,
     _ => Icons.event,
+  };
+  Color _eventColor(String type) => switch (type) {
+    'LITTER_CHANGE' => Colors.brown,
+    'SANITARY_TREATMENT' => Colors.teal,
+    _ => const Color(0xFF176B4D),
+  };
+  String _eventTypeLabel(String type) => switch (type) {
+    'PHASE_CHANGE' => 'Fase de criação',
+    'LIGHTING' => 'Iluminação',
+    'ORDER' => 'Pedido',
+    'DELIVERY' => 'Entrega',
+    'FEED' => 'Ração',
+    'LITTER_CHANGE' => 'Troca de cama',
+    'SANITARY_TREATMENT' => 'Tratamento sanitário',
+    'ALERT' => 'Alerta',
+    _ => 'Evento',
   };
   String _recurrenceLabel(String recurrence) => switch (recurrence) {
     'DAILY' => 'diário',
@@ -306,9 +375,18 @@ class _LightSteps extends StatelessWidget {
 }
 
 class _EventDialog extends StatefulWidget {
-  const _EventDialog({required this.ref, required this.initial});
+  const _EventDialog({
+    required this.ref,
+    required this.initial,
+    this.initialType = 'EVENT',
+    this.initialTitle,
+    this.initialAlertEnabled = true,
+  });
   final WidgetRef ref;
   final DateTime initial;
+  final String initialType;
+  final String? initialTitle;
+  final bool initialAlertEnabled;
   @override
   State<_EventDialog> createState() => _EventDialogState();
 }
@@ -318,13 +396,20 @@ class _EventDialogState extends State<_EventDialog> {
   final notes = TextEditingController();
   final alertTime = TextEditingController(text: '08:00');
   final alertMessage = TextEditingController();
-  String type = 'EVENT';
+  late String type = widget.initialType;
   String? lot;
   late DateTime date = widget.initial;
   DateTime? repeatUntil;
-  bool alertEnabled = true;
+  late bool alertEnabled = widget.initialAlertEnabled;
   String recurrence = 'ONCE';
   final weekdays = <int>{DateTime.monday};
+
+  @override
+  void initState() {
+    super.initState();
+    title.text = widget.initialTitle ?? '';
+  }
+
   @override
   void dispose() {
     title.dispose();
@@ -339,7 +424,7 @@ class _EventDialogState extends State<_EventDialog> {
     final lots =
         widget.ref.watch(lotSummariesProvider).asData?.value ?? <LotSummary>[];
     return AlertDialog(
-      title: const Text('Novo evento'),
+      title: Text(widget.initialTitle ?? 'Novo evento'),
       content: SizedBox(
         width: 460,
         child: SingleChildScrollView(
@@ -358,6 +443,8 @@ class _EventDialogState extends State<_EventDialog> {
                   for (final item in const {
                     'EVENT': 'Evento',
                     'ALERT': 'Alerta',
+                    'LITTER_CHANGE': 'Troca de cama',
+                    'SANITARY_TREATMENT': 'Tratamento sanitário',
                     'FEED': 'Ração',
                     'LIGHTING': 'Iluminação',
                     'PHASE_CHANGE': 'Fase de criação',

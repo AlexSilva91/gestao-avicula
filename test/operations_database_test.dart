@@ -241,6 +241,41 @@ void main() {
     expect(finance.single.amountCents, 9600);
   });
 
+  test('calendar records litter changes and sanitary treatments', () async {
+    final lotId = await db.registerLotPurchase(
+      name: 'Postura manejo',
+      quantity: 12,
+      receivedAt: DateTime(2026, 8, 1),
+      arrivalAgeDays: 120,
+      actorId: actor,
+    );
+    await db.addCalendarEvent(
+      title: 'Troca de cama',
+      type: 'LITTER_CHANGE',
+      startsAt: DateTime(2026, 8, 5),
+      lotId: lotId,
+      notes: 'Cama substituída',
+      alertEnabled: false,
+      actorId: actor,
+    );
+    await db.addCalendarEvent(
+      title: 'Tratamento sanitário',
+      type: 'SANITARY_TREATMENT',
+      startsAt: DateTime(2026, 8, 6),
+      lotId: lotId,
+      notes: 'Vermífugo',
+      alertEnabled: false,
+      actorId: actor,
+    );
+
+    final events = await db
+        .watchCalendarEvents(DateTime(2026, 8), DateTime(2026, 9))
+        .first;
+    expect(events.map((event) => event.type), contains('LITTER_CHANGE'));
+    expect(events.map((event) => event.type), contains('SANITARY_TREATMENT'));
+    expect(events.every((event) => event.lotId == lotId), isTrue);
+  });
+
   test('ingredients and formulas can be edited and deactivated', () async {
     final ingredient = (await db.watchIngredientOverviews().first).first;
     await db.updateIngredient(
