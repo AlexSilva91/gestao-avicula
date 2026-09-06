@@ -449,6 +449,7 @@ class AppDatabase extends _$AppDatabase {
         'FEED',
         'LITTER_CHANGE',
         'SANITARY_TREATMENT',
+        'VACCINATION',
       ]) {
         await into(notificationSettings).insert(
           NotificationSettingsCompanion.insert(

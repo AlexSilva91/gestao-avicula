@@ -33,7 +33,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         <CalendarEvent>[];
     final lots =
         ref.watch(lotSummariesProvider).asData?.value ?? <LotSummary>[];
-    final generated = _phaseEvents(lots);
+    final generated = [..._phaseEvents(lots), ..._vaccinationEvents(lots)];
     final events = [...saved, ...generated];
     List<CalendarEvent> forDay(DateTime day) =>
         events.where((e) => isSameDay(e.startsAt, day)).toList();
@@ -76,6 +76,20 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                   ),
                   icon: const Icon(Icons.medical_services_outlined),
                   label: const Text('Tratamento'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _EventDialog(
+                      ref: ref,
+                      initial: selected,
+                      initialType: 'VACCINATION',
+                      initialTitle: 'Vacinação',
+                      initialAlertEnabled: true,
+                    ),
+                  ),
+                  icon: const Icon(Icons.vaccines_outlined),
+                  label: const Text('Vacinação'),
                 ),
                 FilledButton.icon(
                   onPressed: () => showDialog<void>(
@@ -195,6 +209,45 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
     }
     return result;
   }
+
+  List<CalendarEvent> _vaccinationEvents(List<LotSummary> lots) {
+    const schedule = [
+      (1, 'Marek'),
+      (7, 'Newcastle + Bronquite'),
+      (14, 'Gumboro'),
+      (21, 'Gumboro reforço'),
+      (28, 'Newcastle reforço'),
+      (35, 'Bouba aviária'),
+      (70, 'Encefalomielite aviária'),
+      (105, 'Newcastle + Bronquite pré-postura'),
+      (112, 'Salmonella'),
+    ];
+    final result = <CalendarEvent>[];
+    for (final summary in lots.where((lot) => lot.activeBirds > 0)) {
+      final birth = LotLifecycle.estimatedBirthDate(
+        receivedAt: summary.lot.receivedAt,
+        arrivalAgeDays: summary.lot.arrivalAgeDays,
+      );
+      for (final entry in schedule) {
+        result.add(
+          CalendarEvent(
+            id: 'vaccine-${summary.lot.id}-${entry.$1}',
+            title: '${summary.lot.name}: Vacinação - ${entry.$2}',
+            type: 'VACCINATION',
+            startsAt: birth.add(Duration(days: entry.$1)),
+            lotId: summary.lot.id,
+            notes: 'Projeção automática aos ${entry.$1} dias de idade.',
+            alertEnabled: true,
+            alertTime: '08:00',
+            recurrence: 'ONCE',
+            createdBy: 'system',
+            createdAt: DateTime.now(),
+          ),
+        );
+      }
+    }
+    return result;
+  }
 }
 
 class _Agenda extends StatelessWidget {
@@ -258,11 +311,13 @@ class _Agenda extends StatelessWidget {
     'FEED' => Icons.restaurant,
     'LITTER_CHANGE' => Icons.cleaning_services_outlined,
     'SANITARY_TREATMENT' => Icons.medical_services_outlined,
+    'VACCINATION' => Icons.vaccines_outlined,
     _ => Icons.event,
   };
   Color _eventColor(String type) => switch (type) {
     'LITTER_CHANGE' => Colors.brown,
     'SANITARY_TREATMENT' => Colors.teal,
+    'VACCINATION' => Colors.indigo,
     _ => const Color(0xFF176B4D),
   };
   String _eventTypeLabel(String type) => switch (type) {
@@ -273,6 +328,7 @@ class _Agenda extends StatelessWidget {
     'FEED' => 'Ração',
     'LITTER_CHANGE' => 'Troca de cama',
     'SANITARY_TREATMENT' => 'Tratamento sanitário',
+    'VACCINATION' => 'Vacinação',
     'ALERT' => 'Alerta',
     _ => 'Evento',
   };
@@ -394,6 +450,9 @@ class _EventDialog extends StatefulWidget {
 class _EventDialogState extends State<_EventDialog> {
   final title = TextEditingController();
   final notes = TextEditingController();
+  final litterBags = TextEditingController();
+  final litterBagWeight = TextEditingController();
+  final litterBagPrice = TextEditingController();
   final alertTime = TextEditingController(text: '08:00');
   final alertMessage = TextEditingController();
   late String type = widget.initialType;
@@ -414,9 +473,37 @@ class _EventDialogState extends State<_EventDialog> {
   void dispose() {
     title.dispose();
     notes.dispose();
+    litterBags.dispose();
+    litterBagWeight.dispose();
+    litterBagPrice.dispose();
     alertTime.dispose();
     alertMessage.dispose();
     super.dispose();
+  }
+
+  String? _eventNotes() {
+    final cleanNotes = notes.text.trim();
+    if (type != 'LITTER_CHANGE') return cleanNotes.isEmpty ? null : cleanNotes;
+    final bags = parseDecimal(litterBags.text);
+    final bagWeight = parseDecimal(litterBagWeight.text);
+    final bagPrice = parseMoneyToCents(litterBagPrice.text);
+    if (bags <= 0 || bagWeight <= 0 || bagPrice <= 0) {
+      throw ArgumentError(
+        'Informe sacos, peso por saco e valor por saco da cama.',
+      );
+    }
+    final totalKg = bags * bagWeight;
+    final totalCost = (bags * bagPrice).round();
+    final costPerKg = (totalCost / totalKg).round();
+    final details = [
+      'Sacos de serragem: ${decimal.format(bags)}',
+      'Peso por saco: ${kg(bagWeight)}',
+      'Peso total: ${kg(totalKg)}',
+      'Valor por saco: ${money(bagPrice)}',
+      'Valor total: ${money(totalCost)}',
+      'Valor por kg: ${money(costPerKg)}',
+    ].join(' · ');
+    return cleanNotes.isEmpty ? details : '$details · $cleanNotes';
   }
 
   @override
@@ -445,6 +532,7 @@ class _EventDialogState extends State<_EventDialog> {
                     'ALERT': 'Alerta',
                     'LITTER_CHANGE': 'Troca de cama',
                     'SANITARY_TREATMENT': 'Tratamento sanitário',
+                    'VACCINATION': 'Vacinação',
                     'FEED': 'Ração',
                     'LIGHTING': 'Iluminação',
                     'PHASE_CHANGE': 'Fase de criação',
@@ -453,7 +541,17 @@ class _EventDialogState extends State<_EventDialog> {
                   }.entries)
                     DropdownMenuItem(value: item.key, child: Text(item.value)),
                 ],
-                onChanged: (v) => setState(() => type = v!),
+                onChanged: (v) => setState(() {
+                  type = v!;
+                  if (title.text.trim().isEmpty) {
+                    title.text = switch (type) {
+                      'LITTER_CHANGE' => 'Troca de cama',
+                      'SANITARY_TREATMENT' => 'Tratamento sanitário',
+                      'VACCINATION' => 'Vacinação',
+                      _ => title.text,
+                    };
+                  }
+                }),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
@@ -480,6 +578,40 @@ class _EventDialogState extends State<_EventDialog> {
                 controller: notes,
                 decoration: const InputDecoration(labelText: 'Observações'),
               ),
+              if (type == 'LITTER_CHANGE') ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: litterBags,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Sacos de serragem',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: litterBagWeight,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Peso por saco',
+                    suffixText: 'kg',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: litterBagPrice,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Valor por saco',
+                    prefixText: 'R\$ ',
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -590,7 +722,7 @@ class _EventDialogState extends State<_EventDialog> {
                     type,
                     date,
                     lot,
-                    notes.text,
+                    _eventNotes(),
                     alertEnabled: alertEnabled,
                     alertMessage: alertMessage.text,
                     alertTime: alertTime.text,

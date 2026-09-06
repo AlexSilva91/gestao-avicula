@@ -199,6 +199,7 @@ class _AlertTile extends StatelessWidget {
         'FEED': 'Programa de alimentação',
         'LITTER_CHANGE': 'Troca de cama',
         'SANITARY_TREATMENT': 'Tratamento sanitário',
+        'VACCINATION': 'Vacinação',
       }[type] ??
       type;
 
@@ -211,6 +212,7 @@ class _AlertTile extends StatelessWidget {
     'FEED' => Icons.restaurant_outlined,
     'LITTER_CHANGE' => Icons.cleaning_services_outlined,
     'SANITARY_TREATMENT' => Icons.medical_services_outlined,
+    'VACCINATION' => Icons.vaccines_outlined,
     _ => Icons.notifications_active_outlined,
   };
 
@@ -606,6 +608,10 @@ class _CreateAlertDialogState extends State<_CreateAlertDialog> {
                   DropdownMenuItem(
                     value: 'SANITARY_TREATMENT',
                     child: Text('Tratamento sanitário'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'VACCINATION',
+                    child: Text('Vacinação'),
                   ),
                   DropdownMenuItem(
                     value: 'LIGHTING',
