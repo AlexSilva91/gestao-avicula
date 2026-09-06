@@ -505,7 +505,9 @@ class _CollectionDialogState extends ConsumerState<_CollectionDialog> {
               error
                   .toString()
                   .replaceFirst('Bad state: ', '')
-                  .replaceFirst('Invalid argument(s): ', ''),
+                  .replaceFirst('Invalid argument(s): ', '')
+                  .replaceFirst('Invalid argument: ', '')
+                  .replaceFirst('FormatException: ', ''),
             ),
           ),
         );

@@ -341,7 +341,7 @@ class _SimulatorTabState extends State<_SimulatorTab> {
                 Text(
                   payback == null
                       ? 'Sem retorno com os parâmetros atuais.'
-                      : 'Payback estimado: ${payback.toStringAsFixed(1)} meses',
+                      : 'Retorno do investimento estimado: ${payback.toStringAsFixed(1)} meses',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: payback == null ? Colors.red : Colors.green,
                   ),

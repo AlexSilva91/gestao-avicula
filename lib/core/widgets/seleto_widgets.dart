@@ -194,7 +194,8 @@ String friendlyError(Object error) => error
     .toString()
     .replaceFirst('Bad state: ', '')
     .replaceFirst('Invalid argument(s): ', '')
-    .replaceFirst('Invalid argument: ', '');
+    .replaceFirst('Invalid argument: ', '')
+    .replaceFirst('FormatException: ', '');
 
 Future<void> showOperationError(BuildContext context, Object error) async {
   if (!context.mounted) return;

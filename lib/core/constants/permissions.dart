@@ -6,7 +6,7 @@ class SeletoPermission {
 }
 
 const seletoPermissions = <SeletoPermission>[
-  SeletoPermission('dashboard.view', 'Visualizar dashboard', 'Home'),
+  SeletoPermission('dashboard.view', 'Visualizar painel', 'Início'),
   SeletoPermission('lots.view', 'Visualizar lotes', 'Produção'),
   SeletoPermission('lots.create', 'Criar lotes', 'Produção'),
   SeletoPermission('lots.update', 'Alterar lotes', 'Produção'),
@@ -57,7 +57,7 @@ const seletoPermissions = <SeletoPermission>[
   SeletoPermission('settings.view', 'Visualizar configurações', 'Sistema'),
   SeletoPermission(
     'settings.update',
-    'Alterar configurações e backup',
+    'Alterar configurações e cópias de segurança',
     'Sistema',
   ),
   SeletoPermission('audit.view', 'Visualizar auditoria', 'Sistema'),

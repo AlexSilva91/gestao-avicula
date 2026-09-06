@@ -286,6 +286,7 @@ const _sectionKeys = {
   'feedBatchItems',
   'feedStock',
   'feedings',
+  'feedRecommendations',
   'customers',
   'orders',
   'orderItems',
@@ -329,6 +330,12 @@ const _sectionAliases = {
   'estoqueracao': 'feedStock',
   'feedings': 'feedings',
   'alimentacao': 'feedings',
+  'feedrecommendations': 'feedRecommendations',
+  'feedconsumptionrecommendations': 'feedRecommendations',
+  'recomendacoesracao': 'feedRecommendations',
+  'recomendacoesalimentacao': 'feedRecommendations',
+  'consumoracao': 'feedRecommendations',
+  'consumoporave': 'feedRecommendations',
   'customers': 'customers',
   'clientes': 'customers',
   'orders': 'orders',
@@ -388,6 +395,10 @@ const _intFields = {
   'totalLightMinutes',
   'weeklyIncrementMinutes',
   'daysBefore',
+  'startWeek',
+  'endWeek',
+  'ageWeek',
+  'ageWeeks',
 };
 
 const _doubleFields = {
@@ -399,6 +410,7 @@ const _doubleFields = {
   'packageWeightKg',
   'quantityKg',
   'quantity',
+  'gramsPerBirdDay',
 };
 
 const _dateFields = {

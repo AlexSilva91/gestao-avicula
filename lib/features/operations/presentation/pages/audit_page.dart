@@ -37,7 +37,7 @@ class AuditPage extends ConsumerWidget {
                             leading: const Icon(Icons.verified_user_outlined),
                             title: Text(log.description),
                             subtitle: Text(
-                              '${log.action} · ${log.entityType}${log.entityId == null ? '' : ' · ${log.entityId}'}',
+                              '${auditActionLabel(log.action)} · ${auditEntityLabel(log.entityType)}${log.entityId == null ? '' : ' · ${log.entityId}'}',
                             ),
                             trailing: Text(
                               '${shortDate.format(log.timestamp)}\n${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}',

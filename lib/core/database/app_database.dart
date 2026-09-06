@@ -177,6 +177,7 @@ class LayingRateHistoryEntry {
     FeedBatchItems,
     FeedStockMovements,
     DailyFeedings,
+    FeedConsumptionRecommendations,
     Customers,
     Orders,
     OrderItems,
@@ -207,7 +208,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -272,6 +273,11 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(ingredientStockMovements);
         await _createPerformanceIndexes();
       }
+      if (from < 8) {
+        await m.createTable(feedConsumptionRecommendations);
+        await _createPerformanceIndexes();
+        await _seedFeedConsumptionRecommendations('system', DateTime.now());
+      }
     },
   );
 
@@ -302,6 +308,9 @@ class AppDatabase extends _$AppDatabase {
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_feedings_lot_date ON daily_feedings (lot_id, feeding_date)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_feed_recommendations_age ON feed_consumption_recommendations (start_week, end_week)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_orders_status_date ON orders (status, requested_date)',
@@ -386,7 +395,7 @@ class AppDatabase extends _$AppDatabase {
         await into(feedFormulas).insert(
           FeedFormulasCompanion.insert(
             id: formulaId,
-            name: recipe.key.replaceAll('_', ' '),
+            name: _defaultFeedFormulaName(recipe.key),
             phase: recipe.key,
             validFrom: DateTime(2026),
             createdBy: actorId,
@@ -440,6 +449,7 @@ class AppDatabase extends _$AppDatabase {
           mode: InsertMode.insertOrIgnore,
         );
       }
+      await _seedFeedConsumptionRecommendations(actorId, now);
       for (final type in [
         'PHASE_CHANGE',
         'LIGHTING',
@@ -480,6 +490,65 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  Future<void> _seedFeedConsumptionRecommendations(
+    String actorId,
+    DateTime now,
+  ) async {
+    const recommendations = [
+      (0, 0, 12.0, 'CRIA'),
+      (1, 1, 18.0, 'CRIA'),
+      (2, 2, 24.0, 'CRIA'),
+      (3, 3, 30.0, 'CRIA'),
+      (4, 4, 36.0, 'CRIA'),
+      (5, 5, 42.0, 'CRIA'),
+      (6, 6, 48.0, 'CRIA'),
+      (7, 7, 54.0, 'RECRIA'),
+      (8, 8, 60.0, 'RECRIA'),
+      (9, 9, 65.0, 'RECRIA'),
+      (10, 10, 70.0, 'RECRIA'),
+      (11, 11, 75.0, 'RECRIA'),
+      (12, 12, 80.0, 'RECRIA'),
+      (13, 13, 85.0, 'RECRIA'),
+      (14, 14, 90.0, 'RECRIA'),
+      (15, 15, 95.0, 'RECRIA'),
+      (16, 16, 100.0, 'PRE_POSTURA'),
+      (17, 17, 105.0, 'PRE_POSTURA'),
+      (18, 18, 110.0, 'PRE_POSTURA'),
+      (19, 19, 112.0, 'PRODUCAO_I'),
+      (20, 20, 114.0, 'PRODUCAO_I'),
+      (21, 21, 116.0, 'PRODUCAO_I'),
+      (22, 22, 118.0, 'PRODUCAO_I'),
+      (23, 23, 120.0, 'PRODUCAO_I'),
+      (24, 24, 122.0, 'PRODUCAO_I'),
+      (25, null, 125.0, 'PRODUCAO_II'),
+    ];
+    for (final item in recommendations) {
+      await into(feedConsumptionRecommendations).insert(
+        FeedConsumptionRecommendationsCompanion.insert(
+          id: 'feed-consumption-${item.$1}-${item.$2 ?? 'plus'}',
+          startWeek: item.$1,
+          endWeek: Value(item.$2),
+          gramsPerBirdDay: item.$3,
+          phase: Value(item.$4),
+          source: const Value('Tabela padrão editável'),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+    }
+  }
+
+  String _defaultFeedFormulaName(String phase) => switch (phase) {
+    'CRIA' => 'Cria',
+    'RECRIA' => 'Recria',
+    'PRE_POSTURA' => 'Pré-postura',
+    'PRODUCAO_I' => 'Produção I',
+    'PRODUCAO_II' => 'Produção II',
+    'PRODUCAO_III' => 'Produção III',
+    _ => phase,
+  };
+
   Future<User?> authenticate(String username, String password) async {
     final user = await (select(
       users,
@@ -498,7 +567,7 @@ class AppDatabase extends _$AppDatabase {
       action: 'auth.login',
       entityType: 'user',
       entityId: user.id,
-      description: 'Login realizado.',
+      description: 'Entrada no sistema realizada.',
     );
     return (select(users)..where((u) => u.id.equals(user.id))).getSingle();
   }

@@ -155,6 +155,34 @@ void main() {
     },
   );
 
+  test(
+    'feed consumption recommendations can be imported from simple csv',
+    () async {
+      final result = await db.importFeedConsumptionRecommendations(
+        filename: 'consumoracao.csv',
+        bytes: Uint8List.fromList(
+          utf8.encode(
+            'semana,gramasPorAveDia,fase,fonte\n'
+            '1,18,CRIA,Manual teste\n'
+            '2,24,CRIA,Manual teste\n'
+            '25,125,PRODUCAO_II,Manual teste\n',
+          ),
+        ),
+        actorId: actor,
+      );
+
+      expect(result.rowCount, 3);
+      final recommendations = await db
+          .watchFeedConsumptionRecommendations()
+          .first;
+      expect(recommendations, hasLength(3));
+      expect(recommendations.first.startWeek, 1);
+      expect(recommendations.first.endWeek, 1);
+      expect(recommendations.first.gramsPerBirdDay, 18);
+      expect(recommendations.first.source, 'Manual teste');
+    },
+  );
+
   test('feed manufacture consumes oldest ingredient lots first', () async {
     final ingredient = (await db.watchIngredientOverviews().first).firstWhere(
       (item) => item.ingredient.name == 'Milho',

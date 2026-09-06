@@ -327,7 +327,7 @@ class _AlertsCard extends StatelessWidget {
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.event_available),
-                  title: Text('${item.name}: ${item.phase}'),
+                  title: Text('${item.name}: ${feedPhaseLabel(item.phase)}'),
                   subtitle: Text(
                     item.days <= 0
                         ? 'Mudança prevista hoje'

@@ -24,6 +24,9 @@ final feedBatchesProvider = StreamProvider(
 final feedingsProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchFeedings(),
 );
+final feedRecommendationsProvider = StreamProvider(
+  (ref) => ref.watch(databaseProvider).watchFeedConsumptionRecommendations(),
+);
 final customersProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchCustomers(),
 );
@@ -428,6 +431,14 @@ class OperationsController {
     filename: filename,
     bytes: Uint8List.fromList(bytes),
     actorId: _actor('settings.update'),
+  );
+  Future<FeedRecommendationImportResult> importFeedRecommendations(
+    String filename,
+    List<int> bytes,
+  ) => _db.importFeedConsumptionRecommendations(
+    filename: filename,
+    bytes: Uint8List.fromList(bytes),
+    actorId: _actor('feed_formulas.manage'),
   );
   Future<void> seedDemo() => _db.seedDemoData(_actor('settings.update'));
   Future<void> updateNotification(

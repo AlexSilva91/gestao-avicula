@@ -172,7 +172,7 @@ class _BackupCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Backup e exportação',
+            'Cópia de segurança e exportação',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
@@ -185,15 +185,17 @@ class _BackupCard extends StatelessWidget {
               try {
                 final json = await ref.read(databaseProvider).exportJson();
                 final name =
-                    'seleto-backup-${DateTime.now().toIso8601String().substring(0, 10)}.json';
+                    'seleto-copia-seguranca-${DateTime.now().toIso8601String().substring(0, 10)}.json';
                 final path = await FileExportService().saveText(name, json);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Backup exportado: $path')),
+                    SnackBar(
+                      content: Text('Cópia de segurança exportada: $path'),
+                    ),
                   );
                   await _showExportPath(
                     context,
-                    title: 'Backup salvo',
+                    title: 'Cópia de segurança salva',
                     path: path,
                   );
                 }
@@ -202,7 +204,7 @@ class _BackupCard extends StatelessWidget {
               }
             },
             icon: const Icon(Icons.download),
-            label: const Text('Salvar backup'),
+            label: const Text('Salvar cópia'),
           ),
           const SizedBox(height: 8),
           FilledButton.tonalIcon(
@@ -210,15 +212,19 @@ class _BackupCard extends StatelessWidget {
               try {
                 final json = await ref.read(databaseProvider).exportJson();
                 final name =
-                    'seleto-backup-${DateTime.now().toIso8601String().substring(0, 10)}.json';
+                    'seleto-copia-seguranca-${DateTime.now().toIso8601String().substring(0, 10)}.json';
                 final path = await FileExportService().shareText(name, json);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Backup pronto para envio: $path')),
+                    SnackBar(
+                      content: Text(
+                        'Cópia de segurança pronta para envio: $path',
+                      ),
+                    ),
                   );
                   await _showExportPath(
                     context,
-                    title: 'Backup pronto',
+                    title: 'Cópia de segurança pronta',
                     path: path,
                   );
                 }
@@ -227,7 +233,7 @@ class _BackupCard extends StatelessWidget {
               }
             },
             icon: const Icon(Icons.ios_share),
-            label: const Text('Enviar backup'),
+            label: const Text('Enviar cópia'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -264,7 +270,7 @@ class _BackupCard extends StatelessWidget {
           OutlinedButton.icon(
             onPressed: () => _restore(context),
             icon: const Icon(Icons.restore),
-            label: const Text('Restaurar backup JSON'),
+            label: const Text('Restaurar cópia JSON'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -300,7 +306,7 @@ class _BackupCard extends StatelessWidget {
     await showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Restaurar backup'),
+        title: const Text('Restaurar cópia de segurança'),
         content: SizedBox(
           width: 560,
           child: Column(
@@ -421,7 +427,7 @@ Future<void> _showExportPath(
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('OK'),
+          child: const Text('Entendi'),
         ),
       ],
     ),
@@ -452,7 +458,7 @@ class _NotificationsCard extends StatelessWidget {
                 label: Text(
                   NotificationService().nativeSupported
                       ? 'Android nativo'
-                      : 'Modo Web',
+                      : 'Modo navegador',
                 ),
               ),
             ],

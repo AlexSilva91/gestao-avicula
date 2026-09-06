@@ -9682,6 +9682,581 @@ class DailyFeedingsCompanion extends UpdateCompanion<DailyFeeding> {
   }
 }
 
+class $FeedConsumptionRecommendationsTable
+    extends FeedConsumptionRecommendations
+    with
+        TableInfo<
+          $FeedConsumptionRecommendationsTable,
+          FeedConsumptionRecommendation
+        > {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FeedConsumptionRecommendationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startWeekMeta = const VerificationMeta(
+    'startWeek',
+  );
+  @override
+  late final GeneratedColumn<int> startWeek = GeneratedColumn<int>(
+    'start_week',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endWeekMeta = const VerificationMeta(
+    'endWeek',
+  );
+  @override
+  late final GeneratedColumn<int> endWeek = GeneratedColumn<int>(
+    'end_week',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _gramsPerBirdDayMeta = const VerificationMeta(
+    'gramsPerBirdDay',
+  );
+  @override
+  late final GeneratedColumn<double> gramsPerBirdDay = GeneratedColumn<double>(
+    'grams_per_bird_day',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _phaseMeta = const VerificationMeta('phase');
+  @override
+  late final GeneratedColumn<String> phase = GeneratedColumn<String>(
+    'phase',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdByMeta = const VerificationMeta(
+    'createdBy',
+  );
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    startWeek,
+    endWeek,
+    gramsPerBirdDay,
+    phase,
+    source,
+    notes,
+    createdBy,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'feed_consumption_recommendations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FeedConsumptionRecommendation> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('start_week')) {
+      context.handle(
+        _startWeekMeta,
+        startWeek.isAcceptableOrUnknown(data['start_week']!, _startWeekMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startWeekMeta);
+    }
+    if (data.containsKey('end_week')) {
+      context.handle(
+        _endWeekMeta,
+        endWeek.isAcceptableOrUnknown(data['end_week']!, _endWeekMeta),
+      );
+    }
+    if (data.containsKey('grams_per_bird_day')) {
+      context.handle(
+        _gramsPerBirdDayMeta,
+        gramsPerBirdDay.isAcceptableOrUnknown(
+          data['grams_per_bird_day']!,
+          _gramsPerBirdDayMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_gramsPerBirdDayMeta);
+    }
+    if (data.containsKey('phase')) {
+      context.handle(
+        _phaseMeta,
+        phase.isAcceptableOrUnknown(data['phase']!, _phaseMeta),
+      );
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(
+        _createdByMeta,
+        createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdByMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FeedConsumptionRecommendation map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FeedConsumptionRecommendation(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      startWeek: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}start_week'],
+      )!,
+      endWeek: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}end_week'],
+      ),
+      gramsPerBirdDay: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}grams_per_bird_day'],
+      )!,
+      phase: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}phase'],
+      ),
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      ),
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $FeedConsumptionRecommendationsTable createAlias(String alias) {
+    return $FeedConsumptionRecommendationsTable(attachedDatabase, alias);
+  }
+}
+
+class FeedConsumptionRecommendation extends DataClass
+    implements Insertable<FeedConsumptionRecommendation> {
+  final String id;
+  final int startWeek;
+  final int? endWeek;
+  final double gramsPerBirdDay;
+  final String? phase;
+  final String? source;
+  final String? notes;
+  final String createdBy;
+  final DateTime createdAt;
+  const FeedConsumptionRecommendation({
+    required this.id,
+    required this.startWeek,
+    this.endWeek,
+    required this.gramsPerBirdDay,
+    this.phase,
+    this.source,
+    this.notes,
+    required this.createdBy,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['start_week'] = Variable<int>(startWeek);
+    if (!nullToAbsent || endWeek != null) {
+      map['end_week'] = Variable<int>(endWeek);
+    }
+    map['grams_per_bird_day'] = Variable<double>(gramsPerBirdDay);
+    if (!nullToAbsent || phase != null) {
+      map['phase'] = Variable<String>(phase);
+    }
+    if (!nullToAbsent || source != null) {
+      map['source'] = Variable<String>(source);
+    }
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
+    }
+    map['created_by'] = Variable<String>(createdBy);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  FeedConsumptionRecommendationsCompanion toCompanion(bool nullToAbsent) {
+    return FeedConsumptionRecommendationsCompanion(
+      id: Value(id),
+      startWeek: Value(startWeek),
+      endWeek: endWeek == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endWeek),
+      gramsPerBirdDay: Value(gramsPerBirdDay),
+      phase: phase == null && nullToAbsent
+          ? const Value.absent()
+          : Value(phase),
+      source: source == null && nullToAbsent
+          ? const Value.absent()
+          : Value(source),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
+      createdBy: Value(createdBy),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory FeedConsumptionRecommendation.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FeedConsumptionRecommendation(
+      id: serializer.fromJson<String>(json['id']),
+      startWeek: serializer.fromJson<int>(json['startWeek']),
+      endWeek: serializer.fromJson<int?>(json['endWeek']),
+      gramsPerBirdDay: serializer.fromJson<double>(json['gramsPerBirdDay']),
+      phase: serializer.fromJson<String?>(json['phase']),
+      source: serializer.fromJson<String?>(json['source']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      createdBy: serializer.fromJson<String>(json['createdBy']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'startWeek': serializer.toJson<int>(startWeek),
+      'endWeek': serializer.toJson<int?>(endWeek),
+      'gramsPerBirdDay': serializer.toJson<double>(gramsPerBirdDay),
+      'phase': serializer.toJson<String?>(phase),
+      'source': serializer.toJson<String?>(source),
+      'notes': serializer.toJson<String?>(notes),
+      'createdBy': serializer.toJson<String>(createdBy),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  FeedConsumptionRecommendation copyWith({
+    String? id,
+    int? startWeek,
+    Value<int?> endWeek = const Value.absent(),
+    double? gramsPerBirdDay,
+    Value<String?> phase = const Value.absent(),
+    Value<String?> source = const Value.absent(),
+    Value<String?> notes = const Value.absent(),
+    String? createdBy,
+    DateTime? createdAt,
+  }) => FeedConsumptionRecommendation(
+    id: id ?? this.id,
+    startWeek: startWeek ?? this.startWeek,
+    endWeek: endWeek.present ? endWeek.value : this.endWeek,
+    gramsPerBirdDay: gramsPerBirdDay ?? this.gramsPerBirdDay,
+    phase: phase.present ? phase.value : this.phase,
+    source: source.present ? source.value : this.source,
+    notes: notes.present ? notes.value : this.notes,
+    createdBy: createdBy ?? this.createdBy,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  FeedConsumptionRecommendation copyWithCompanion(
+    FeedConsumptionRecommendationsCompanion data,
+  ) {
+    return FeedConsumptionRecommendation(
+      id: data.id.present ? data.id.value : this.id,
+      startWeek: data.startWeek.present ? data.startWeek.value : this.startWeek,
+      endWeek: data.endWeek.present ? data.endWeek.value : this.endWeek,
+      gramsPerBirdDay: data.gramsPerBirdDay.present
+          ? data.gramsPerBirdDay.value
+          : this.gramsPerBirdDay,
+      phase: data.phase.present ? data.phase.value : this.phase,
+      source: data.source.present ? data.source.value : this.source,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FeedConsumptionRecommendation(')
+          ..write('id: $id, ')
+          ..write('startWeek: $startWeek, ')
+          ..write('endWeek: $endWeek, ')
+          ..write('gramsPerBirdDay: $gramsPerBirdDay, ')
+          ..write('phase: $phase, ')
+          ..write('source: $source, ')
+          ..write('notes: $notes, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    startWeek,
+    endWeek,
+    gramsPerBirdDay,
+    phase,
+    source,
+    notes,
+    createdBy,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FeedConsumptionRecommendation &&
+          other.id == this.id &&
+          other.startWeek == this.startWeek &&
+          other.endWeek == this.endWeek &&
+          other.gramsPerBirdDay == this.gramsPerBirdDay &&
+          other.phase == this.phase &&
+          other.source == this.source &&
+          other.notes == this.notes &&
+          other.createdBy == this.createdBy &&
+          other.createdAt == this.createdAt);
+}
+
+class FeedConsumptionRecommendationsCompanion
+    extends UpdateCompanion<FeedConsumptionRecommendation> {
+  final Value<String> id;
+  final Value<int> startWeek;
+  final Value<int?> endWeek;
+  final Value<double> gramsPerBirdDay;
+  final Value<String?> phase;
+  final Value<String?> source;
+  final Value<String?> notes;
+  final Value<String> createdBy;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const FeedConsumptionRecommendationsCompanion({
+    this.id = const Value.absent(),
+    this.startWeek = const Value.absent(),
+    this.endWeek = const Value.absent(),
+    this.gramsPerBirdDay = const Value.absent(),
+    this.phase = const Value.absent(),
+    this.source = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  FeedConsumptionRecommendationsCompanion.insert({
+    required String id,
+    required int startWeek,
+    this.endWeek = const Value.absent(),
+    required double gramsPerBirdDay,
+    this.phase = const Value.absent(),
+    this.source = const Value.absent(),
+    this.notes = const Value.absent(),
+    required String createdBy,
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       startWeek = Value(startWeek),
+       gramsPerBirdDay = Value(gramsPerBirdDay),
+       createdBy = Value(createdBy),
+       createdAt = Value(createdAt);
+  static Insertable<FeedConsumptionRecommendation> custom({
+    Expression<String>? id,
+    Expression<int>? startWeek,
+    Expression<int>? endWeek,
+    Expression<double>? gramsPerBirdDay,
+    Expression<String>? phase,
+    Expression<String>? source,
+    Expression<String>? notes,
+    Expression<String>? createdBy,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (startWeek != null) 'start_week': startWeek,
+      if (endWeek != null) 'end_week': endWeek,
+      if (gramsPerBirdDay != null) 'grams_per_bird_day': gramsPerBirdDay,
+      if (phase != null) 'phase': phase,
+      if (source != null) 'source': source,
+      if (notes != null) 'notes': notes,
+      if (createdBy != null) 'created_by': createdBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  FeedConsumptionRecommendationsCompanion copyWith({
+    Value<String>? id,
+    Value<int>? startWeek,
+    Value<int?>? endWeek,
+    Value<double>? gramsPerBirdDay,
+    Value<String?>? phase,
+    Value<String?>? source,
+    Value<String?>? notes,
+    Value<String>? createdBy,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return FeedConsumptionRecommendationsCompanion(
+      id: id ?? this.id,
+      startWeek: startWeek ?? this.startWeek,
+      endWeek: endWeek ?? this.endWeek,
+      gramsPerBirdDay: gramsPerBirdDay ?? this.gramsPerBirdDay,
+      phase: phase ?? this.phase,
+      source: source ?? this.source,
+      notes: notes ?? this.notes,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (startWeek.present) {
+      map['start_week'] = Variable<int>(startWeek.value);
+    }
+    if (endWeek.present) {
+      map['end_week'] = Variable<int>(endWeek.value);
+    }
+    if (gramsPerBirdDay.present) {
+      map['grams_per_bird_day'] = Variable<double>(gramsPerBirdDay.value);
+    }
+    if (phase.present) {
+      map['phase'] = Variable<String>(phase.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FeedConsumptionRecommendationsCompanion(')
+          ..write('id: $id, ')
+          ..write('startWeek: $startWeek, ')
+          ..write('endWeek: $endWeek, ')
+          ..write('gramsPerBirdDay: $gramsPerBirdDay, ')
+          ..write('phase: $phase, ')
+          ..write('source: $source, ')
+          ..write('notes: $notes, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $CustomersTable extends Customers
     with TableInfo<$CustomersTable, Customer> {
   @override
@@ -17247,6 +17822,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $FeedStockMovementsTable feedStockMovements =
       $FeedStockMovementsTable(this);
   late final $DailyFeedingsTable dailyFeedings = $DailyFeedingsTable(this);
+  late final $FeedConsumptionRecommendationsTable
+  feedConsumptionRecommendations = $FeedConsumptionRecommendationsTable(this);
   late final $CustomersTable customers = $CustomersTable(this);
   late final $OrdersTable orders = $OrdersTable(this);
   late final $OrderItemsTable orderItems = $OrderItemsTable(this);
@@ -17289,6 +17866,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     feedBatchItems,
     feedStockMovements,
     dailyFeedings,
+    feedConsumptionRecommendations,
     customers,
     orders,
     orderItems,
@@ -22143,6 +22721,303 @@ typedef $$DailyFeedingsTableProcessedTableManager =
       DailyFeeding,
       PrefetchHooks Function()
     >;
+typedef $$FeedConsumptionRecommendationsTableCreateCompanionBuilder =
+    FeedConsumptionRecommendationsCompanion Function({
+      required String id,
+      required int startWeek,
+      Value<int?> endWeek,
+      required double gramsPerBirdDay,
+      Value<String?> phase,
+      Value<String?> source,
+      Value<String?> notes,
+      required String createdBy,
+      required DateTime createdAt,
+      Value<int> rowid,
+    });
+typedef $$FeedConsumptionRecommendationsTableUpdateCompanionBuilder =
+    FeedConsumptionRecommendationsCompanion Function({
+      Value<String> id,
+      Value<int> startWeek,
+      Value<int?> endWeek,
+      Value<double> gramsPerBirdDay,
+      Value<String?> phase,
+      Value<String?> source,
+      Value<String?> notes,
+      Value<String> createdBy,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$FeedConsumptionRecommendationsTableFilterComposer
+    extends Composer<_$AppDatabase, $FeedConsumptionRecommendationsTable> {
+  $$FeedConsumptionRecommendationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startWeek => $composableBuilder(
+    column: $table.startWeek,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get endWeek => $composableBuilder(
+    column: $table.endWeek,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get gramsPerBirdDay => $composableBuilder(
+    column: $table.gramsPerBirdDay,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get phase => $composableBuilder(
+    column: $table.phase,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$FeedConsumptionRecommendationsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FeedConsumptionRecommendationsTable> {
+  $$FeedConsumptionRecommendationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startWeek => $composableBuilder(
+    column: $table.startWeek,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get endWeek => $composableBuilder(
+    column: $table.endWeek,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get gramsPerBirdDay => $composableBuilder(
+    column: $table.gramsPerBirdDay,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get phase => $composableBuilder(
+    column: $table.phase,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$FeedConsumptionRecommendationsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FeedConsumptionRecommendationsTable> {
+  $$FeedConsumptionRecommendationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get startWeek =>
+      $composableBuilder(column: $table.startWeek, builder: (column) => column);
+
+  GeneratedColumn<int> get endWeek =>
+      $composableBuilder(column: $table.endWeek, builder: (column) => column);
+
+  GeneratedColumn<double> get gramsPerBirdDay => $composableBuilder(
+    column: $table.gramsPerBirdDay,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get phase =>
+      $composableBuilder(column: $table.phase, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$FeedConsumptionRecommendationsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FeedConsumptionRecommendationsTable,
+          FeedConsumptionRecommendation,
+          $$FeedConsumptionRecommendationsTableFilterComposer,
+          $$FeedConsumptionRecommendationsTableOrderingComposer,
+          $$FeedConsumptionRecommendationsTableAnnotationComposer,
+          $$FeedConsumptionRecommendationsTableCreateCompanionBuilder,
+          $$FeedConsumptionRecommendationsTableUpdateCompanionBuilder,
+          (
+            FeedConsumptionRecommendation,
+            BaseReferences<
+              _$AppDatabase,
+              $FeedConsumptionRecommendationsTable,
+              FeedConsumptionRecommendation
+            >,
+          ),
+          FeedConsumptionRecommendation,
+          PrefetchHooks Function()
+        > {
+  $$FeedConsumptionRecommendationsTableTableManager(
+    _$AppDatabase db,
+    $FeedConsumptionRecommendationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FeedConsumptionRecommendationsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$FeedConsumptionRecommendationsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$FeedConsumptionRecommendationsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<int> startWeek = const Value.absent(),
+                Value<int?> endWeek = const Value.absent(),
+                Value<double> gramsPerBirdDay = const Value.absent(),
+                Value<String?> phase = const Value.absent(),
+                Value<String?> source = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<String> createdBy = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FeedConsumptionRecommendationsCompanion(
+                id: id,
+                startWeek: startWeek,
+                endWeek: endWeek,
+                gramsPerBirdDay: gramsPerBirdDay,
+                phase: phase,
+                source: source,
+                notes: notes,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required int startWeek,
+                Value<int?> endWeek = const Value.absent(),
+                required double gramsPerBirdDay,
+                Value<String?> phase = const Value.absent(),
+                Value<String?> source = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                required String createdBy,
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => FeedConsumptionRecommendationsCompanion.insert(
+                id: id,
+                startWeek: startWeek,
+                endWeek: endWeek,
+                gramsPerBirdDay: gramsPerBirdDay,
+                phase: phase,
+                source: source,
+                notes: notes,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$FeedConsumptionRecommendationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FeedConsumptionRecommendationsTable,
+      FeedConsumptionRecommendation,
+      $$FeedConsumptionRecommendationsTableFilterComposer,
+      $$FeedConsumptionRecommendationsTableOrderingComposer,
+      $$FeedConsumptionRecommendationsTableAnnotationComposer,
+      $$FeedConsumptionRecommendationsTableCreateCompanionBuilder,
+      $$FeedConsumptionRecommendationsTableUpdateCompanionBuilder,
+      (
+        FeedConsumptionRecommendation,
+        BaseReferences<
+          _$AppDatabase,
+          $FeedConsumptionRecommendationsTable,
+          FeedConsumptionRecommendation
+        >,
+      ),
+      FeedConsumptionRecommendation,
+      PrefetchHooks Function()
+    >;
 typedef $$CustomersTableCreateCompanionBuilder =
     CustomersCompanion Function({
       required String id,
@@ -25955,6 +26830,12 @@ class $AppDatabaseManager {
       $$FeedStockMovementsTableTableManager(_db, _db.feedStockMovements);
   $$DailyFeedingsTableTableManager get dailyFeedings =>
       $$DailyFeedingsTableTableManager(_db, _db.dailyFeedings);
+  $$FeedConsumptionRecommendationsTableTableManager
+  get feedConsumptionRecommendations =>
+      $$FeedConsumptionRecommendationsTableTableManager(
+        _db,
+        _db.feedConsumptionRecommendations,
+      );
   $$CustomersTableTableManager get customers =>
       $$CustomersTableTableManager(_db, _db.customers);
   $$OrdersTableTableManager get orders =>

@@ -54,6 +54,7 @@ Estrutura recomendada:
   "feedBatchItems": [],
   "feedStock": [],
   "feedings": [],
+  "feedRecommendations": [],
   "customers": [],
   "orders": [],
   "orderItems": [],
@@ -156,6 +157,7 @@ Tambem aceita campos como atributos:
 | `feedBatchItems` | `feedbatchitems` |
 | `feedStock` | `feedstock`, `estoqueracao` |
 | `feedings` | `feedings`, `alimentacao` |
+| `feedRecommendations` | `feedrecommendations`, `feedconsumptionrecommendations`, `recomendacoesracao`, `recomendacoesalimentacao`, `consumoracao`, `consumoporave` |
 | `customers` | `customers`, `clientes` |
 | `orders` | `orders`, `pedidos` |
 | `orderItems` | `orderitems` |
@@ -381,6 +383,33 @@ Legenda:
 | `notes` | texto | Opcional. |
 | `createdBy` | texto | Obrigatorio. |
 | `createdAt` | data | Obrigatorio. |
+
+### `feedRecommendations` - Recomendacoes de consumo por ave
+
+Essa secao pode ser importada pela aba **Racao e alimentacao > Alimentacao > Importar consumo** sem substituir os demais dados operacionais.
+
+| Campo | Tipo | Observacao |
+|---|---|---|
+| `id` | texto | Opcional na importacao especifica; se omitido, o app gera um ID. |
+| `startWeek` | inteiro | Obrigatorio. Semana inicial da idade das aves. |
+| `endWeek` | inteiro | Opcional. Semana final; vazio significa "desta semana em diante". |
+| `gramsPerBirdDay` | decimal | Obrigatorio. Consumo recomendado em gramas por ave por dia. |
+| `phase` | texto | Opcional. Ex.: `CRIA`, `RECRIA`, `PRE_POSTURA`, `PRODUCAO_I`. |
+| `source` | texto | Opcional. Nome do manual/tabela usada. |
+| `notes` | texto | Opcional. |
+| `createdBy` | texto | Opcional na importacao especifica. |
+| `createdAt` | data | Opcional na importacao especifica. |
+
+Tambem sao aceitos cabecalhos simplificados em CSV/XLSX, como `semana`, `idadeSemana`, `gramasPorAveDia`, `gramasAveDia`, `gAveDia`, `fase` e `fonte`.
+
+Exemplo CSV simples:
+
+```csv
+semana,gramasPorAveDia,fase,fonte
+1,18,CRIA,Manual da linhagem
+2,24,CRIA,Manual da linhagem
+25,125,PRODUCAO_II,Manual da linhagem
+```
 
 ### `customers` - Clientes
 
@@ -681,4 +710,3 @@ Legenda:
   ]
 }
 ```
-

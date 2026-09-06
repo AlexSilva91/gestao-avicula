@@ -261,12 +261,19 @@ class _LotCard extends ConsumerWidget {
             const Spacer(),
             Row(
               children: [
-                _LotMetric(
-                  value: '${summary.activeBirds}',
-                  label: 'aves ativas',
+                Expanded(
+                  child: _LotMetric(
+                    value: '${summary.activeBirds}',
+                    label: 'aves ativas',
+                  ),
                 ),
-                const SizedBox(width: 24),
-                _LotMetric(value: '$age dias', label: 'idade atual'),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _LotMetric(
+                    value: LotLifecycle.ageLabel(age),
+                    label: 'idade atual',
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -301,7 +308,12 @@ class _LotMetric extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(value, style: Theme.of(context).textTheme.titleMedium),
+      Text(
+        value,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
       Text(
         label,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
@@ -865,4 +877,6 @@ int? _toCents(String value) {
 String _friendlyError(Object error) => error
     .toString()
     .replaceFirst('Bad state: ', '')
-    .replaceFirst('Invalid argument(s): ', '');
+    .replaceFirst('Invalid argument(s): ', '')
+    .replaceFirst('Invalid argument: ', '')
+    .replaceFirst('FormatException: ', '');

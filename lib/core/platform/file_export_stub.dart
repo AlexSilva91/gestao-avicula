@@ -17,9 +17,9 @@ class FileExportService {
     final path = await saveText(filename, content);
     await SharePlus.instance.share(
       ShareParams(
-        title: 'Backup GRANJA SELETO',
-        subject: 'Backup GRANJA SELETO',
-        text: 'Backup gerado pelo GRANJA SELETO.',
+        title: 'Cópia de segurança GRANJA SELETO',
+        subject: 'Cópia de segurança GRANJA SELETO',
+        text: 'Cópia de segurança gerada pelo GRANJA SELETO.',
         files: [XFile(path, mimeType: 'application/json')],
       ),
     );

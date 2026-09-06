@@ -139,6 +139,20 @@ class DailyFeedings extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+class FeedConsumptionRecommendations extends Table {
+  TextColumn get id => text()();
+  IntColumn get startWeek => integer()();
+  IntColumn get endWeek => integer().nullable()();
+  RealColumn get gramsPerBirdDay => real()();
+  TextColumn get phase => text().nullable()();
+  TextColumn get source => text().nullable()();
+  TextColumn get notes => text().nullable()();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 class Customers extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();

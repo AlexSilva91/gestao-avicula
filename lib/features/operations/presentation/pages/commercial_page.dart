@@ -213,7 +213,7 @@ class _SalesTab extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                         subtitle: Text(
-                          '${shortDate.format(s.soldAt)} · ${s.paymentMethod} · ${cancelled ? 'Cancelada' : 'Confirmada'}',
+                          '${shortDate.format(s.soldAt)} · ${paymentMethodLabel(s.paymentMethod)} · ${cancelled ? 'Cancelada' : 'Confirmada'}',
                         ),
                         trailing: cancelled
                             ? const Chip(label: Text('Cancelada'))

@@ -90,6 +90,12 @@ class FeedBatchBalance {
       isReadyFeed ? formulaName ?? batch.code : batch.code;
 }
 
+class FeedRecommendationImportResult {
+  const FeedRecommendationImportResult({required this.rowCount});
+
+  final int rowCount;
+}
+
 class FinanceMetrics {
   const FinanceMetrics({
     required this.incomeCents,
@@ -195,6 +201,55 @@ extension OperationsRepository on AppDatabase {
           'Importação operacional concluída: ${parsed.rowCount} linha(s) em ${parsed.sectionCount} seção(ões).',
     );
     return parsed;
+  }
+
+  Future<FeedRecommendationImportResult> importFeedConsumptionRecommendations({
+    required String filename,
+    required Uint8List bytes,
+    required String actorId,
+  }) async {
+    final parsed = parseOperationalImport(filename: filename, bytes: bytes);
+    final raw = jsonDecode(parsed.backupJson);
+    if (raw is! Map<String, dynamic>) {
+      throw const FormatException('Arquivo de consumo inválido.');
+    }
+    final sourceRows = (raw['feedRecommendations'] as List? ?? const [])
+        .cast<Map>()
+        .map((row) => row.cast<String, dynamic>())
+        .toList();
+    if (sourceRows.isEmpty) {
+      throw const FormatException(
+        'Nenhuma recomendação de consumo encontrada no arquivo.',
+      );
+    }
+    final now = DateTime.now();
+    final recommendations = <FeedConsumptionRecommendationsCompanion>[];
+    for (var i = 0; i < sourceRows.length; i++) {
+      recommendations.add(
+        _feedConsumptionRecommendationFromImport(
+          sourceRows[i],
+          index: i,
+          actorId: actorId,
+          now: now,
+          filename: filename,
+        ),
+      );
+    }
+
+    await transaction(() async {
+      await delete(feedConsumptionRecommendations).go();
+      for (final recommendation in recommendations) {
+        await into(feedConsumptionRecommendations).insert(recommendation);
+      }
+      await addAudit(
+        userId: actorId,
+        action: 'feed_recommendations.import',
+        entityType: 'feed_consumption_recommendations',
+        description:
+            'Importação de ${recommendations.length} recomendação(ões) de consumo de ração.',
+      );
+    });
+    return FeedRecommendationImportResult(rowCount: recommendations.length);
   }
 
   Stream<BirdMetrics> watchBirdMetrics() =>
@@ -1061,6 +1116,14 @@ extension OperationsRepository on AppDatabase {
       (select(dailyFeedings)
             ..orderBy([(f) => OrderingTerm.desc(f.feedingDate)])
             ..limit(limit))
+          .watch();
+
+  Stream<List<FeedConsumptionRecommendation>>
+  watchFeedConsumptionRecommendations() =>
+      (select(feedConsumptionRecommendations)..orderBy([
+            (r) => OrderingTerm.asc(r.startWeek),
+            (r) => OrderingTerm.asc(r.endWeek),
+          ]))
           .watch();
 
   Future<void> registerFeeding({
@@ -2257,6 +2320,9 @@ extension OperationsRepository on AppDatabase {
       'feedings': (await select(
         dailyFeedings,
       ).get()).map((e) => e.toJson()).toList(),
+      'feedRecommendations': (await select(
+        feedConsumptionRecommendations,
+      ).get()).map((e) => e.toJson()).toList(),
       'customers': (await select(
         customers,
       ).get()).map((e) => e.toJson()).toList(),
@@ -2299,7 +2365,9 @@ extension OperationsRepository on AppDatabase {
   Future<void> restoreJson(String content, {required String actorId}) async {
     final raw = jsonDecode(content);
     if (raw is! Map<String, dynamic> || raw['format'] != 'SELETO_BACKUP_V1') {
-      throw const FormatException('Arquivo de backup SELETO inválido.');
+      throw const FormatException(
+        'Arquivo de cópia de segurança SELETO inválido.',
+      );
     }
     List<Map<String, dynamic>> rows(String key) =>
         (raw[key] as List? ?? const [])
@@ -2320,6 +2388,7 @@ extension OperationsRepository on AppDatabase {
       await delete(investments).go();
       await delete(financeTransactions).go();
       await delete(dailyFeedings).go();
+      await delete(feedConsumptionRecommendations).go();
       await delete(feedStockMovements).go();
       await delete(feedBatchItems).go();
       await delete(feedBatches).go();
@@ -2379,6 +2448,11 @@ extension OperationsRepository on AppDatabase {
       for (final e in rows('feedings')) {
         await into(dailyFeedings).insert(DailyFeeding.fromJson(e));
       }
+      for (final e in rows('feedRecommendations')) {
+        await into(
+          feedConsumptionRecommendations,
+        ).insert(FeedConsumptionRecommendation.fromJson(e));
+      }
       for (final e in rows('customers')) {
         await into(customers).insert(Customer.fromJson(e));
       }
@@ -2430,7 +2504,7 @@ extension OperationsRepository on AppDatabase {
         userId: actorId,
         action: 'backup.restore',
         entityType: 'database',
-        description: 'Backup local restaurado.',
+        description: 'Cópia de segurança local restaurada.',
       );
     });
   }
@@ -2456,6 +2530,165 @@ Map<String, dynamic> _notificationJson(Map<String, dynamic> json) => {
   'defaultMessage': json['defaultMessage'],
   'defaultRecurrence': json['defaultRecurrence'] ?? 'ONCE',
 };
+
+FeedConsumptionRecommendationsCompanion
+_feedConsumptionRecommendationFromImport(
+  Map<String, dynamic> row, {
+  required int index,
+  required String actorId,
+  required DateTime now,
+  required String filename,
+}) {
+  final singleWeek = _importInt(row, const [
+    'ageWeek',
+    'ageWeeks',
+    'week',
+    'semana',
+    'idadeSemana',
+    'idadeSemanas',
+  ]);
+  final startWeek =
+      _importInt(row, const [
+        'startWeek',
+        'weekStart',
+        'semanaInicial',
+        'inicioSemana',
+        'idadeSemanaInicial',
+        'idadeSemanasInicial',
+      ]) ??
+      singleWeek;
+  if (startWeek == null || startWeek < 0) {
+    throw FormatException(
+      'Linha ${index + 1}: informe uma semana inicial válida.',
+    );
+  }
+  final endWeek =
+      _importInt(row, const [
+        'endWeek',
+        'weekEnd',
+        'semanaFinal',
+        'fimSemana',
+        'idadeSemanaFinal',
+        'idadeSemanasFinal',
+      ]) ??
+      singleWeek;
+  if (endWeek != null && endWeek < startWeek) {
+    throw FormatException(
+      'Linha ${index + 1}: semana final não pode ser menor que a inicial.',
+    );
+  }
+  final grams = _importDouble(row, const [
+    'gramsPerBirdDay',
+    'gramsBirdDay',
+    'gramasPorAveDia',
+    'gramasAveDia',
+    'consumoGramasPorAveDia',
+    'consumoPorAveDia',
+    'consumoAveDia',
+    'gAveDia',
+  ]);
+  if (grams == null || grams <= 0) {
+    throw FormatException(
+      'Linha ${index + 1}: informe o consumo em gramas por ave/dia.',
+    );
+  }
+  final id =
+      _importText(row, const ['id']) ??
+      'feed-consumption-import-$startWeek-${endWeek ?? 'plus'}-$index';
+  final createdAt =
+      _importDate(row, const ['createdAt', 'criadoEm', 'dataCadastro']) ?? now;
+  return FeedConsumptionRecommendationsCompanion.insert(
+    id: id,
+    startWeek: startWeek,
+    endWeek: Value(endWeek),
+    gramsPerBirdDay: grams,
+    phase: Value(
+      _cleanValue(
+        _importText(row, const ['phase', 'fase', 'feedingPhase', 'faseRacao']),
+      ),
+    ),
+    source: Value(
+      _cleanValue(
+            _importText(row, const ['source', 'fonte', 'manual', 'origem']),
+          ) ??
+          'Importado de $filename',
+    ),
+    notes: Value(
+      _cleanValue(
+        _importText(row, const ['notes', 'observacao', 'observacoes']),
+      ),
+    ),
+    createdBy: _importText(row, const ['createdBy', 'criadoPor']) ?? actorId,
+    createdAt: createdAt,
+  );
+}
+
+dynamic _importValue(Map<String, dynamic> row, Iterable<String> keys) {
+  final wanted = keys.map(_normalImportKey).toSet();
+  for (final entry in row.entries) {
+    if (wanted.contains(_normalImportKey(entry.key))) return entry.value;
+  }
+  return null;
+}
+
+String? _importText(Map<String, dynamic> row, Iterable<String> keys) {
+  final value = _importValue(row, keys);
+  if (value == null) return null;
+  final text = value.toString().trim();
+  return text.isEmpty ? null : text;
+}
+
+int? _importInt(Map<String, dynamic> row, Iterable<String> keys) {
+  final value = _importValue(row, keys);
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.round();
+  final text = value.toString().trim();
+  if (text.isEmpty) return null;
+  return int.tryParse(text.replaceAll(',', '.').split('.').first);
+}
+
+double? _importDouble(Map<String, dynamic> row, Iterable<String> keys) {
+  final value = _importValue(row, keys);
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  final normalized = value
+      .toString()
+      .trim()
+      .replaceAll(',', '.')
+      .replaceAll(RegExp(r'[^0-9.\-]'), '');
+  if (normalized.isEmpty) return null;
+  return double.tryParse(normalized);
+}
+
+DateTime? _importDate(Map<String, dynamic> row, Iterable<String> keys) {
+  final text = _importText(row, keys);
+  return text == null ? null : DateTime.tryParse(text);
+}
+
+String _normalImportKey(String value) {
+  const accents = {
+    'á': 'a',
+    'à': 'a',
+    'ã': 'a',
+    'â': 'a',
+    'é': 'e',
+    'ê': 'e',
+    'í': 'i',
+    'ó': 'o',
+    'ô': 'o',
+    'õ': 'o',
+    'ú': 'u',
+    'ç': 'c',
+  };
+  final lower = value.toLowerCase();
+  final buffer = StringBuffer();
+  for (final rune in lower.runes) {
+    final char = String.fromCharCode(rune);
+    buffer.write(accents[char] ?? char);
+  }
+  return buffer.toString().replaceAll(RegExp(r'[^a-z0-9]'), '');
+}
 
 void _validateAlertRecurrence({
   required String alertTime,

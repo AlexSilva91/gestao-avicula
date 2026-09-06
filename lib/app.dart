@@ -15,7 +15,7 @@ class SeletoApp extends ConsumerWidget {
     theme: SeletoTheme.light,
     darkTheme: SeletoTheme.dark,
     locale: const Locale('pt', 'BR'),
-    supportedLocales: const [Locale('pt', 'BR'), Locale('en', 'US')],
+    supportedLocales: const [Locale('pt', 'BR')],
     localizationsDelegates: const [
       GlobalMaterialLocalizations.delegate,
       GlobalCupertinoLocalizations.delegate,

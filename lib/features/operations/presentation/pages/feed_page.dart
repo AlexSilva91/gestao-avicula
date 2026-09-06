@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/database/operations_repository.dart';
@@ -393,7 +394,10 @@ class _FormulasTab extends StatelessWidget {
                                     children: [
                                       Expanded(
                                         child: Text(
-                                          item.formula.name,
+                                          feedFormulaNameLabel(
+                                            item.formula.name,
+                                            item.formula.phase,
+                                          ),
                                           style: Theme.of(
                                             context,
                                           ).textTheme.titleLarge,
@@ -585,7 +589,7 @@ class _BatchesTab extends StatelessWidget {
                       title: Text(
                         b.isReadyFeed
                             ? '${b.displayName} · ${b.batch.code}'
-                            : '${b.batch.code} · ${b.batch.phase.replaceAll('_', ' ')}',
+                            : '${b.batch.code} · ${feedPhaseLabel(b.batch.phase)}',
                       ),
                       subtitle: Text(
                         '${b.isReadyFeed ? 'Pronta' : 'Fabricada'} · ${shortDate.format(b.batch.producedAt)} · ${kg(b.batch.producedQuantityKg)} · ${money(b.batch.totalCostCents)}',
@@ -668,7 +672,7 @@ class _FeedStockTab extends StatelessWidget {
                               : b.batch.code,
                         ),
                         subtitle: Text(
-                          '${b.isReadyFeed ? 'Pronta' : 'Fabricada'} · ${b.batch.phase.replaceAll('_', ' ')} · Entrada ${kg(b.batch.producedQuantityKg)} · Consumido ${kg(b.consumedKg)}',
+                          '${b.isReadyFeed ? 'Pronta' : 'Fabricada'} · ${feedPhaseLabel(b.batch.phase)} · Entrada ${kg(b.batch.producedQuantityKg)} · Consumido ${kg(b.consumedKg)}',
                         ),
                         trailing: Wrap(
                           crossAxisAlignment: WrapCrossAlignment.center,
@@ -711,13 +715,24 @@ class _FeedingsTab extends StatelessWidget {
           children: [
             Align(
               alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => _FeedingDialog(ref: ref),
-                ),
-                icon: const Icon(Icons.add),
-                label: const Text('Registrar alimentação'),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _importConsumption(context),
+                    icon: const Icon(Icons.upload_file_outlined),
+                    label: const Text('Importar consumo'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _FeedingDialog(ref: ref),
+                    ),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Registrar alimentação'),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 12),
@@ -749,6 +764,32 @@ class _FeedingsTab extends StatelessWidget {
           ],
         ),
       );
+
+  Future<void> _importConsumption(BuildContext context) async {
+    try {
+      final picked = await FilePicker.pickFile(
+        dialogTitle: 'Importar consumo por ave',
+        type: FileType.custom,
+        allowedExtensions: ['json', 'csv', 'xlsx', 'xlsl'],
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      final result = await ref
+          .read(operationsControllerProvider)
+          .importFeedRecommendations(picked.name, bytes);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Consumo importado: ${result.rowCount} recomendação(ões).',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      await showOperationError(context, e);
+    }
+  }
 }
 
 class _IngredientDialog extends StatefulWidget {
@@ -1457,7 +1498,9 @@ class _ManufactureDialogState extends State<_ManufactureDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text('Fabricar · ${widget.formula.formula.name}'),
+    title: Text(
+      'Fabricar · ${feedFormulaNameLabel(widget.formula.formula.name, widget.formula.formula.phase)}',
+    ),
     content: SizedBox(
       width: 460,
       child: Column(
@@ -1567,7 +1610,7 @@ class _FormulaDialogState extends State<_FormulaDialog> {
     title: Text(
       widget.editCurrent
           ? 'Editar formulação'
-          : 'Nova versão · ${widget.formula.formula.name}',
+          : 'Nova versão · ${feedFormulaNameLabel(widget.formula.formula.name, widget.formula.formula.phase)}',
     ),
     content: SizedBox(
       width: 460,
@@ -1782,6 +1825,26 @@ class _FeedingDialogState extends State<_FeedingDialog> {
     final batches =
         widget.ref.watch(feedBatchesProvider).asData?.value ??
         <FeedBatchBalance>[];
+    final recommendations =
+        widget.ref.watch(feedRecommendationsProvider).asData?.value ??
+        <FeedConsumptionRecommendation>[];
+    final selectedLot = lots.where((item) => item.lot.id == lot).firstOrNull;
+    final selectedAgeDays = selectedLot == null
+        ? null
+        : LotLifecycle.ageInDays(
+            receivedAt: selectedLot.lot.receivedAt,
+            arrivalAgeDays: selectedLot.lot.arrivalAgeDays,
+            on: date,
+          );
+    final selectedAgeWeeks = selectedAgeDays == null
+        ? null
+        : selectedAgeDays ~/ 7;
+    final recommendation = selectedAgeWeeks == null
+        ? null
+        : _recommendationForAge(recommendations, selectedAgeWeeks);
+    final recommendedKg = selectedLot == null || recommendation == null
+        ? null
+        : selectedLot.activeBirds * recommendation.gramsPerBirdDay / 1000;
     void selectBatchForLot(String? lotId) {
       final summary = lots.where((item) => item.lot.id == lotId).firstOrNull;
       if (summary == null) return;
@@ -1810,83 +1873,113 @@ class _FeedingDialogState extends State<_FeedingDialog> {
       title: const Text('Registrar alimentação'),
       content: SizedBox(
         width: 460,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: lot,
-              decoration: const InputDecoration(labelText: 'Lote'),
-              items: [
-                for (final l in lots.where((l) => l.activeBirds > 0))
-                  DropdownMenuItem(
-                    value: l.lot.id,
-                    child: Text('${l.lot.name} · ${l.activeBirds} aves'),
-                  ),
-              ],
-              onChanged: (v) {
-                setState(() {
-                  lot = v;
-                  selectBatchForLot(v);
-                });
-              },
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              enabled: !saving,
-              title: const Text('Data da alimentação'),
-              subtitle: Text(shortDate.format(date)),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: saving
-                  ? null
-                  : () async {
-                      final picked = await pickSeletoDate(
-                        context,
-                        date,
-                        firstDate: DateTime(2010),
-                        lastDate: DateTime.now(),
-                      );
-                      if (picked == null) return;
-                      setState(() {
-                        date = picked;
-                        selectBatchForLot(lot);
-                      });
-                    },
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: batch,
-              decoration: const InputDecoration(
-                labelText: 'Fabricação de ração',
-              ),
-              items: [
-                for (final b in batches.where((b) => b.balanceKg > 0))
-                  DropdownMenuItem(
-                    value: b.batch.id,
-                    child: Text(
-                      '${b.displayName} · ${b.batch.phase.replaceAll('_', ' ')} · ${kg(b.balanceKg)}',
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: lot,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Lote'),
+                items: [
+                  for (final l in lots.where((l) => l.activeBirds > 0))
+                    DropdownMenuItem(
+                      value: l.lot.id,
+                      child: Text(
+                        '${l.lot.name} · ${l.activeBirds} aves',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                      ),
                     ),
-                  ),
-              ],
-              onChanged: (v) => setState(() => batch = v),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: qty,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+                ],
+                onChanged: saving
+                    ? null
+                    : (v) {
+                        setState(() {
+                          lot = v;
+                          selectBatchForLot(v);
+                        });
+                      },
               ),
-              decoration: const InputDecoration(
-                labelText: 'Quantidade fornecida',
-                suffixText: 'kg',
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                enabled: !saving,
+                title: const Text('Data da alimentação'),
+                subtitle: Text(shortDate.format(date)),
+                trailing: const Icon(Icons.calendar_today),
+                onTap: saving
+                    ? null
+                    : () async {
+                        final picked = await pickSeletoDate(
+                          context,
+                          date,
+                          firstDate: DateTime(2010),
+                          lastDate: DateTime.now(),
+                        );
+                        if (picked == null) return;
+                        setState(() {
+                          date = picked;
+                          selectBatchForLot(lot);
+                        });
+                      },
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: notes,
-              decoration: const InputDecoration(labelText: 'Observação'),
-            ),
-          ],
+              const SizedBox(height: 12),
+              _FeedRecommendationPanel(
+                activeBirds: selectedLot?.activeBirds,
+                ageDays: selectedAgeDays,
+                ageWeeks: selectedAgeWeeks,
+                recommendation: recommendation,
+                recommendedKg: recommendedKg,
+                onUseRecommendation: recommendedKg == null || saving
+                    ? null
+                    : () => setState(
+                        () => qty.text = recommendedKg.toStringAsFixed(2),
+                      ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: batch,
+                isExpanded: true,
+                menuMaxHeight: 360,
+                decoration: const InputDecoration(
+                  labelText: 'Fabricação de ração',
+                ),
+                items: [
+                  for (final b in batches.where((b) => b.balanceKg > 0))
+                    DropdownMenuItem(
+                      value: b.batch.id,
+                      child: Text(
+                        '${b.displayName} · ${feedPhaseLabel(b.batch.phase)} · ${kg(b.balanceKg)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                      ),
+                    ),
+                ],
+                onChanged: saving ? null : (v) => setState(() => batch = v),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: qty,
+                enabled: !saving,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Quantidade fornecida',
+                  suffixText: 'kg',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notes,
+                enabled: !saving,
+                decoration: const InputDecoration(labelText: 'Observação'),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -1918,6 +2011,92 @@ class _FeedingDialogState extends State<_FeedingDialog> {
           child: const Text('Registrar'),
         ),
       ],
+    );
+  }
+
+  FeedConsumptionRecommendation? _recommendationForAge(
+    List<FeedConsumptionRecommendation> recommendations,
+    int ageWeeks,
+  ) {
+    for (final item in recommendations) {
+      if (ageWeeks >= item.startWeek &&
+          (item.endWeek == null || ageWeeks <= item.endWeek!)) {
+        return item;
+      }
+    }
+    return null;
+  }
+}
+
+class _FeedRecommendationPanel extends StatelessWidget {
+  const _FeedRecommendationPanel({
+    required this.activeBirds,
+    required this.ageDays,
+    required this.ageWeeks,
+    required this.recommendation,
+    required this.recommendedKg,
+    required this.onUseRecommendation,
+  });
+
+  final int? activeBirds;
+  final int? ageDays;
+  final int? ageWeeks;
+  final FeedConsumptionRecommendation? recommendation;
+  final double? recommendedKg;
+  final VoidCallback? onUseRecommendation;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final titleStyle = Theme.of(
+      context,
+    ).textTheme.labelLarge?.copyWith(color: colors.onSecondaryContainer);
+    final bodyStyle = Theme.of(
+      context,
+    ).textTheme.bodySmall?.copyWith(color: colors.onSecondaryContainer);
+    final rec = recommendation;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: rec == null || recommendedKg == null
+          ? Text(
+              ageWeeks == null
+                  ? 'Recomendação: selecione um lote.'
+                  : 'Sem recomendação cadastrada para $ageWeeks semana(s).',
+              style: titleStyle,
+            )
+          : Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Recomendado: ${kg(recommendedKg!)} / dia',
+                        style: titleStyle,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${rec.gramsPerBirdDay.toStringAsFixed(0)} g/ave/dia · ${activeBirds ?? 0} aves · ${ageDays ?? 0} dias (${ageWeeks ?? 0} sem.)${rec.source == null ? '' : ' · ${rec.source}'}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: bodyStyle,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'Usar recomendado',
+                  onPressed: onUseRecommendation,
+                  icon: const Icon(Icons.check),
+                ),
+              ],
+            ),
     );
   }
 }
