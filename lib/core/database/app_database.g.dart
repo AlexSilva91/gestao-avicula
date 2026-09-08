@@ -14343,6 +14343,17 @@ class $EggTrayBatchesTable extends EggTrayBatches
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _finalUnitPriceCentsMeta =
+      const VerificationMeta('finalUnitPriceCents');
+  @override
+  late final GeneratedColumn<int> finalUnitPriceCents = GeneratedColumn<int>(
+    'final_unit_price_cents',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _notesMeta = const VerificationMeta('notes');
   @override
   late final GeneratedColumn<String> notes = GeneratedColumn<String>(
@@ -14386,6 +14397,7 @@ class $EggTrayBatchesTable extends EggTrayBatches
     labelUnitCostCents,
     eggUnitCostCents,
     unitPackagingCostCents,
+    finalUnitPriceCents,
     notes,
     createdBy,
     createdAt,
@@ -14492,6 +14504,15 @@ class $EggTrayBatchesTable extends EggTrayBatches
         ),
       );
     }
+    if (data.containsKey('final_unit_price_cents')) {
+      context.handle(
+        _finalUnitPriceCentsMeta,
+        finalUnitPriceCents.isAcceptableOrUnknown(
+          data['final_unit_price_cents']!,
+          _finalUnitPriceCentsMeta,
+        ),
+      );
+    }
     if (data.containsKey('notes')) {
       context.handle(
         _notesMeta,
@@ -14563,6 +14584,10 @@ class $EggTrayBatchesTable extends EggTrayBatches
         DriftSqlType.int,
         data['${effectivePrefix}unit_packaging_cost_cents'],
       )!,
+      finalUnitPriceCents: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}final_unit_price_cents'],
+      )!,
       notes: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
@@ -14595,6 +14620,7 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
   final int labelUnitCostCents;
   final int eggUnitCostCents;
   final int unitPackagingCostCents;
+  final int finalUnitPriceCents;
   final String? notes;
   final String createdBy;
   final DateTime createdAt;
@@ -14609,6 +14635,7 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
     required this.labelUnitCostCents,
     required this.eggUnitCostCents,
     required this.unitPackagingCostCents,
+    required this.finalUnitPriceCents,
     this.notes,
     required this.createdBy,
     required this.createdAt,
@@ -14626,6 +14653,7 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
     map['label_unit_cost_cents'] = Variable<int>(labelUnitCostCents);
     map['egg_unit_cost_cents'] = Variable<int>(eggUnitCostCents);
     map['unit_packaging_cost_cents'] = Variable<int>(unitPackagingCostCents);
+    map['final_unit_price_cents'] = Variable<int>(finalUnitPriceCents);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
     }
@@ -14646,6 +14674,7 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
       labelUnitCostCents: Value(labelUnitCostCents),
       eggUnitCostCents: Value(eggUnitCostCents),
       unitPackagingCostCents: Value(unitPackagingCostCents),
+      finalUnitPriceCents: Value(finalUnitPriceCents),
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
@@ -14672,6 +14701,9 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
       unitPackagingCostCents: serializer.fromJson<int>(
         json['unitPackagingCostCents'],
       ),
+      finalUnitPriceCents: serializer.fromJson<int>(
+        json['finalUnitPriceCents'],
+      ),
       notes: serializer.fromJson<String?>(json['notes']),
       createdBy: serializer.fromJson<String>(json['createdBy']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -14691,6 +14723,7 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
       'labelUnitCostCents': serializer.toJson<int>(labelUnitCostCents),
       'eggUnitCostCents': serializer.toJson<int>(eggUnitCostCents),
       'unitPackagingCostCents': serializer.toJson<int>(unitPackagingCostCents),
+      'finalUnitPriceCents': serializer.toJson<int>(finalUnitPriceCents),
       'notes': serializer.toJson<String?>(notes),
       'createdBy': serializer.toJson<String>(createdBy),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -14708,6 +14741,7 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
     int? labelUnitCostCents,
     int? eggUnitCostCents,
     int? unitPackagingCostCents,
+    int? finalUnitPriceCents,
     Value<String?> notes = const Value.absent(),
     String? createdBy,
     DateTime? createdAt,
@@ -14723,6 +14757,7 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
     eggUnitCostCents: eggUnitCostCents ?? this.eggUnitCostCents,
     unitPackagingCostCents:
         unitPackagingCostCents ?? this.unitPackagingCostCents,
+    finalUnitPriceCents: finalUnitPriceCents ?? this.finalUnitPriceCents,
     notes: notes.present ? notes.value : this.notes,
     createdBy: createdBy ?? this.createdBy,
     createdAt: createdAt ?? this.createdAt,
@@ -14753,6 +14788,9 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
       unitPackagingCostCents: data.unitPackagingCostCents.present
           ? data.unitPackagingCostCents.value
           : this.unitPackagingCostCents,
+      finalUnitPriceCents: data.finalUnitPriceCents.present
+          ? data.finalUnitPriceCents.value
+          : this.finalUnitPriceCents,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -14772,6 +14810,7 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
           ..write('labelUnitCostCents: $labelUnitCostCents, ')
           ..write('eggUnitCostCents: $eggUnitCostCents, ')
           ..write('unitPackagingCostCents: $unitPackagingCostCents, ')
+          ..write('finalUnitPriceCents: $finalUnitPriceCents, ')
           ..write('notes: $notes, ')
           ..write('createdBy: $createdBy, ')
           ..write('createdAt: $createdAt')
@@ -14791,6 +14830,7 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
     labelUnitCostCents,
     eggUnitCostCents,
     unitPackagingCostCents,
+    finalUnitPriceCents,
     notes,
     createdBy,
     createdAt,
@@ -14809,6 +14849,7 @@ class EggTrayBatch extends DataClass implements Insertable<EggTrayBatch> {
           other.labelUnitCostCents == this.labelUnitCostCents &&
           other.eggUnitCostCents == this.eggUnitCostCents &&
           other.unitPackagingCostCents == this.unitPackagingCostCents &&
+          other.finalUnitPriceCents == this.finalUnitPriceCents &&
           other.notes == this.notes &&
           other.createdBy == this.createdBy &&
           other.createdAt == this.createdAt);
@@ -14825,6 +14866,7 @@ class EggTrayBatchesCompanion extends UpdateCompanion<EggTrayBatch> {
   final Value<int> labelUnitCostCents;
   final Value<int> eggUnitCostCents;
   final Value<int> unitPackagingCostCents;
+  final Value<int> finalUnitPriceCents;
   final Value<String?> notes;
   final Value<String> createdBy;
   final Value<DateTime> createdAt;
@@ -14840,6 +14882,7 @@ class EggTrayBatchesCompanion extends UpdateCompanion<EggTrayBatch> {
     this.labelUnitCostCents = const Value.absent(),
     this.eggUnitCostCents = const Value.absent(),
     this.unitPackagingCostCents = const Value.absent(),
+    this.finalUnitPriceCents = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdBy = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -14856,6 +14899,7 @@ class EggTrayBatchesCompanion extends UpdateCompanion<EggTrayBatch> {
     this.labelUnitCostCents = const Value.absent(),
     this.eggUnitCostCents = const Value.absent(),
     this.unitPackagingCostCents = const Value.absent(),
+    this.finalUnitPriceCents = const Value.absent(),
     this.notes = const Value.absent(),
     required String createdBy,
     required DateTime createdAt,
@@ -14879,6 +14923,7 @@ class EggTrayBatchesCompanion extends UpdateCompanion<EggTrayBatch> {
     Expression<int>? labelUnitCostCents,
     Expression<int>? eggUnitCostCents,
     Expression<int>? unitPackagingCostCents,
+    Expression<int>? finalUnitPriceCents,
     Expression<String>? notes,
     Expression<String>? createdBy,
     Expression<DateTime>? createdAt,
@@ -14897,6 +14942,8 @@ class EggTrayBatchesCompanion extends UpdateCompanion<EggTrayBatch> {
       if (eggUnitCostCents != null) 'egg_unit_cost_cents': eggUnitCostCents,
       if (unitPackagingCostCents != null)
         'unit_packaging_cost_cents': unitPackagingCostCents,
+      if (finalUnitPriceCents != null)
+        'final_unit_price_cents': finalUnitPriceCents,
       if (notes != null) 'notes': notes,
       if (createdBy != null) 'created_by': createdBy,
       if (createdAt != null) 'created_at': createdAt,
@@ -14915,6 +14962,7 @@ class EggTrayBatchesCompanion extends UpdateCompanion<EggTrayBatch> {
     Value<int>? labelUnitCostCents,
     Value<int>? eggUnitCostCents,
     Value<int>? unitPackagingCostCents,
+    Value<int>? finalUnitPriceCents,
     Value<String?>? notes,
     Value<String>? createdBy,
     Value<DateTime>? createdAt,
@@ -14932,6 +14980,7 @@ class EggTrayBatchesCompanion extends UpdateCompanion<EggTrayBatch> {
       eggUnitCostCents: eggUnitCostCents ?? this.eggUnitCostCents,
       unitPackagingCostCents:
           unitPackagingCostCents ?? this.unitPackagingCostCents,
+      finalUnitPriceCents: finalUnitPriceCents ?? this.finalUnitPriceCents,
       notes: notes ?? this.notes,
       createdBy: createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,
@@ -14974,6 +15023,9 @@ class EggTrayBatchesCompanion extends UpdateCompanion<EggTrayBatch> {
         unitPackagingCostCents.value,
       );
     }
+    if (finalUnitPriceCents.present) {
+      map['final_unit_price_cents'] = Variable<int>(finalUnitPriceCents.value);
+    }
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
     }
@@ -15002,6 +15054,7 @@ class EggTrayBatchesCompanion extends UpdateCompanion<EggTrayBatch> {
           ..write('labelUnitCostCents: $labelUnitCostCents, ')
           ..write('eggUnitCostCents: $eggUnitCostCents, ')
           ..write('unitPackagingCostCents: $unitPackagingCostCents, ')
+          ..write('finalUnitPriceCents: $finalUnitPriceCents, ')
           ..write('notes: $notes, ')
           ..write('createdBy: $createdBy, ')
           ..write('createdAt: $createdAt, ')
@@ -28206,6 +28259,7 @@ typedef $$EggTrayBatchesTableCreateCompanionBuilder =
       Value<int> labelUnitCostCents,
       Value<int> eggUnitCostCents,
       Value<int> unitPackagingCostCents,
+      Value<int> finalUnitPriceCents,
       Value<String?> notes,
       required String createdBy,
       required DateTime createdAt,
@@ -28223,6 +28277,7 @@ typedef $$EggTrayBatchesTableUpdateCompanionBuilder =
       Value<int> labelUnitCostCents,
       Value<int> eggUnitCostCents,
       Value<int> unitPackagingCostCents,
+      Value<int> finalUnitPriceCents,
       Value<String?> notes,
       Value<String> createdBy,
       Value<DateTime> createdAt,
@@ -28285,6 +28340,11 @@ class $$EggTrayBatchesTableFilterComposer
 
   ColumnFilters<int> get unitPackagingCostCents => $composableBuilder(
     column: $table.unitPackagingCostCents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get finalUnitPriceCents => $composableBuilder(
+    column: $table.finalUnitPriceCents,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -28363,6 +28423,11 @@ class $$EggTrayBatchesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get finalUnitPriceCents => $composableBuilder(
+    column: $table.finalUnitPriceCents,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get notes => $composableBuilder(
     column: $table.notes,
     builder: (column) => ColumnOrderings(column),
@@ -28432,6 +28497,11 @@ class $$EggTrayBatchesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get finalUnitPriceCents => $composableBuilder(
+    column: $table.finalUnitPriceCents,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
 
@@ -28485,6 +28555,7 @@ class $$EggTrayBatchesTableTableManager
                 Value<int> labelUnitCostCents = const Value.absent(),
                 Value<int> eggUnitCostCents = const Value.absent(),
                 Value<int> unitPackagingCostCents = const Value.absent(),
+                Value<int> finalUnitPriceCents = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<String> createdBy = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -28500,6 +28571,7 @@ class $$EggTrayBatchesTableTableManager
                 labelUnitCostCents: labelUnitCostCents,
                 eggUnitCostCents: eggUnitCostCents,
                 unitPackagingCostCents: unitPackagingCostCents,
+                finalUnitPriceCents: finalUnitPriceCents,
                 notes: notes,
                 createdBy: createdBy,
                 createdAt: createdAt,
@@ -28517,6 +28589,7 @@ class $$EggTrayBatchesTableTableManager
                 Value<int> labelUnitCostCents = const Value.absent(),
                 Value<int> eggUnitCostCents = const Value.absent(),
                 Value<int> unitPackagingCostCents = const Value.absent(),
+                Value<int> finalUnitPriceCents = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 required String createdBy,
                 required DateTime createdAt,
@@ -28532,6 +28605,7 @@ class $$EggTrayBatchesTableTableManager
                 labelUnitCostCents: labelUnitCostCents,
                 eggUnitCostCents: eggUnitCostCents,
                 unitPackagingCostCents: unitPackagingCostCents,
+                finalUnitPriceCents: finalUnitPriceCents,
                 notes: notes,
                 createdBy: createdBy,
                 createdAt: createdAt,

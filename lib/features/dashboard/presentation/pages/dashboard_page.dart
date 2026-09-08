@@ -75,7 +75,7 @@ class DashboardPage extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, box) => box.maxWidth > 900
                 ? Row(
@@ -97,7 +97,7 @@ class DashboardPage extends ConsumerWidget {
                     ],
                   ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           _QuickActions(ref: ref),
         ],
       ),
@@ -122,7 +122,7 @@ class _ProductionChart extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(14),
         child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -133,7 +133,7 @@ class _ProductionChart extends StatelessWidget {
                 scheme.primaryContainer.withValues(alpha: .10),
               ],
             ),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Padding(
             padding: const EdgeInsets.all(2),
@@ -152,7 +152,7 @@ class _ProductionChart extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 12),
                 SizedBox(
                   height: 240,
                   child: series.isEmpty
@@ -307,7 +307,7 @@ class _AlertsCard extends StatelessWidget {
     }
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -360,7 +360,7 @@ class _QuickActions extends StatelessWidget {
     ].where((a) => session?.allows(a.$4) ?? false);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

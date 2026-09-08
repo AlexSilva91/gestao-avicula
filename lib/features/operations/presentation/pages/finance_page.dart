@@ -26,7 +26,7 @@ class FinancePage extends ConsumerWidget {
               Tab(icon: Icon(Icons.calculate_outlined), text: 'Simulador'),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           Expanded(
             child: TabBarView(
               children: [
@@ -291,7 +291,7 @@ class _SimulatorTabState extends State<_SimulatorTab> {
                   'Simulador de preço da dúzia',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 12),
                 Text(
                   'Produção vendida: ${dozensDay.toStringAsFixed(1)} dúzias/dia',
                 ),

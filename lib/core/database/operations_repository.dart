@@ -207,6 +207,10 @@ class EggTrayBatchBalance {
       batch.trayUnitCostCents +
       batch.labelUnitCostCents +
       (batch.eggUnitCostCents * batch.eggsPerTray);
+  int get totalAssemblyCostCents => unitAssemblyCostCents * batch.quantity;
+  int get unitProfitCents => batch.finalUnitPriceCents - unitAssemblyCostCents;
+  double get profitPercent =>
+      unitAssemblyCostCents == 0 ? 0 : unitProfitCents / unitAssemblyCostCents;
 }
 
 class BirdMetrics {
@@ -1413,6 +1417,7 @@ extension OperationsRepository on AppDatabase {
                 unitPackagingCostCents: row.read<int>(
                   'unit_packaging_cost_cents',
                 ),
+                finalUnitPriceCents: row.read<int>('final_unit_price_cents'),
                 notes: row.readNullable<String>('notes'),
                 createdBy: row.read<String>('created_by'),
                 createdAt: row.read<DateTime>('created_at'),
@@ -1456,6 +1461,71 @@ extension OperationsRepository on AppDatabase {
       readsFrom: {eggTrayStockMovements},
     ).getSingle();
     return row.read<int>('balance');
+  }
+
+  Stream<int> watchEstimatedEggUnitCostCents() {
+    final now = DateTime.now();
+    final month = DateTime(now.year, now.month);
+    final nextMonth = DateTime(now.year, now.month + 1);
+    return customSelect(
+      '''
+      SELECT
+        COALESCE((
+          SELECT SUM(d.quantity_kg * b.cost_per_kg_cents)
+          FROM daily_feedings d
+          JOIN feed_batches b ON b.id = d.batch_id
+          WHERE d.feeding_date >= ? AND d.feeding_date < ?
+        ), 0.0) AS feed_cost,
+        COALESCE((
+          SELECT SUM(quantity - broken_eggs - discarded_eggs)
+          FROM egg_collections
+          WHERE collected_on >= ? AND collected_on < ?
+        ), 0) AS eggs
+      ''',
+      variables: [
+        Variable.withDateTime(month),
+        Variable.withDateTime(nextMonth),
+        Variable.withDateTime(month),
+        Variable.withDateTime(nextMonth),
+      ],
+      readsFrom: {dailyFeedings, feedBatches, eggCollections},
+    ).watchSingle().map((row) {
+      final eggs = row.read<int>('eggs');
+      if (eggs <= 0) return 0;
+      return (row.read<double>('feed_cost') / eggs).round();
+    });
+  }
+
+  Future<int> estimatedEggUnitCostCents({DateTime? referenceDate}) async {
+    final reference = referenceDate ?? DateTime.now();
+    final month = DateTime(reference.year, reference.month);
+    final nextMonth = DateTime(reference.year, reference.month + 1);
+    final row = await customSelect(
+      '''
+      SELECT
+        COALESCE((
+          SELECT SUM(d.quantity_kg * b.cost_per_kg_cents)
+          FROM daily_feedings d
+          JOIN feed_batches b ON b.id = d.batch_id
+          WHERE d.feeding_date >= ? AND d.feeding_date < ?
+        ), 0.0) AS feed_cost,
+        COALESCE((
+          SELECT SUM(quantity - broken_eggs - discarded_eggs)
+          FROM egg_collections
+          WHERE collected_on >= ? AND collected_on < ?
+        ), 0) AS eggs
+      ''',
+      variables: [
+        Variable.withDateTime(month),
+        Variable.withDateTime(nextMonth),
+        Variable.withDateTime(month),
+        Variable.withDateTime(nextMonth),
+      ],
+      readsFrom: {dailyFeedings, feedBatches, eggCollections},
+    ).getSingle();
+    final eggs = row.read<int>('eggs');
+    if (eggs <= 0) return 0;
+    return (row.read<double>('feed_cost') / eggs).round();
   }
 
   Future<String> addPackagingItem({
@@ -1561,6 +1631,7 @@ extension OperationsRepository on AppDatabase {
     int? trayUnitCostCents,
     int? labelUnitCostCents,
     int? eggUnitCostCents,
+    int? finalUnitPriceCents,
     DateTime? assembledAt,
     String? notes,
     required String actorId,
@@ -1588,8 +1659,14 @@ extension OperationsRepository on AppDatabase {
     final occurredAt = assembledAt ?? now;
     final trayUnitCost = trayUnitCostCents ?? trayLot.lot.unitCostCents;
     final labelUnitCost = labelUnitCostCents ?? labelLot.lot.unitCostCents;
-    final eggUnitCost = eggUnitCostCents ?? 0;
-    if (trayUnitCost < 0 || labelUnitCost < 0 || eggUnitCost < 0) {
+    final eggUnitCost =
+        eggUnitCostCents ??
+        await estimatedEggUnitCostCents(referenceDate: occurredAt);
+    final finalUnitPrice = finalUnitPriceCents ?? 0;
+    if (trayUnitCost < 0 ||
+        labelUnitCost < 0 ||
+        eggUnitCost < 0 ||
+        finalUnitPrice < 0) {
       throw ArgumentError('Informe valores unitários válidos.');
     }
     final unitPackagingCost = trayUnitCost + labelUnitCost;
@@ -1606,6 +1683,7 @@ extension OperationsRepository on AppDatabase {
           labelUnitCostCents: Value(labelUnitCost),
           eggUnitCostCents: Value(eggUnitCost),
           unitPackagingCostCents: Value(unitPackagingCost),
+          finalUnitPriceCents: Value(finalUnitPrice),
           notes: Value(_cleanValue(notes)),
           createdBy: actorId,
           createdAt: now,
@@ -1761,13 +1839,16 @@ extension OperationsRepository on AppDatabase {
     String? customerId,
     required String trayBatchId,
     required int trayQuantity,
-    required int dozenPriceCents,
+    int? trayUnitPriceCents,
+    int? dozenPriceCents,
     required String paymentMethod,
     DateTime? date,
     String? notes,
     required String actorId,
   }) async {
-    if (trayQuantity <= 0 || dozenPriceCents <= 0) {
+    final hasTrayPrice = trayUnitPriceCents != null && trayUnitPriceCents > 0;
+    final hasDozenPrice = dozenPriceCents != null && dozenPriceCents > 0;
+    if (trayQuantity <= 0 || (!hasTrayPrice && !hasDozenPrice)) {
       throw ArgumentError('Revise quantidade e valor da venda.');
     }
     final batch = await (select(
@@ -1783,7 +1864,15 @@ extension OperationsRepository on AppDatabase {
     final eggs = trayQuantity * batch.eggsPerTray;
     final dozens = eggs ~/ 12;
     final looseEggs = eggs % 12;
-    final total = (eggs * dozenPriceCents / 12).round();
+    final trayPriceInput = trayUnitPriceCents ?? 0;
+    final dozenPriceInput = dozenPriceCents ?? 0;
+    final trayUnitPrice = hasTrayPrice
+        ? trayPriceInput
+        : (batch.eggsPerTray * dozenPriceInput / 12).round();
+    final dozenPrice = hasDozenPrice
+        ? dozenPriceInput
+        : (trayUnitPrice * 12 / batch.eggsPerTray).round();
+    final total = trayQuantity * trayUnitPrice;
     await transaction(() async {
       await into(sales).insert(
         SalesCompanion.insert(
@@ -1794,7 +1883,7 @@ extension OperationsRepository on AppDatabase {
           trayQuantity: Value(trayQuantity),
           dozens: Value(dozens),
           looseEggs: Value(looseEggs),
-          dozenPriceCents: dozenPriceCents,
+          dozenPriceCents: dozenPrice,
           totalCents: total,
           paymentMethod: paymentMethod,
           notes: Value(_cleanValue(notes)),
@@ -3338,6 +3427,7 @@ Map<String, dynamic> _trayJson(Map<String, dynamic> json) => {
   'trayUnitCostCents': json['trayUnitCostCents'] ?? 0,
   'labelUnitCostCents': json['labelUnitCostCents'] ?? 0,
   'eggUnitCostCents': json['eggUnitCostCents'] ?? 0,
+  'finalUnitPriceCents': json['finalUnitPriceCents'] ?? 0,
 };
 
 FeedConsumptionRecommendationsCompanion

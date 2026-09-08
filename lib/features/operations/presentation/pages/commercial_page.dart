@@ -29,7 +29,7 @@ class CommercialPage extends ConsumerWidget {
               Tab(icon: Icon(Icons.people_outline), text: 'Clientes'),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           Expanded(
             child: TabBarView(
               children: [
@@ -281,6 +281,8 @@ class _TrayAssemblyTab extends StatelessWidget {
     final labelLots =
         ref.watch(packagingLotsProvider('LABEL')).asData?.value ?? [];
     final eggStock = ref.watch(eggStockProvider).asData?.value.balance ?? 0;
+    final estimatedEggUnitCost =
+        ref.watch(estimatedEggUnitCostProvider).asData?.value ?? 0;
     return ref
         .watch(eggTrayBatchesProvider)
         .when(
@@ -306,6 +308,7 @@ class _TrayAssemblyTab extends StatelessWidget {
                               ref: ref,
                               trayLots: trayLots,
                               labelLots: labelLots,
+                              estimatedEggUnitCostCents: estimatedEggUnitCost,
                             ),
                           )
                         : null,
@@ -337,7 +340,7 @@ class _TrayAssemblyTab extends StatelessWidget {
                         ),
                         title: Text(_trayBatchLabel(batch)),
                         subtitle: Text(
-                          '${batch.trayName} · ${batch.labelName} · ${shortDate.format(batch.batch.assembledAt)} · Custo ${money(batch.unitAssemblyCostCents)}',
+                          '${batch.trayName} · ${batch.labelName} · ${shortDate.format(batch.batch.assembledAt)} · ${_trayCostLabel(batch)}',
                         ),
                         trailing: Wrap(
                           crossAxisAlignment: WrapCrossAlignment.center,
@@ -904,10 +907,12 @@ class _TrayAssemblyDialog extends StatefulWidget {
     required this.ref,
     required this.trayLots,
     required this.labelLots,
+    required this.estimatedEggUnitCostCents,
   });
   final WidgetRef ref;
   final List<PackagingLotBalance> trayLots;
   final List<PackagingLotBalance> labelLots;
+  final int estimatedEggUnitCostCents;
 
   @override
   State<_TrayAssemblyDialog> createState() => _TrayAssemblyDialogState();
@@ -921,6 +926,7 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
   final trayUnitCost = TextEditingController();
   final labelUnitCost = TextEditingController();
   final eggUnitCost = TextEditingController();
+  final finalUnitPrice = TextEditingController();
   final notes = TextEditingController();
   DateTime assembledAt = DateTime.now();
   bool saving = false;
@@ -942,6 +948,7 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
     trayUnitCost.dispose();
     labelUnitCost.dispose();
     eggUnitCost.dispose();
+    finalUnitPrice.dispose();
     notes.dispose();
     super.dispose();
   }
@@ -951,13 +958,25 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
     final label = _selectedPackagingLot(widget.labelLots, labelLotId);
     trayUnitCost.text = _moneyInput(tray?.lot.unitCostCents ?? 0);
     labelUnitCost.text = _moneyInput(label?.lot.unitCostCents ?? 0);
-    if (eggUnitCost.text.isEmpty) eggUnitCost.text = _moneyInput(0);
+    if (eggUnitCost.text.isEmpty) {
+      eggUnitCost.text = _moneyInput(widget.estimatedEggUnitCostCents);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final trayLots = widget.trayLots.where((lot) => lot.balance > 0).toList();
     final labelLots = widget.labelLots.where((lot) => lot.balance > 0).toList();
+    final trayCost = parseMoneyToCents(trayUnitCost.text);
+    final labelCost = parseMoneyToCents(labelUnitCost.text);
+    final eggCost = parseMoneyToCents(eggUnitCost.text);
+    final salePrice = parseMoneyToCents(finalUnitPrice.text);
+    final eggs = int.tryParse(eggsPerTray.text) ?? 0;
+    final trays = int.tryParse(quantity.text) ?? 0;
+    final costPerTray = trayCost + labelCost + eggCost * eggs;
+    final totalCost = costPerTray * trays;
+    final profit = salePrice - costPerTray;
+    final profitRate = costPerTray <= 0 ? 0.0 : profit / costPerTray;
     return AlertDialog(
       title: const Text('Montar bandeja'),
       content: SizedBox(
@@ -1004,6 +1023,7 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
                     child: TextField(
                       controller: quantity,
                       keyboardType: TextInputType.number,
+                      onChanged: (_) => setState(() {}),
                       decoration: const InputDecoration(
                         labelText: 'Bandejas a montar',
                       ),
@@ -1014,6 +1034,7 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
                     child: TextField(
                       controller: eggsPerTray,
                       keyboardType: TextInputType.number,
+                      onChanged: (_) => setState(() {}),
                       decoration: const InputDecoration(
                         labelText: 'Ovos por bandeja',
                       ),
@@ -1030,6 +1051,7 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
+                      onChanged: (_) => setState(() {}),
                       decoration: const InputDecoration(
                         labelText: 'Valor da bandeja',
                         prefixText: 'R\$ ',
@@ -1043,6 +1065,7 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
+                      onChanged: (_) => setState(() {}),
                       decoration: const InputDecoration(
                         labelText: 'Valor da etiqueta',
                         prefixText: 'R\$ ',
@@ -1057,9 +1080,41 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
+                onChanged: (_) => setState(() {}),
                 decoration: const InputDecoration(
                   labelText: 'Valor por ovo',
                   prefixText: 'R\$ ',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: finalUnitPrice,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  labelText: 'Valor de venda por bandeja',
+                  prefixText: 'R\$ ',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Chip(label: Text('Custo/bandeja: ${money(costPerTray)}')),
+                    if (trays > 0)
+                      Chip(label: Text('Custo total: ${money(totalCost)}')),
+                    if (salePrice > 0)
+                      Chip(
+                        label: Text(
+                          'Lucro: ${money(profit)} · ${percent(profitRate)}',
+                        ),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(height: 12),
@@ -1102,6 +1157,9 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
                           trayUnitCost: parseMoneyToCents(trayUnitCost.text),
                           labelUnitCost: parseMoneyToCents(labelUnitCost.text),
                           eggUnitCost: parseMoneyToCents(eggUnitCost.text),
+                          finalUnitPrice: parseMoneyToCents(
+                            finalUnitPrice.text,
+                          ),
                           assembledAt: assembledAt,
                           notes: notes.text,
                         );
@@ -1318,12 +1376,16 @@ class _SaleDialogState extends State<_SaleDialog> {
         break;
       }
     }
+    if (price.text.isEmpty &&
+        selectedBatch != null &&
+        selectedBatch.batch.finalUnitPriceCents > 0) {
+      price.text = _moneyInput(selectedBatch.batch.finalUnitPriceCents);
+    }
     final trayQuantity = int.tryParse(quantity.text) ?? 0;
-    final dozenPrice = parseMoneyToCents(price.text);
+    final trayUnitPrice = parseMoneyToCents(price.text);
     final previewTotal = selectedBatch == null || trayQuantity <= 0
         ? 0
-        : (trayQuantity * selectedBatch.batch.eggsPerTray * dozenPrice / 12)
-              .round();
+        : trayQuantity * trayUnitPrice;
     return AlertDialog(
       title: const Text('Venda de bandejas'),
       content: SizedBox(
@@ -1366,7 +1428,13 @@ class _SaleDialogState extends State<_SaleDialog> {
                         child: Text(_trayBatchLabel(batch)),
                       ),
                   ],
-                  onChanged: (v) => setState(() => trayBatchId = v),
+                  onChanged: (v) => setState(() {
+                    trayBatchId = v;
+                    final batch = _selectedTrayBatch(batches, v);
+                    price.text = _moneyInput(
+                      batch?.batch.finalUnitPriceCents ?? 0,
+                    );
+                  }),
                 ),
               const SizedBox(height: 12),
               TextField(
@@ -1390,7 +1458,7 @@ class _SaleDialogState extends State<_SaleDialog> {
                 ),
                 onChanged: (_) => setState(() {}),
                 decoration: const InputDecoration(
-                  labelText: 'Valor da dúzia',
+                  labelText: 'Valor por bandeja',
                   prefixText: 'R\$ ',
                 ),
               ),
@@ -1440,7 +1508,7 @@ class _SaleDialogState extends State<_SaleDialog> {
                           customerId: customer,
                           trayBatchId: selectedBatchId ?? '',
                           trayQuantity: int.tryParse(quantity.text) ?? 0,
-                          dozenPrice: parseMoneyToCents(price.text),
+                          trayUnitPrice: parseMoneyToCents(price.text),
                           payment: payment,
                           notes: notes.text,
                         );
@@ -1487,8 +1555,29 @@ PackagingLotBalance? _selectedPackagingLot(
   return null;
 }
 
+EggTrayBatchBalance? _selectedTrayBatch(
+  List<EggTrayBatchBalance> batches,
+  String? id,
+) {
+  for (final batch in batches) {
+    if (batch.batch.id == id) return batch;
+  }
+  return null;
+}
+
 String _moneyInput(int cents) =>
     (cents / 100).toStringAsFixed(2).replaceAll('.', ',');
+
+String _trayCostLabel(EggTrayBatchBalance batch) {
+  final labels = [
+    'Custo ${money(batch.unitAssemblyCostCents)}',
+    if (batch.batch.finalUnitPriceCents > 0)
+      'Venda ${money(batch.batch.finalUnitPriceCents)}',
+    if (batch.batch.finalUnitPriceCents > 0)
+      'Lucro ${percent(batch.profitPercent)}',
+  ];
+  return labels.join(' · ');
+}
 
 String _trayBatchLabel(EggTrayBatchBalance batch) {
   final eggs = batch.batch.eggsPerTray;

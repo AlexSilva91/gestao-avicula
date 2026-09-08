@@ -413,6 +413,7 @@ const _intFields = {
   'labelUnitCostCents',
   'eggUnitCostCents',
   'unitPackagingCostCents',
+  'finalUnitPriceCents',
   'dozenPriceCents',
   'amountCents',
   'startAgeDays',

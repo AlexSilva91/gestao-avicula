@@ -102,7 +102,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
               ],
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, box) => box.maxWidth > 900
                 ? Row(
@@ -132,7 +132,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                     ],
                   ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 14),
           _LightingSection(ref: ref, lots: lots),
         ],
       ),
@@ -258,7 +258,7 @@ class _Agenda extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -352,7 +352,7 @@ class _LightingSection extends StatelessWidget {
         error: (_, _) => const SeletoAsyncError(),
         data: (programs) => Card(
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

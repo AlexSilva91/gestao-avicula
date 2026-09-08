@@ -32,7 +32,7 @@ class FeedPage extends ConsumerWidget {
               Tab(icon: Icon(Icons.restaurant_outlined), text: 'Alimentação'),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           Expanded(
             child: TabBarView(
               children: [
@@ -119,7 +119,7 @@ class _IngredientsTab extends StatelessWidget {
                     );
                   },
                 ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
               if (lots.isNotEmpty) ...[
                 Text(
                   'Lotes de insumos',
@@ -166,7 +166,7 @@ class _IngredientCard extends StatelessWidget {
         : percent(item.variationPercent!);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -277,7 +277,7 @@ class _IngredientLotCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -386,7 +386,7 @@ class _FormulasTab extends StatelessWidget {
                           width: width,
                           child: Card(
                             child: Padding(
-                              padding: const EdgeInsets.all(18),
+                              padding: const EdgeInsets.all(12),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -655,7 +655,7 @@ class _FeedStockTab extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
               if (items.isNotEmpty)
                 Card(
                   child: ListView.separated(

@@ -25,7 +25,7 @@ class MovementsPage extends ConsumerWidget {
             label: const Text('Transferir aves'),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         if (ref.watch(birdMetricsProvider).asData case final data?)
           SeletoKpiGrid(
             children: [
@@ -51,7 +51,7 @@ class MovementsPage extends ConsumerWidget {
               ),
             ],
           ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 12),
         ref
             .watch(birdMovementsProvider)
             .when(

@@ -27,7 +27,7 @@ class EggCollectionPage extends ConsumerWidget {
             label: const Text('Registrar coleta'),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         ref
             .watch(eggMetricsProvider)
             .when(
@@ -35,9 +35,9 @@ class EggCollectionPage extends ConsumerWidget {
               error: (_, _) => const _MetricsError(),
               data: (metrics) => _EggMetrics(metrics: metrics),
             ),
-        const SizedBox(height: 26),
+        const SizedBox(height: 16),
         const _LayingRateHistorySection(),
-        const SizedBox(height: 26),
+        const SizedBox(height: 16),
         Text('Coletas recentes', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
         ref
@@ -213,8 +213,8 @@ class _EggMetrics extends StatelessWidget {
         crossAxisCount: count,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
         childAspectRatio: count == 1 ? 2.8 : 1.85,
         children: [
           _Metric('Ovos hoje', '${metrics.eggsToday}', Icons.egg_alt_outlined),
@@ -242,14 +242,14 @@ class _Metric extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(12),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(11),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.secondaryContainer,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               icon,
@@ -295,7 +295,7 @@ class _NoCollections extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
-      padding: const EdgeInsets.all(32),
+      padding: const EdgeInsets.all(14),
       child: Center(
         child: Column(
           children: [

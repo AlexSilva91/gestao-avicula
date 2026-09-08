@@ -31,7 +31,7 @@ class AlertsPage extends ConsumerWidget {
               label: const Text('Novo alerta'),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           _ScheduledAlertsCard(ref: ref),
           const SizedBox(height: 16),
           _AlertsCard(ref: ref),
@@ -66,7 +66,7 @@ class _ScheduledAlertsCard extends StatelessWidget {
             final alerts = events.where(_isManageableAlertEvent).toList();
             return Card(
               child: Padding(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -495,7 +495,7 @@ class _AlertsCard extends StatelessWidget {
           error: (_, _) => const SeletoAsyncError(),
           data: (items) => Card(
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -591,7 +591,7 @@ class _AlertTile extends StatelessWidget {
                   color: item.isEnabled
                       ? scheme.primary.withValues(alpha: .14)
                       : scheme.onSurface.withValues(alpha: .08),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   item.isEnabled
@@ -1264,7 +1264,7 @@ class _AlertInfoCardState extends State<_AlertInfoCard> {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

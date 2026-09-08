@@ -265,6 +265,8 @@ class EggTrayBatches extends Table {
   IntColumn get eggUnitCostCents => integer().withDefault(const Constant(0))();
   IntColumn get unitPackagingCostCents =>
       integer().withDefault(const Constant(0))();
+  IntColumn get finalUnitPriceCents =>
+      integer().withDefault(const Constant(0))();
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();

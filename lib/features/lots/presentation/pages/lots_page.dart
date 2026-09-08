@@ -61,8 +61,8 @@ class _LotsContent extends ConsumerWidget {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               crossAxisCount: crossAxisCount,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
               childAspectRatio: crossAxisCount == 1 ? 3.2 : 1.85,
               children: [
                 _SummaryCard(
@@ -98,8 +98,8 @@ class _LotsContent extends ConsumerWidget {
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: columns,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
                   mainAxisExtent: 238,
                 ),
                 itemCount: lots.length,
@@ -151,14 +151,14 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(12),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(11),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: Theme.of(context).colorScheme.primary),
           ),
@@ -364,7 +364,7 @@ class _LotEmpty extends StatelessWidget {
               'Cadastre o primeiro lote para iniciar o acompanhamento.',
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
             OutlinedButton.icon(
               onPressed: onCreate,
               icon: const Icon(Icons.add),
@@ -449,7 +449,7 @@ class _LotFormDialogState extends ConsumerState<_LotFormDialog> {
                 controller: _strain,
                 decoration: const InputDecoration(labelText: 'Linhagem'),
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 14),
               Text(
                 'Recebimento',
                 style: Theme.of(context).textTheme.titleMedium,

@@ -24,7 +24,7 @@ class EggStockPage extends ConsumerWidget {
             label: const Text('Ajustar estoque'),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         ref
             .watch(eggStockProvider)
             .when(
@@ -55,7 +55,7 @@ class EggStockPage extends ConsumerWidget {
                 ],
               ),
             ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SeletoEmptyState(
           icon: Icons.info_outline,
           title: 'Histórico preservado',

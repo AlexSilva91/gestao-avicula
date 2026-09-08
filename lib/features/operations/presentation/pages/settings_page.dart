@@ -63,7 +63,7 @@ class _ProductionSettings extends StatelessWidget {
           final values = {for (final s in settings) s.key: s.value};
           return Card(
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -167,7 +167,7 @@ class _BackupCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -179,7 +179,7 @@ class _BackupCard extends StatelessWidget {
           const Text(
             'Exporte uma cópia JSON completa do banco operacional ou importe dados iniciais sem alterar usuários e permissões.',
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: () async {
               try {
@@ -440,7 +440,7 @@ class _NotificationsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -23,6 +23,7 @@ abstract final class SeletoTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
+      visualDensity: VisualDensity.compact,
       textTheme: text.copyWith(
         displaySmall: text.displaySmall?.copyWith(
           fontWeight: FontWeight.w800,
@@ -39,11 +40,39 @@ abstract final class SeletoTheme {
           : scheme.surface,
       cardTheme: CardThemeData(
         elevation: 0,
+        margin: const EdgeInsets.all(4),
+        surfaceTintColor: Colors.transparent,
         color: brightness == Brightness.light
             ? scheme.surface.withValues(alpha: .94)
             : scheme.surface.withValues(alpha: .9),
         shape: RoundedRectangleBorder(
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .72)),
           borderRadius: BorderRadius.circular(SeletoTokens.radiusMd),
+        ),
+      ),
+      listTileTheme: ListTileThemeData(
+        dense: true,
+        minLeadingWidth: 24,
+        horizontalTitleGap: 10,
+        minVerticalPadding: 8,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        iconColor: scheme.onSurfaceVariant,
+      ),
+      chipTheme: ChipThemeData(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+        side: BorderSide(color: scheme.outlineVariant),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(SeletoTokens.radiusSm),
+        ),
+      ),
+      tabBarTheme: TabBarThemeData(
+        dividerColor: scheme.outlineVariant,
+        labelColor: scheme.primary,
+        unselectedLabelColor: scheme.onSurfaceVariant,
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicator: UnderlineTabIndicator(
+          borderSide: BorderSide(color: scheme.primary, width: 2),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -60,17 +89,57 @@ abstract final class SeletoTheme {
           borderSide: BorderSide(color: scheme.outlineVariant),
         ),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
+          horizontal: 12,
+          vertical: 12,
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(0, SeletoTokens.touchTargetMinimum),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SeletoTokens.radiusSm),
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, SeletoTokens.touchTargetMinimum),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SeletoTokens.radiusSm),
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          minimumSize: const Size(0, SeletoTokens.touchTargetMinimum),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SeletoTokens.radiusSm),
+          ),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           minimumSize: const Size(0, SeletoTokens.touchTargetMinimum),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(SeletoTokens.radiusSm),
           ),
         ),
+      ),
+      appBarTheme: AppBarTheme(
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: scheme.surface.withValues(alpha: .96),
+        foregroundColor: scheme.onSurface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      dividerTheme: DividerThemeData(
+        color: scheme.outlineVariant.withValues(alpha: .82),
+        space: 1,
+        thickness: 1,
       ),
       navigationRailTheme: NavigationRailThemeData(
         indicatorColor: scheme.primaryContainer,

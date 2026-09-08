@@ -359,7 +359,7 @@ class _LoginForm extends StatelessWidget {
               ).colorScheme.primaryContainer.withValues(alpha: .34),
             ),
           ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         ElevatedButton.icon(
           onPressed: loading || checkingAccounts ? null : onSubmit,
           icon: loading || checkingAccounts
@@ -384,7 +384,7 @@ class _LoginForm extends StatelessWidget {
                 : 'Entrar',
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 12),
         if (creatingFirstAccount)
           TextButton(
             onPressed: loading ? null : onBackToLogin,

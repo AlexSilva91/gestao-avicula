@@ -52,7 +52,7 @@ class ReportsPage extends ConsumerWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
           SeletoKpiGrid(
             children: [
               SeletoKpiCard(
@@ -77,7 +77,7 @@ class ReportsPage extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, box) => box.maxWidth > 900
                 ? Row(
@@ -545,7 +545,7 @@ class _ChartCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 12),
             SizedBox(height: 280, child: child),
           ],
         ),

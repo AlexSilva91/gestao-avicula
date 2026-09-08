@@ -232,7 +232,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         .where((d) => session?.allows(d.permission) ?? false)
         .toList();
     final mobile = width < SeletoTokens.compactBreakpoint;
-    final horizontalPadding = width < 600 ? 16.0 : 28.0;
+    final horizontalPadding = width < 600 ? 12.0 : 20.0;
     Widget content({double? height}) => ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: SeletoTokens.contentMaxWidth),
       child: SizedBox(
@@ -240,9 +240,9 @@ class _AppShellState extends ConsumerState<AppShell> {
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             horizontalPadding,
-            24,
+            16,
             horizontalPadding,
-            48,
+            28,
           ),
           child: widget.child,
         ),
@@ -375,22 +375,22 @@ class _SideNavigation extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
-      width: extended ? 272 : 80,
+      width: extended ? 252 : 72,
       child: Material(
         color: Theme.of(
           context,
         ).colorScheme.surfaceContainerLow.withValues(alpha: .94),
         child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
             Padding(
               padding: EdgeInsets.symmetric(
                 horizontal: extended ? 18 : 16,
-                vertical: 8,
+                vertical: 6,
               ),
               child: BrandMark(compact: !extended),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             for (
               var groupIndex = 0;
               groupIndex < groups.length;
@@ -400,9 +400,9 @@ class _SideNavigation extends StatelessWidget {
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                     16,
-                    groupIndex == 0 ? 0 : 10,
+                    groupIndex == 0 ? 0 : 8,
                     16,
-                    6,
+                    4,
                   ),
                   child: Divider(
                     height: 1,
@@ -411,7 +411,7 @@ class _SideNavigation extends StatelessWidget {
                 )
               else
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 12, 5),
+                  padding: const EdgeInsets.fromLTRB(18, 12, 12, 4),
                   child: Text(
                     groups[groupIndex].key,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -424,7 +424,7 @@ class _SideNavigation extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
-                    vertical: 2,
+                    vertical: 1,
                   ),
                   child: Tooltip(
                     message: d.label,
@@ -434,13 +434,13 @@ class _SideNavigation extends StatelessWidget {
                         context,
                       ).colorScheme.primaryContainer.withValues(alpha: .52),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       contentPadding: EdgeInsets.symmetric(
                         horizontal: extended ? 12 : 16,
                       ),
                       minLeadingWidth: 24,
-                      horizontalTitleGap: 12,
+                      horizontalTitleGap: 10,
                       visualDensity: VisualDensity.compact,
                       leading: Icon(path == d.route ? d.selectedIcon : d.icon),
                       iconColor: path == d.route
@@ -470,15 +470,15 @@ class _DrawerNavigation extends StatelessWidget {
     final groups = _groupedDestinations(destinations);
     return Column(
       children: [
-        const Padding(padding: EdgeInsets.all(20), child: BrandMark()),
+        const Padding(padding: EdgeInsets.all(14), child: BrandMark()),
         const Divider(height: 1),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 6),
             children: [
               for (final group in groups) ...[
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 16, 5),
+                  padding: const EdgeInsets.fromLTRB(18, 12, 16, 4),
                   child: Text(
                     group.key,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -491,7 +491,7 @@ class _DrawerNavigation extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
-                      vertical: 2,
+                      vertical: 1,
                     ),
                     child: ListTile(
                       selected: path == d.route,
@@ -499,7 +499,7 @@ class _DrawerNavigation extends StatelessWidget {
                         context,
                       ).colorScheme.primaryContainer.withValues(alpha: .52),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       leading: Icon(path == d.route ? d.selectedIcon : d.icon),
                       iconColor: path == d.route

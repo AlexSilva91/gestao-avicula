@@ -556,7 +556,7 @@ void main() {
     await db.createEggTraySale(
       trayBatchId: batchId,
       trayQuantity: 2,
-      dozenPriceCents: 1200,
+      trayUnitPriceCents: 3000,
       paymentMethod: 'PIX',
       actorId: actor,
     );
@@ -624,6 +624,7 @@ void main() {
       trayUnitCostCents: 95,
       labelUnitCostCents: 25,
       eggUnitCostCents: 60,
+      finalUnitPriceCents: 2500,
       actorId: actor,
     );
 
@@ -633,6 +634,11 @@ void main() {
     expect(batch.labelUnitCostCents, 25);
     expect(batch.eggUnitCostCents, 60);
     expect(batch.unitPackagingCostCents, 120);
+    expect(batch.finalUnitPriceCents, 2500);
+    final overview = (await db.watchEggTrayBatchBalances().first).single;
+    expect(overview.unitAssemblyCostCents, 1920);
+    expect(overview.unitProfitCents, 580);
+    expect(overview.profitPercent, closeTo(0.302, 0.001));
     expect(await db.eggStockBalance(), 60);
     expect(await db.packagingLotBalance(trayLotId), 3);
     expect(await db.packagingLotBalance(labelLotId), 3);
@@ -645,6 +651,88 @@ void main() {
     expect(await db.packagingLotBalance(labelLotId), 5);
     expect(await db.eggTrayBatchBalance(batchId), 0);
   });
+
+  test(
+    'tray assembly estimates egg cost from monthly feed consumption',
+    () async {
+      await db.registerLotPurchase(
+        name: 'Poedeiras',
+        quantity: 30,
+        receivedAt: DateTime(2026, 9, 1),
+        arrivalAgeDays: 200,
+        actorId: actor,
+      );
+      final lot = (await db.watchLotSummaries().first).single;
+      await db.registerReadyFeedPurchase(
+        name: 'Ração postura',
+        phase: 'postura',
+        quantityKg: 20,
+        totalCostCents: 2400,
+        date: DateTime(2026, 9, 1),
+        actorId: actor,
+      );
+      final feed = (await db.watchFeedBatchBalances().first).single;
+      await db.registerFeeding(
+        lotId: lot.lot.id,
+        batchId: feed.batch.id,
+        quantityKg: 5,
+        date: DateTime(2026, 9, 2),
+        actorId: actor,
+      );
+      await db.registerEggCollection(
+        collectedOn: DateTime(2026, 9, 2),
+        lotId: lot.lot.id,
+        quantity: 60,
+        brokenEggs: 0,
+        discardedEggs: 0,
+        actorId: actor,
+      );
+
+      expect(
+        await db.estimatedEggUnitCostCents(referenceDate: DateTime(2026, 9, 2)),
+        10,
+      );
+
+      final trayItemId = await db.addPackagingItem(
+        type: 'TRAY',
+        name: 'Bandeja 30 ovos',
+        actorId: actor,
+      );
+      final labelItemId = await db.addPackagingItem(
+        type: 'LABEL',
+        name: 'Etiqueta',
+        actorId: actor,
+      );
+      final trayLotId = await db.addPackagingLot(
+        itemId: trayItemId,
+        quantity: 2,
+        unitCostCents: 100,
+        actorId: actor,
+      );
+      final labelLotId = await db.addPackagingLot(
+        itemId: labelItemId,
+        quantity: 2,
+        unitCostCents: 50,
+        actorId: actor,
+      );
+
+      await db.assembleEggTrays(
+        trayLotId: trayLotId,
+        labelLotId: labelLotId,
+        quantity: 1,
+        eggsPerTray: 30,
+        finalUnitPriceCents: 1500,
+        assembledAt: DateTime(2026, 9, 2),
+        actorId: actor,
+      );
+
+      final overview = (await db.watchEggTrayBatchBalances().first).single;
+      expect(overview.batch.eggUnitCostCents, 10);
+      expect(overview.unitAssemblyCostCents, 450);
+      expect(overview.unitProfitCents, 1050);
+      expect(overview.profitPercent, closeTo(2.333, 0.001));
+    },
+  );
 
   test('cancelled egg sale restores stock and cancels revenue', () async {
     await db.registerLotPurchase(

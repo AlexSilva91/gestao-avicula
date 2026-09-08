@@ -47,6 +47,9 @@ final packagingLotsProvider =
 final eggTrayBatchesProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchEggTrayBatchBalances(),
 );
+final estimatedEggUnitCostProvider = StreamProvider(
+  (ref) => ref.watch(databaseProvider).watchEstimatedEggUnitCostCents(),
+);
 final financeProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchFinance(),
 );
@@ -359,6 +362,7 @@ class OperationsController {
     int? trayUnitCost,
     int? labelUnitCost,
     int? eggUnitCost,
+    int? finalUnitPrice,
     DateTime? assembledAt,
     String? notes,
   }) => _db.assembleEggTrays(
@@ -369,6 +373,7 @@ class OperationsController {
     trayUnitCostCents: trayUnitCost,
     labelUnitCostCents: labelUnitCost,
     eggUnitCostCents: eggUnitCost,
+    finalUnitPriceCents: finalUnitPrice,
     assembledAt: assembledAt,
     notes: notes,
     actorId: _actor('sales.create'),
@@ -382,14 +387,14 @@ class OperationsController {
     String? customerId,
     required String trayBatchId,
     required int trayQuantity,
-    required int dozenPrice,
+    required int trayUnitPrice,
     required String payment,
     String? notes,
   }) => _db.createEggTraySale(
     customerId: customerId,
     trayBatchId: trayBatchId,
     trayQuantity: trayQuantity,
-    dozenPriceCents: dozenPrice,
+    trayUnitPriceCents: trayUnitPrice,
     paymentMethod: payment,
     notes: notes,
     actorId: _actor('sales.create'),

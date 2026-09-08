@@ -19,8 +19,8 @@ class SeletoPageHeader extends StatelessWidget {
       return Wrap(
         alignment: WrapAlignment.spaceBetween,
         crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 16,
-        runSpacing: 12,
+        spacing: 12,
+        runSpacing: 8,
         children: [
           SizedBox(
             width: textWidth,
@@ -28,10 +28,10 @@ class SeletoPageHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -60,23 +60,23 @@ class SeletoEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
-      padding: const EdgeInsets.all(40),
+      padding: const EdgeInsets.all(20),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 16),
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
+            Icon(icon, size: 36, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(height: 10),
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
-            if (action != null) ...[const SizedBox(height: 20), action!],
+            if (action != null) ...[const SizedBox(height: 12), action!],
           ],
         ),
       ),
@@ -101,18 +101,20 @@ class SeletoKpiCard extends StatelessWidget {
     final accent = color ?? Theme.of(context).colorScheme.primary;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(12),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(11),
+              width: 38,
+              height: 38,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: accent.withValues(alpha: .12),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(icon, color: accent),
+              child: Icon(icon, color: accent, size: 21),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -122,16 +124,18 @@ class SeletoKpiCard extends StatelessWidget {
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.headlineSmall,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ],
               ),
@@ -158,9 +162,9 @@ class SeletoKpiGrid extends StatelessWidget {
         crossAxisCount: columns,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: columns == 1 ? 3.1 : 1.8,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: columns == 1 ? 4.2 : 2.35,
         children: children,
       );
     },
@@ -173,7 +177,7 @@ class SeletoTabList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      ListView(padding: const EdgeInsets.only(bottom: 24), children: children);
+      ListView(padding: const EdgeInsets.only(bottom: 16), children: children);
 }
 
 class SeletoAsyncError extends StatelessWidget {

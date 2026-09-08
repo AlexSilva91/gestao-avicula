@@ -33,7 +33,7 @@ class UsersPage extends ConsumerWidget {
                   label: const Text('Novo usuário'),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
               Card(
                 child: ListView.separated(
                   shrinkWrap: true,
