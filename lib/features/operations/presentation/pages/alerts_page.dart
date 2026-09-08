@@ -435,10 +435,23 @@ class _AlertEditDialogState extends State<_AlertEditDialog> {
                       child: TextField(
                         controller: _timeController,
                         enabled: !_saving,
+                        readOnly: true,
+                        onTap: _saving
+                            ? null
+                            : () async {
+                                final picked = await pickSeletoTime(
+                                  context,
+                                  _timeController.text,
+                                );
+                                if (picked != null) {
+                                  _timeController.text = picked;
+                                }
+                              },
                         decoration: const InputDecoration(
                           labelText: 'Horário do alerta',
                           hintText: '08:00',
                           prefixIcon: Icon(Icons.access_time),
+                          suffixIcon: Icon(Icons.schedule),
                         ),
                       ),
                     ),
@@ -558,14 +571,20 @@ class _CreateAlertDialog extends StatefulWidget {
 class _CreateAlertDialogState extends State<_CreateAlertDialog> {
   final title = TextEditingController();
   final message = TextEditingController();
-  final time = TextEditingController(text: '08:00');
+  late final TextEditingController time;
   String type = 'FEED';
   String recurrence = 'ONCE';
   String? lotId;
   DateTime date = DateTime.now();
   DateTime? repeatUntil;
-  final weekdays = <int>{DateTime.monday};
+  final weekdays = <int>{DateTime.now().weekday};
   bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    time = TextEditingController(text: defaultSeletoAlertTime(date));
+  }
 
   @override
   void dispose() {
@@ -645,22 +664,47 @@ class _CreateAlertDialogState extends State<_CreateAlertDialog> {
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Data inicial'),
+                title: Text(
+                  recurrence == 'ONCE' ? 'Data do alerta' : 'Data inicial',
+                ),
                 subtitle: Text(shortDate.format(date)),
                 trailing: const Icon(Icons.calendar_today),
                 onTap: saving
                     ? null
                     : () async {
                         final picked = await pickSeletoDate(context, date);
-                        if (picked != null) setState(() => date = picked);
+                        if (picked != null) {
+                          setState(() {
+                            if (recurrence == 'WEEKLY' &&
+                                weekdays.length == 1 &&
+                                weekdays.contains(date.weekday)) {
+                              weekdays
+                                ..clear()
+                                ..add(picked.weekday);
+                            }
+                            date = picked;
+                            if (seletoAlertTimeIsPast(date, time.text)) {
+                              time.text = defaultSeletoAlertTime(date);
+                            }
+                          });
+                        }
                       },
               ),
               TextField(
                 controller: time,
                 enabled: !saving,
+                readOnly: true,
+                onTap: saving
+                    ? null
+                    : () async {
+                        final picked = await pickSeletoTime(context, time.text);
+                        if (picked != null) time.text = picked;
+                      },
                 decoration: const InputDecoration(
                   labelText: 'Hora',
                   hintText: '08:00',
+                  prefixIcon: Icon(Icons.access_time),
+                  suffixIcon: Icon(Icons.schedule),
                 ),
               ),
               const SizedBox(height: 12),
@@ -675,36 +719,51 @@ class _CreateAlertDialogState extends State<_CreateAlertDialog> {
                 ],
                 onChanged: saving
                     ? null
-                    : (value) => setState(() => recurrence = value!),
+                    : (value) => setState(() {
+                        recurrence = value!;
+                        if (recurrence == 'WEEKLY' && weekdays.isEmpty) {
+                          weekdays.add(date.weekday);
+                        }
+                      }),
               ),
               if (recurrence == 'WEEKLY') ...[
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final item in const [
-                        (DateTime.monday, 'Seg'),
-                        (DateTime.tuesday, 'Ter'),
-                        (DateTime.wednesday, 'Qua'),
-                        (DateTime.thursday, 'Qui'),
-                        (DateTime.friday, 'Sex'),
-                        (DateTime.saturday, 'Sáb'),
-                        (DateTime.sunday, 'Dom'),
-                      ])
-                        FilterChip(
-                          label: Text(item.$2),
-                          selected: weekdays.contains(item.$1),
-                          onSelected: saving
-                              ? null
-                              : (selected) => setState(() {
-                                  selected
-                                      ? weekdays.add(item.$1)
-                                      : weekdays.remove(item.$1);
-                                }),
-                        ),
+                      Text(
+                        'Dias da semana',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final item in const [
+                            (DateTime.monday, 'Seg'),
+                            (DateTime.tuesday, 'Ter'),
+                            (DateTime.wednesday, 'Qua'),
+                            (DateTime.thursday, 'Qui'),
+                            (DateTime.friday, 'Sex'),
+                            (DateTime.saturday, 'Sáb'),
+                            (DateTime.sunday, 'Dom'),
+                          ])
+                            FilterChip(
+                              label: Text(item.$2),
+                              selected: weekdays.contains(item.$1),
+                              onSelected: saving
+                                  ? null
+                                  : (selected) => setState(() {
+                                      selected
+                                          ? weekdays.add(item.$1)
+                                          : weekdays.remove(item.$1);
+                                    }),
+                            ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -769,7 +828,7 @@ class _CreateAlertDialogState extends State<_CreateAlertDialog> {
                           repeatUntil: repeatUntil,
                           weekdays: weekdays,
                         );
-                    await NotificationService().testMessage(
+                    await NotificationService().testCriticalAlert(
                       title: 'GRANJA SELETO · Teste: ${title.text.trim()}',
                       body: message.text.trim().isEmpty
                           ? 'Teste do alerta criado.'
@@ -781,7 +840,7 @@ class _CreateAlertDialogState extends State<_CreateAlertDialog> {
                       messenger.showSnackBar(
                         const SnackBar(
                           content: Text(
-                            'Alerta criado. Teste agendado para daqui a 5 segundos.',
+                            'Alerta criado. Teste sonoro agendado para daqui a 5 segundos.',
                           ),
                         ),
                       );
@@ -815,16 +874,17 @@ class _AlertInfoCardState extends State<_AlertInfoCard> {
   Future<void> _prepare() async {
     setState(() => preparing = true);
     try {
-      final enabled = await NotificationService().prepareMessages();
-      final status = await NotificationService().readiness();
+      final status = await NotificationService().prepareCriticalAlerts();
       if (!mounted) return;
       setState(() {
         readiness = Future.value(status);
       });
-      if (!enabled) {
+      if (!status.canDeliverCriticalAlerts) {
         await showOperationError(
           context,
-          StateError('Permita notificações para o GRANJA SELETO.'),
+          StateError(
+            'O Android ainda precisa liberar os alertas sonoros: ${status.missingItems.join(' ')}',
+          ),
         );
       } else {
         await schedulePersistedAlerts(widget.ref.read(databaseProvider));
@@ -838,14 +898,14 @@ class _AlertInfoCardState extends State<_AlertInfoCard> {
 
   Future<void> _test() async {
     try {
-      await NotificationService().testMessage(
-        title: 'GRANJA SELETO · Teste de mensagem',
-        body: 'Mensagem de teste dos alertas agendados.',
+      await NotificationService().testCriticalAlert(
+        title: 'GRANJA SELETO · Teste de alerta',
+        body: 'Alerta sonoro de teste dos alertas agendados.',
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Mensagem de teste agendada para daqui a 5 segundos.'),
+          content: Text('Alerta sonoro agendado para daqui a 5 segundos.'),
         ),
       );
       setState(() {
@@ -883,9 +943,7 @@ class _AlertInfoCardState extends State<_AlertInfoCard> {
               future: readiness,
               builder: (context, snapshot) {
                 final status = snapshot.data;
-                final ready =
-                    (status?.nativeSupported ?? false) &&
-                    (status?.notificationsEnabled ?? false);
+                final ready = status?.canDeliverCriticalAlerts ?? false;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -901,16 +959,16 @@ class _AlertInfoCardState extends State<_AlertInfoCard> {
                       ),
                       title: Text(
                         ready
-                            ? 'Android pronto para mensagens'
-                            : 'Android precisa liberar notificações',
+                            ? 'Android pronto para alertas sonoros'
+                            : 'Android precisa liberar alertas sonoros',
                       ),
                       subtitle: Text(
                         status == null
                             ? 'Verificando permissões do aparelho.'
                             : status.nativeSupported
                             ? ready
-                                  ? 'Mensagens agendadas liberadas no aparelho.'
-                                  : 'Permita notificações para o GRANJA SELETO.'
+                                  ? 'Som, vibração e alarmes exatos liberados no aparelho.'
+                                  : status.missingItems.join(' ')
                             : 'No navegador os alertas agendados não têm garantia. Use o app instalado no Android.',
                       ),
                     ),
@@ -933,7 +991,7 @@ class _AlertInfoCardState extends State<_AlertInfoCard> {
                         OutlinedButton.icon(
                           onPressed: ready ? _test : null,
                           icon: const Icon(Icons.mark_email_unread_outlined),
-                          label: const Text('Testar mensagem'),
+                          label: const Text('Testar alerta'),
                         ),
                       ],
                     ),
@@ -945,13 +1003,13 @@ class _AlertInfoCardState extends State<_AlertInfoCard> {
             for (final item in [
               (
                 Icons.notifications_active_outlined,
-                'Mensagens agendadas',
-                'Os alertas programados aparecem como notificações do Android no horário definido.',
+                'Alertas agendados',
+                'Os alertas programados tocam no Android no horário definido.',
               ),
               (
                 Icons.security_update_good,
-                'Permissão obrigatória',
-                'O Android precisa permitir notificações para o GRANJA SELETO.',
+                'Permissões obrigatórias',
+                'O Android precisa permitir notificações, alarmes exatos, som e vibração.',
               ),
               (
                 Icons.repeat,

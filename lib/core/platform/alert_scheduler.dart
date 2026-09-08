@@ -6,6 +6,8 @@ Future<void> schedulePersistedAlerts(AppDatabase database) async {
   final service = NotificationService();
   if (!service.nativeSupported) return;
   if (!await service.prepareMessages()) return;
+  final readiness = await service.readiness();
+  final useCriticalAlerts = readiness.canDeliverCriticalAlerts;
 
   final now = DateTime.now();
   final calendarEvents = await database.futureAlertCalendarEvents(
@@ -32,12 +34,22 @@ Future<void> schedulePersistedAlerts(AppDatabase database) async {
       final id = stableAlertId('calendar:${event.id}:$index');
       index++;
       if (!occurrence.isAfter(now)) continue;
-      await service.scheduleMessage(
-        id: id,
-        title: 'GRANJA SELETO · ${event.title}',
-        body: body,
-        at: occurrence,
-      );
+      if (useCriticalAlerts) {
+        await service.schedule(
+          id: id,
+          title: 'GRANJA SELETO · ${event.title}',
+          body: body,
+          at: occurrence,
+          urgent: true,
+        );
+      } else {
+        await service.scheduleMessage(
+          id: id,
+          title: 'GRANJA SELETO · ${event.title}',
+          body: body,
+          at: occurrence,
+        );
+      }
     }
   }
 
@@ -59,14 +71,26 @@ Future<void> schedulePersistedAlerts(AppDatabase database) async {
         phaseSetting!.notificationTime,
       ).subtract(Duration(days: phaseSetting.daysBefore));
       if (!alert.isAfter(now)) continue;
-      await service.scheduleMessage(
-        id: stableAlertId('phase:${summary.lot.id}:${phase.ageDays}'),
-        title: '${summary.lot.name} entrará em ${phase.name}',
-        body: phaseSetting.defaultMessage?.trim().isNotEmpty == true
-            ? phaseSetting.defaultMessage!.trim()
-            : 'Prepare manejo, ração e iluminação para a nova fase.',
-        at: alert,
-      );
+      final title = '${summary.lot.name} entrará em ${phase.name}';
+      final body = phaseSetting.defaultMessage?.trim().isNotEmpty == true
+          ? phaseSetting.defaultMessage!.trim()
+          : 'Prepare manejo, ração e iluminação para a nova fase.';
+      if (useCriticalAlerts) {
+        await service.schedule(
+          id: stableAlertId('phase:${summary.lot.id}:${phase.ageDays}'),
+          title: title,
+          body: body,
+          at: alert,
+          urgent: true,
+        );
+      } else {
+        await service.scheduleMessage(
+          id: stableAlertId('phase:${summary.lot.id}:${phase.ageDays}'),
+          title: title,
+          body: body,
+          at: alert,
+        );
+      }
     }
   }
 }
@@ -77,6 +101,9 @@ DateTime atConfiguredTime(DateTime date, String alertTime) {
   final minute = int.tryParse(parts.elementAtOrNull(1) ?? '0') ?? 0;
   return DateTime(date.year, date.month, date.day, hour, minute);
 }
+
+DateTime dateWithConfiguredTime(DateTime date, String alertTime) =>
+    atConfiguredTime(date, alertTime);
 
 List<DateTime> alertOccurrences({
   required DateTime startsAt,

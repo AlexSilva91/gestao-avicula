@@ -264,3 +264,46 @@ Future<DateTime?> pickSeletoDate(
     ),
   );
 }
+
+Future<String?> pickSeletoTime(BuildContext context, String current) async {
+  final parts = current.split(':');
+  final hour = int.tryParse(parts.first);
+  final minute = int.tryParse(parts.elementAtOrNull(1) ?? '');
+  final initial = TimeOfDay(
+    hour: hour != null && hour >= 0 && hour <= 23 ? hour : 8,
+    minute: minute != null && minute >= 0 && minute <= 59 ? minute : 0,
+  );
+  final picked = await showTimePicker(
+    context: context,
+    initialTime: initial,
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+      child: child ?? const SizedBox.shrink(),
+    ),
+  );
+  if (picked == null) return null;
+  final formattedHour = picked.hour.toString().padLeft(2, '0');
+  final formattedMinute = picked.minute.toString().padLeft(2, '0');
+  return '$formattedHour:$formattedMinute';
+}
+
+String defaultSeletoAlertTime(DateTime date, {DateTime? now}) {
+  final reference = now ?? DateTime.now();
+  if (!_sameDay(date, reference)) return '08:00';
+  final next = reference.add(const Duration(minutes: 10));
+  if (!_sameDay(date, next)) return '23:59';
+  final hour = next.hour.toString().padLeft(2, '0');
+  final minute = next.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
+}
+
+bool seletoAlertTimeIsPast(DateTime date, String time, {DateTime? now}) {
+  final parts = time.split(':');
+  final hour = int.tryParse(parts.first) ?? 8;
+  final minute = int.tryParse(parts.elementAtOrNull(1) ?? '0') ?? 0;
+  final alertAt = DateTime(date.year, date.month, date.day, hour, minute);
+  return !alertAt.isAfter(now ?? DateTime.now());
+}
+
+bool _sameDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;

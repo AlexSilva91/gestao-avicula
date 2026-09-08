@@ -453,7 +453,7 @@ class _EventDialogState extends State<_EventDialog> {
   final litterBags = TextEditingController();
   final litterBagWeight = TextEditingController();
   final litterBagPrice = TextEditingController();
-  final alertTime = TextEditingController(text: '08:00');
+  late final TextEditingController alertTime;
   final alertMessage = TextEditingController();
   late String type = widget.initialType;
   String? lot;
@@ -461,12 +461,14 @@ class _EventDialogState extends State<_EventDialog> {
   DateTime? repeatUntil;
   late bool alertEnabled = widget.initialAlertEnabled;
   String recurrence = 'ONCE';
-  final weekdays = <int>{DateTime.monday};
+  final weekdays = <int>{};
 
   @override
   void initState() {
     super.initState();
     title.text = widget.initialTitle ?? '';
+    weekdays.add(widget.initial.weekday);
+    alertTime = TextEditingController(text: defaultSeletoAlertTime(date));
   }
 
   @override
@@ -566,12 +568,28 @@ class _EventDialogState extends State<_EventDialog> {
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Data'),
+                title: Text(
+                  recurrence == 'ONCE' ? 'Data do alerta' : 'Data inicial',
+                ),
                 subtitle: Text(shortDate.format(date)),
                 trailing: const Icon(Icons.calendar_today),
                 onTap: () async {
                   final d = await pickSeletoDate(context, date);
-                  if (d != null) setState(() => date = d);
+                  if (d != null) {
+                    setState(() {
+                      if (recurrence == 'WEEKLY' &&
+                          weekdays.length == 1 &&
+                          weekdays.contains(date.weekday)) {
+                        weekdays
+                          ..clear()
+                          ..add(d.weekday);
+                      }
+                      date = d;
+                      if (seletoAlertTimeIsPast(date, alertTime.text)) {
+                        alertTime.text = defaultSeletoAlertTime(date);
+                      }
+                    });
+                  }
                 },
               ),
               TextField(
@@ -622,9 +640,21 @@ class _EventDialogState extends State<_EventDialog> {
               TextField(
                 controller: alertTime,
                 enabled: alertEnabled,
+                readOnly: true,
+                onTap: alertEnabled
+                    ? () async {
+                        final picked = await pickSeletoTime(
+                          context,
+                          alertTime.text,
+                        );
+                        if (picked != null) alertTime.text = picked;
+                      }
+                    : null,
                 decoration: const InputDecoration(
                   labelText: 'Hora do alerta',
                   hintText: '08:00',
+                  prefixIcon: Icon(Icons.access_time),
+                  suffixIcon: Icon(Icons.schedule),
                 ),
               ),
               const SizedBox(height: 12),
@@ -648,37 +678,52 @@ class _EventDialogState extends State<_EventDialog> {
                   DropdownMenuItem(value: 'MONTHLY', child: Text('Mensal')),
                 ],
                 onChanged: alertEnabled
-                    ? (v) => setState(() => recurrence = v!)
+                    ? (v) => setState(() {
+                        recurrence = v!;
+                        if (recurrence == 'WEEKLY' && weekdays.isEmpty) {
+                          weekdays.add(date.weekday);
+                        }
+                      })
                     : null,
               ),
               if (recurrence == 'WEEKLY') ...[
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final item in const [
-                        (DateTime.monday, 'Seg'),
-                        (DateTime.tuesday, 'Ter'),
-                        (DateTime.wednesday, 'Qua'),
-                        (DateTime.thursday, 'Qui'),
-                        (DateTime.friday, 'Sex'),
-                        (DateTime.saturday, 'Sáb'),
-                        (DateTime.sunday, 'Dom'),
-                      ])
-                        FilterChip(
-                          label: Text(item.$2),
-                          selected: weekdays.contains(item.$1),
-                          onSelected: alertEnabled
-                              ? (selected) => setState(() {
-                                  selected
-                                      ? weekdays.add(item.$1)
-                                      : weekdays.remove(item.$1);
-                                })
-                              : null,
-                        ),
+                      Text(
+                        'Dias da semana',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final item in const [
+                            (DateTime.monday, 'Seg'),
+                            (DateTime.tuesday, 'Ter'),
+                            (DateTime.wednesday, 'Qua'),
+                            (DateTime.thursday, 'Qui'),
+                            (DateTime.friday, 'Sex'),
+                            (DateTime.saturday, 'Sáb'),
+                            (DateTime.sunday, 'Dom'),
+                          ])
+                            FilterChip(
+                              label: Text(item.$2),
+                              selected: weekdays.contains(item.$1),
+                              onSelected: alertEnabled
+                                  ? (selected) => setState(() {
+                                      selected
+                                          ? weekdays.add(item.$1)
+                                          : weekdays.remove(item.$1);
+                                    })
+                                  : null,
+                            ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -731,7 +776,7 @@ class _EventDialogState extends State<_EventDialog> {
                     weekdays: weekdays,
                   );
               if (alertEnabled) {
-                await NotificationService().testMessage(
+                await NotificationService().testCriticalAlert(
                   title: 'GRANJA SELETO · Teste: ${title.text.trim()}',
                   body: alertMessage.text.trim().isEmpty
                       ? 'Teste do alerta criado.'
@@ -745,7 +790,7 @@ class _EventDialogState extends State<_EventDialog> {
                   messenger.showSnackBar(
                     const SnackBar(
                       content: Text(
-                        'Alerta criado. Teste agendado para daqui a 5 segundos.',
+                        'Alerta criado. Teste sonoro agendado para daqui a 5 segundos.',
                       ),
                     ),
                   );

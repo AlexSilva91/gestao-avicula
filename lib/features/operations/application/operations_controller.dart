@@ -360,8 +360,9 @@ class OperationsController {
   }) async {
     final actor = _actor('calendar.manage');
     final setting = await _db.notificationSettingFor(type);
+    final startsAt = dateWithConfiguredTime(date, alertTime);
     final occurrences = alertOccurrences(
-      startsAt: date,
+      startsAt: startsAt,
       alertTime: alertTime,
       recurrence: recurrence,
       repeatUntil: repeatUntil,
@@ -374,15 +375,17 @@ class OperationsController {
       throw ArgumentError('Informe uma data e hora futura para o alerta.');
     }
     if (alertEnabled && NotificationService().nativeSupported) {
-      final enabled = await NotificationService().prepareMessages();
-      if (!enabled) {
-        throw StateError('Permita notificações para o GRANJA SELETO.');
+      final status = await NotificationService().prepareCriticalAlerts();
+      if (!status.canDeliverCriticalAlerts) {
+        throw StateError(
+          'O Android ainda precisa liberar os alertas sonoros: ${status.missingItems.join(' ')}',
+        );
       }
     }
     final eventId = await _db.addCalendarEvent(
       title: title,
       type: type,
-      startsAt: date,
+      startsAt: startsAt,
       lotId: lotId,
       notes: notes,
       alertEnabled: alertEnabled,
@@ -403,11 +406,16 @@ class OperationsController {
           : 'Evento operacional programado.';
       var index = 0;
       for (final occurrence in occurrences) {
-        await NotificationService().scheduleMessage(
+        if (!occurrence.isAfter(DateTime.now())) {
+          index++;
+          continue;
+        }
+        await NotificationService().schedule(
           id: stableAlertId('calendar:$eventId:$index'),
           title: 'GRANJA SELETO · $title',
           body: body,
           at: occurrence,
+          urgent: true,
         );
         index++;
       }
@@ -448,8 +456,8 @@ class OperationsController {
     String time,
     String? message,
     String recurrence,
-  ) {
-    return _db.updateNotificationSetting(
+  ) async {
+    await _db.updateNotificationSetting(
       setting,
       enabled: enabled,
       daysBefore: days,
@@ -458,6 +466,7 @@ class OperationsController {
       recurrence: recurrence,
       actorId: _actor('settings.update'),
     );
+    await schedulePersistedAlerts(_db);
   }
 
   Future<void> transfer(

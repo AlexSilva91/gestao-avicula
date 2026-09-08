@@ -193,10 +193,12 @@ class NotificationService {
     );
   }
 
-  Future<void> testCriticalAlert() => schedule(
+  Future<void> testCriticalAlert({String? title, String? body}) => schedule(
     id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
-    title: 'GRANJA SELETO · Teste de alerta',
-    body: 'Se você ouviu som e sentiu vibração, o alerta crítico está pronto.',
+    title: title ?? 'GRANJA SELETO · Teste de alerta',
+    body:
+        body ??
+        'Se você ouviu som e sentiu vibração, o alerta crítico está pronto.',
     at: DateTime.now().add(const Duration(seconds: 5)),
     urgent: true,
     alarmDuration: const Duration(seconds: 5),

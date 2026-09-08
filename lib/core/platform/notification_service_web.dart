@@ -34,7 +34,7 @@ class NotificationService {
         alarmChannelReady: false,
       );
   Future<void> ensureCriticalAlertsReady() async {}
-  Future<void> testCriticalAlert() async {}
+  Future<void> testCriticalAlert({String? title, String? body}) async {}
   Future<void> schedule({
     required int id,
     required String title,
