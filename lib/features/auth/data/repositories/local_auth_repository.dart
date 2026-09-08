@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/app_failures.dart';
+import '../../../../core/sync/supabase_sync_service.dart';
 import '../../../../core/utils/password_hasher.dart';
 import '../../domain/entities/auth_session.dart';
 import '../../domain/repositories/auth_repository.dart';
@@ -14,8 +17,9 @@ class AccountCreationResult {
 }
 
 class LocalAuthRepository implements AuthRepository {
-  LocalAuthRepository(this._database);
+  LocalAuthRepository(this._database, {this.syncService});
   final AppDatabase _database;
+  final SupabaseSyncService? syncService;
   static const _rememberedUserIdKey = 'seleto.remembered_user_id';
   static const _rememberedUsernameKey = 'seleto.remembered_username';
 
@@ -45,7 +49,11 @@ class LocalAuthRepository implements AuthRepository {
     bool rememberLogin = false,
   }) async {
     final normalizedUsername = username.trim().toLowerCase();
-    final existing = await _database.userByUsername(normalizedUsername);
+    var existing = await _database.userByUsername(normalizedUsername);
+    if (existing == null) {
+      await syncService?.syncNow(reason: 'login_missing_user', force: true);
+      existing = await _database.userByUsername(normalizedUsername);
+    }
     if (existing == null) {
       throw const AuthenticationFailure(
         'Usuário não encontrado. Confira o nome digitado ou crie uma conta.',
@@ -67,6 +75,8 @@ class LocalAuthRepository implements AuthRepository {
     }
     final session = await _sessionFromUser(user);
     await _setRememberedLogin(user: user, rememberLogin: rememberLogin);
+    final sync = syncService;
+    if (sync != null) unawaited(sync.syncNow(reason: 'login', force: true));
     return session;
   }
 
@@ -83,12 +93,20 @@ class LocalAuthRepository implements AuthRepository {
       password: password,
     );
     if (hadUsers) {
+      final sync = syncService;
+      if (sync != null) {
+        unawaited(sync.syncNow(reason: 'account_created', force: true));
+      }
       return const AccountCreationResult(
         message:
             'Conta criada, mas ainda não está ativa. Peça ao administrador para ativar seu usuário e liberar as permissões.',
       );
     }
     await _setRememberedLogin(user: user, rememberLogin: rememberLogin);
+    final sync = syncService;
+    if (sync != null) {
+      unawaited(sync.syncNow(reason: 'first_admin_created', force: true));
+    }
     return AccountCreationResult(
       message: 'Conta administradora criada com sucesso.',
       session: await _sessionFromUser(user),

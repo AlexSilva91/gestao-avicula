@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/errors/app_failures.dart';
+import '../../../core/sync/supabase_sync_service.dart';
 import '../data/repositories/local_auth_repository.dart';
 import '../domain/entities/auth_session.dart';
 
@@ -122,5 +123,10 @@ class AuthController extends ChangeNotifier {
 }
 
 final authControllerProvider = ChangeNotifierProvider<AuthController>(
-  (ref) => AuthController(LocalAuthRepository(ref.watch(databaseProvider))),
+  (ref) => AuthController(
+    LocalAuthRepository(
+      ref.watch(databaseProvider),
+      syncService: ref.watch(supabaseSyncServiceProvider),
+    ),
+  ),
 );

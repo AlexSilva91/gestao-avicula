@@ -2362,7 +2362,11 @@ extension OperationsRepository on AppDatabase {
     return const JsonEncoder.withIndent('  ').convert(payload);
   }
 
-  Future<void> restoreJson(String content, {required String actorId}) async {
+  Future<void> restoreJson(
+    String content, {
+    required String actorId,
+    bool writeAudit = true,
+  }) async {
     final raw = jsonDecode(content);
     if (raw is! Map<String, dynamic> || raw['format'] != 'SELETO_BACKUP_V1') {
       throw const FormatException(
@@ -2500,12 +2504,14 @@ extension OperationsRepository on AppDatabase {
       for (final e in rows('appSettings')) {
         await into(appSettings).insert(AppSetting.fromJson(e));
       }
-      await addAudit(
-        userId: actorId,
-        action: 'backup.restore',
-        entityType: 'database',
-        description: 'Cópia de segurança local restaurada.',
-      );
+      if (writeAudit) {
+        await addAudit(
+          userId: actorId,
+          action: 'backup.restore',
+          entityType: 'database',
+          description: 'Cópia de segurança local restaurada.',
+        );
+      }
     });
   }
 }
