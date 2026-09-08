@@ -213,7 +213,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -292,6 +292,11 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(sales, sales.trayBatchId);
         await m.addColumn(sales, sales.trayQuantity);
         await _createPerformanceIndexes();
+      }
+      if (from < 10) {
+        await m.addColumn(eggTrayBatches, eggTrayBatches.trayUnitCostCents);
+        await m.addColumn(eggTrayBatches, eggTrayBatches.labelUnitCostCents);
+        await m.addColumn(eggTrayBatches, eggTrayBatches.eggUnitCostCents);
       }
     },
   );

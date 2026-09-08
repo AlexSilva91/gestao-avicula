@@ -576,6 +576,76 @@ void main() {
     expect((await db.watchFinance().first).single.status, 'CANCELLED');
   });
 
+  test('tray assembly reversal restores eggs, trays and labels', () async {
+    await db.registerLotPurchase(
+      name: 'Poedeiras',
+      quantity: 30,
+      receivedAt: DateTime(2026, 1, 1),
+      arrivalAgeDays: 200,
+      actorId: actor,
+    );
+    final lot = (await db.watchLotSummaries().first).single;
+    await db.registerEggCollection(
+      collectedOn: DateTime(2026, 9, 1),
+      lotId: lot.lot.id,
+      quantity: 120,
+      brokenEggs: 0,
+      discardedEggs: 0,
+      actorId: actor,
+    );
+    final trayItemId = await db.addPackagingItem(
+      type: 'TRAY',
+      name: 'Bandeja 30 ovos',
+      actorId: actor,
+    );
+    final labelItemId = await db.addPackagingItem(
+      type: 'LABEL',
+      name: 'Etiqueta premium',
+      actorId: actor,
+    );
+    final trayLotId = await db.addPackagingLot(
+      itemId: trayItemId,
+      quantity: 5,
+      unitCostCents: 90,
+      actorId: actor,
+    );
+    final labelLotId = await db.addPackagingLot(
+      itemId: labelItemId,
+      quantity: 5,
+      unitCostCents: 20,
+      actorId: actor,
+    );
+
+    final batchId = await db.assembleEggTrays(
+      trayLotId: trayLotId,
+      labelLotId: labelLotId,
+      quantity: 2,
+      eggsPerTray: 30,
+      trayUnitCostCents: 95,
+      labelUnitCostCents: 25,
+      eggUnitCostCents: 60,
+      actorId: actor,
+    );
+
+    final batch = (await db.select(db.eggTrayBatches).get()).single;
+    expect(batch.id, batchId);
+    expect(batch.trayUnitCostCents, 95);
+    expect(batch.labelUnitCostCents, 25);
+    expect(batch.eggUnitCostCents, 60);
+    expect(batch.unitPackagingCostCents, 120);
+    expect(await db.eggStockBalance(), 60);
+    expect(await db.packagingLotBalance(trayLotId), 3);
+    expect(await db.packagingLotBalance(labelLotId), 3);
+    expect(await db.eggTrayBatchBalance(batchId), 2);
+
+    await db.reverseEggTrayAssembly(batchId: batchId, actorId: actor);
+
+    expect(await db.eggStockBalance(), 120);
+    expect(await db.packagingLotBalance(trayLotId), 5);
+    expect(await db.packagingLotBalance(labelLotId), 5);
+    expect(await db.eggTrayBatchBalance(batchId), 0);
+  });
+
   test('cancelled egg sale restores stock and cancels revenue', () async {
     await db.registerLotPurchase(
       name: 'Poedeiras',

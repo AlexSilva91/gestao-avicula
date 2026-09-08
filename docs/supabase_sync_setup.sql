@@ -307,11 +307,18 @@ create table if not exists public.egg_tray_batches (
   quantity integer not null,
   eggs_per_tray integer not null,
   assembled_at timestamptz not null,
+  tray_unit_cost_cents integer not null default 0,
+  label_unit_cost_cents integer not null default 0,
+  egg_unit_cost_cents integer not null default 0,
   unit_packaging_cost_cents integer not null default 0,
   notes text,
   created_by text not null,
   created_at timestamptz not null
 );
+
+alter table public.egg_tray_batches add column if not exists tray_unit_cost_cents integer not null default 0;
+alter table public.egg_tray_batches add column if not exists label_unit_cost_cents integer not null default 0;
+alter table public.egg_tray_batches add column if not exists egg_unit_cost_cents integer not null default 0;
 
 create table if not exists public.egg_tray_stock_movements (
   id text primary key,

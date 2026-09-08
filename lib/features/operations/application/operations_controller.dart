@@ -356,6 +356,9 @@ class OperationsController {
     required String labelLotId,
     required int quantity,
     required int eggsPerTray,
+    int? trayUnitCost,
+    int? labelUnitCost,
+    int? eggUnitCost,
     DateTime? assembledAt,
     String? notes,
   }) => _db.assembleEggTrays(
@@ -363,10 +366,18 @@ class OperationsController {
     labelLotId: labelLotId,
     quantity: quantity,
     eggsPerTray: eggsPerTray,
+    trayUnitCostCents: trayUnitCost,
+    labelUnitCostCents: labelUnitCost,
+    eggUnitCostCents: eggUnitCost,
     assembledAt: assembledAt,
     notes: notes,
     actorId: _actor('sales.create'),
   );
+  Future<void> reverseEggTrayAssembly(String batchId) =>
+      _db.reverseEggTrayAssembly(
+        batchId: batchId,
+        actorId: _actor('sales.cancel'),
+      );
   Future<void> sellEggTrays({
     String? customerId,
     required String trayBatchId,

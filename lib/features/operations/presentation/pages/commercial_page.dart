@@ -337,10 +337,59 @@ class _TrayAssemblyTab extends StatelessWidget {
                         ),
                         title: Text(_trayBatchLabel(batch)),
                         subtitle: Text(
-                          '${batch.trayName} · ${batch.labelName} · ${shortDate.format(batch.batch.assembledAt)}',
+                          '${batch.trayName} · ${batch.labelName} · ${shortDate.format(batch.batch.assembledAt)} · Custo ${money(batch.unitAssemblyCostCents)}',
                         ),
-                        trailing: Chip(
-                          label: Text('${batch.balance} pronta(s)'),
+                        trailing: Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Chip(label: Text('${batch.balance} pronta(s)')),
+                            if (batch.balance > 0 &&
+                                batch.balance == batch.batch.quantity)
+                              PopupMenuButton<String>(
+                                tooltip: 'Ações da montagem',
+                                onSelected: (_) async {
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (dialogContext) => AlertDialog(
+                                      title: const Text('Reverter montagem'),
+                                      content: const Text(
+                                        'Os ovos, bandejas e etiquetas desta montagem voltarão aos estoques de origem.',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(
+                                            dialogContext,
+                                            false,
+                                          ),
+                                          child: const Text('Voltar'),
+                                        ),
+                                        FilledButton(
+                                          onPressed: () => Navigator.pop(
+                                            dialogContext,
+                                            true,
+                                          ),
+                                          child: const Text('Reverter'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirm != true) return;
+                                  try {
+                                    await ref
+                                        .read(operationsControllerProvider)
+                                        .reverseEggTrayAssembly(batch.batch.id);
+                                  } catch (e) {
+                                    await showOperationError(context, e);
+                                  }
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'reverse',
+                                    child: Text('Reverter montagem'),
+                                  ),
+                                ],
+                              ),
+                          ],
                         ),
                       );
                     },
@@ -869,6 +918,9 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
   String? labelLotId;
   final quantity = TextEditingController();
   final eggsPerTray = TextEditingController(text: '30');
+  final trayUnitCost = TextEditingController();
+  final labelUnitCost = TextEditingController();
+  final eggUnitCost = TextEditingController();
   final notes = TextEditingController();
   DateTime assembledAt = DateTime.now();
   bool saving = false;
@@ -880,14 +932,26 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
     final availableLabels = widget.labelLots.where((lot) => lot.balance > 0);
     trayLotId = availableTrays.isEmpty ? null : availableTrays.first.lot.id;
     labelLotId = availableLabels.isEmpty ? null : availableLabels.first.lot.id;
+    _fillCostControllers();
   }
 
   @override
   void dispose() {
     quantity.dispose();
     eggsPerTray.dispose();
+    trayUnitCost.dispose();
+    labelUnitCost.dispose();
+    eggUnitCost.dispose();
     notes.dispose();
     super.dispose();
+  }
+
+  void _fillCostControllers() {
+    final tray = _selectedPackagingLot(widget.trayLots, trayLotId);
+    final label = _selectedPackagingLot(widget.labelLots, labelLotId);
+    trayUnitCost.text = _moneyInput(tray?.lot.unitCostCents ?? 0);
+    labelUnitCost.text = _moneyInput(label?.lot.unitCostCents ?? 0);
+    if (eggUnitCost.text.isEmpty) eggUnitCost.text = _moneyInput(0);
   }
 
   @override
@@ -912,7 +976,10 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
                       child: Text(_packagingLotLabel(lot)),
                     ),
                 ],
-                onChanged: (v) => setState(() => trayLotId = v),
+                onChanged: (v) => setState(() {
+                  trayLotId = v;
+                  _fillCostControllers();
+                }),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
@@ -925,7 +992,10 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
                       child: Text(_packagingLotLabel(lot)),
                     ),
                 ],
-                onChanged: (v) => setState(() => labelLotId = v),
+                onChanged: (v) => setState(() {
+                  labelLotId = v;
+                  _fillCostControllers();
+                }),
               ),
               const SizedBox(height: 12),
               Row(
@@ -950,6 +1020,47 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: trayUnitCost,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Valor da bandeja',
+                        prefixText: 'R\$ ',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: labelUnitCost,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Valor da etiqueta',
+                        prefixText: 'R\$ ',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: eggUnitCost,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Valor por ovo',
+                  prefixText: 'R\$ ',
+                ),
               ),
               const SizedBox(height: 12),
               ListTile(
@@ -988,6 +1099,9 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
                           labelLotId: labelLotId ?? '',
                           quantity: int.tryParse(quantity.text) ?? 0,
                           eggsPerTray: int.tryParse(eggsPerTray.text) ?? 0,
+                          trayUnitCost: parseMoneyToCents(trayUnitCost.text),
+                          labelUnitCost: parseMoneyToCents(labelUnitCost.text),
+                          eggUnitCost: parseMoneyToCents(eggUnitCost.text),
                           assembledAt: assembledAt,
                           notes: notes.text,
                         );
@@ -1362,6 +1476,19 @@ String _packagingLotLabel(PackagingLotBalance lot) {
     '${lot.balance} un.',
   ].join(' · ');
 }
+
+PackagingLotBalance? _selectedPackagingLot(
+  List<PackagingLotBalance> lots,
+  String? id,
+) {
+  for (final lot in lots) {
+    if (lot.lot.id == id) return lot;
+  }
+  return null;
+}
+
+String _moneyInput(int cents) =>
+    (cents / 100).toStringAsFixed(2).replaceAll('.', ',');
 
 String _trayBatchLabel(EggTrayBatchBalance batch) {
   final eggs = batch.batch.eggsPerTray;

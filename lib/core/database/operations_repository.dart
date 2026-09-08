@@ -203,6 +203,10 @@ class EggTrayBatchBalance {
   int get eggBalance => balance * batch.eggsPerTray;
   int get dozens => eggBalance ~/ 12;
   int get looseEggs => eggBalance % 12;
+  int get unitAssemblyCostCents =>
+      batch.trayUnitCostCents +
+      batch.labelUnitCostCents +
+      (batch.eggUnitCostCents * batch.eggsPerTray);
 }
 
 class BirdMetrics {
@@ -1403,6 +1407,9 @@ extension OperationsRepository on AppDatabase {
                 quantity: row.read<int>('quantity'),
                 eggsPerTray: row.read<int>('eggs_per_tray'),
                 assembledAt: row.read<DateTime>('assembled_at'),
+                trayUnitCostCents: row.read<int>('tray_unit_cost_cents'),
+                labelUnitCostCents: row.read<int>('label_unit_cost_cents'),
+                eggUnitCostCents: row.read<int>('egg_unit_cost_cents'),
                 unitPackagingCostCents: row.read<int>(
                   'unit_packaging_cost_cents',
                 ),
@@ -1551,6 +1558,9 @@ extension OperationsRepository on AppDatabase {
     required String labelLotId,
     required int quantity,
     required int eggsPerTray,
+    int? trayUnitCostCents,
+    int? labelUnitCostCents,
+    int? eggUnitCostCents,
     DateTime? assembledAt,
     String? notes,
     required String actorId,
@@ -1576,8 +1586,13 @@ extension OperationsRepository on AppDatabase {
     final id = _uuid.v4();
     final now = DateTime.now();
     final occurredAt = assembledAt ?? now;
-    final unitPackagingCost =
-        trayLot.lot.unitCostCents + labelLot.lot.unitCostCents;
+    final trayUnitCost = trayUnitCostCents ?? trayLot.lot.unitCostCents;
+    final labelUnitCost = labelUnitCostCents ?? labelLot.lot.unitCostCents;
+    final eggUnitCost = eggUnitCostCents ?? 0;
+    if (trayUnitCost < 0 || labelUnitCost < 0 || eggUnitCost < 0) {
+      throw ArgumentError('Informe valores unitários válidos.');
+    }
+    final unitPackagingCost = trayUnitCost + labelUnitCost;
     await transaction(() async {
       await into(eggTrayBatches).insert(
         EggTrayBatchesCompanion.insert(
@@ -1587,6 +1602,9 @@ extension OperationsRepository on AppDatabase {
           quantity: quantity,
           eggsPerTray: eggsPerTray,
           assembledAt: occurredAt,
+          trayUnitCostCents: Value(trayUnitCost),
+          labelUnitCostCents: Value(labelUnitCost),
+          eggUnitCostCents: Value(eggUnitCost),
           unitPackagingCostCents: Value(unitPackagingCost),
           notes: Value(_cleanValue(notes)),
           createdBy: actorId,
@@ -1652,6 +1670,91 @@ extension OperationsRepository on AppDatabase {
       );
     });
     return id;
+  }
+
+  Future<void> reverseEggTrayAssembly({
+    required String batchId,
+    required String actorId,
+  }) async {
+    final batch = await (select(
+      eggTrayBatches,
+    )..where((b) => b.id.equals(batchId))).getSingle();
+    final balance = await eggTrayBatchBalance(batchId);
+    if (balance <= 0) {
+      throw StateError('Esta montagem já foi revertida ou não tem saldo.');
+    }
+    if (balance != batch.quantity) {
+      throw StateError(
+        'Só é possível reverter a montagem inteira quando nenhuma bandeja deste lote foi vendida.',
+      );
+    }
+    final trayLot = await _packagingLotWithItem(batch.trayLotId, 'TRAY');
+    final labelLot = await _packagingLotWithItem(batch.labelLotId, 'LABEL');
+    final now = DateTime.now();
+    final eggs = batch.quantity * batch.eggsPerTray;
+    await transaction(() async {
+      await into(eggTrayStockMovements).insert(
+        EggTrayStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          batchId: batch.id,
+          type: 'ADJUSTMENT_OUT',
+          occurredAt: now,
+          quantity: batch.quantity,
+          reference: Value('REVERSAL:$batchId'),
+          notes: const Value('Reversão de montagem'),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(packagingStockMovements).insert(
+        PackagingStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          itemId: trayLot.item.id,
+          lotId: trayLot.lot.id,
+          type: 'ADJUSTMENT_IN',
+          occurredAt: now,
+          quantity: batch.quantity,
+          reference: Value('REVERSAL:$batchId'),
+          notes: const Value('Reversão de montagem de bandeja'),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(packagingStockMovements).insert(
+        PackagingStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          itemId: labelLot.item.id,
+          lotId: labelLot.lot.id,
+          type: 'ADJUSTMENT_IN',
+          occurredAt: now,
+          quantity: batch.quantity,
+          reference: Value('REVERSAL:$batchId'),
+          notes: const Value('Reversão de montagem de bandeja'),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(eggStockMovements).insert(
+        EggStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          type: 'ADJUSTMENT_IN',
+          occurredAt: now,
+          quantity: eggs,
+          reference: Value('REVERSAL:$batchId'),
+          notes: const Value('Reversão de montagem de bandeja'),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'egg_trays.reverse',
+        entityType: 'egg_tray_batch',
+        entityId: batchId,
+        description:
+            'Montagem de ${batch.quantity} bandeja(s) revertida e itens devolvidos ao estoque.',
+      );
+    });
   }
 
   Future<void> createEggTraySale({
@@ -3151,7 +3254,7 @@ extension OperationsRepository on AppDatabase {
         ).insert(PackagingStockMovement.fromJson(e));
       }
       for (final e in rows('eggTrayBatches')) {
-        await into(eggTrayBatches).insert(EggTrayBatch.fromJson(e));
+        await into(eggTrayBatches).insert(EggTrayBatch.fromJson(_trayJson(e)));
       }
       for (final e in rows('eggTrayStockMovements')) {
         await into(
@@ -3228,6 +3331,13 @@ Map<String, dynamic> _saleJson(Map<String, dynamic> json) => {
   ...json,
   'trayBatchId': json['trayBatchId'],
   'trayQuantity': json['trayQuantity'] ?? 0,
+};
+
+Map<String, dynamic> _trayJson(Map<String, dynamic> json) => {
+  ...json,
+  'trayUnitCostCents': json['trayUnitCostCents'] ?? 0,
+  'labelUnitCostCents': json['labelUnitCostCents'] ?? 0,
+  'eggUnitCostCents': json['eggUnitCostCents'] ?? 0,
 };
 
 FeedConsumptionRecommendationsCompanion

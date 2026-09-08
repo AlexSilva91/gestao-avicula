@@ -85,6 +85,7 @@ String auditActionLabel(String value) => switch (value) {
   'packaging.item_create' => 'Material de embalagem cadastrado',
   'packaging.lot_create' => 'Lote de embalagem cadastrado',
   'egg_trays.assemble' => 'Bandejas montadas',
+  'egg_trays.reverse' => 'Montagem de bandejas revertida',
   'lighting.manage' => 'Programa de luz definido',
   'settings.update' => 'Configuração atualizada',
   'backup.restore' => 'Cópia de segurança restaurada',
