@@ -84,6 +84,15 @@ final calendarEventsProvider =
           .watch(databaseProvider)
           .watchCalendarEvents(range.first, range.last),
     );
+final calendarAlertEventsProvider =
+    StreamProvider.family<
+      List<CalendarEvent>,
+      ({DateTime first, DateTime last})
+    >(
+      (ref, range) => ref
+          .watch(databaseProvider)
+          .watchCalendarAlertEvents(range.first, range.last),
+    );
 final lightingStepsProvider =
     StreamProvider.family<List<LightingProgramStep>, String>(
       (ref, id) => ref.watch(databaseProvider).watchLightingSteps(id),
@@ -420,6 +429,75 @@ class OperationsController {
         index++;
       }
     }
+  }
+
+  Future<void> updateCalendarAlert({
+    required CalendarEvent event,
+    required String title,
+    required DateTime date,
+    required bool alertEnabled,
+    String? alertMessage,
+    required String alertTime,
+    required String recurrence,
+    DateTime? repeatUntil,
+    Set<int> weekdays = const {},
+  }) async {
+    final actor = _actor('calendar.manage');
+    final startsAt = dateWithConfiguredTime(date, alertTime);
+    final occurrences = alertOccurrences(
+      startsAt: startsAt,
+      alertTime: alertTime,
+      recurrence: recurrence,
+      repeatUntil: repeatUntil,
+      weekdays: weekdays,
+    );
+    final alertTimes = occurrences
+        .where((occurrence) => occurrence.isAfter(DateTime.now()))
+        .toList();
+    if (alertEnabled && alertTimes.isEmpty) {
+      throw ArgumentError('Informe uma data e hora futura para o alerta.');
+    }
+    if (alertEnabled && NotificationService().nativeSupported) {
+      final status = await NotificationService().prepareCriticalAlerts();
+      if (!status.canDeliverCriticalAlerts) {
+        throw StateError(
+          'O Android ainda precisa liberar os alertas sonoros: ${status.missingItems.join(' ')}',
+        );
+      }
+    }
+    await _db.updateCalendarEventAlert(
+      event: event,
+      title: title,
+      startsAt: startsAt,
+      alertEnabled: alertEnabled,
+      alertMessage: alertMessage,
+      alertTime: alertTime,
+      recurrence: recurrence,
+      repeatUntil: repeatUntil,
+      weekdays: _weekdayText(weekdays),
+      actorId: actor,
+    );
+    await cancelCalendarEventAlerts(event);
+    if (alertEnabled) {
+      await schedulePersistedAlerts(_db);
+    }
+  }
+
+  Future<void> setCalendarAlertEnabled(
+    CalendarEvent event,
+    bool enabled,
+  ) async {
+    await updateCalendarAlert(
+      event: event,
+      title: event.title,
+      date: event.startsAt,
+      alertEnabled: enabled,
+      alertMessage: event.alertMessage,
+      alertTime: event.alertTime,
+      recurrence: event.recurrence,
+      repeatUntil: event.repeatUntil,
+      weekdays: parseWeekdays(event.weekdays),
+    );
   }
 
   Future<void> assignLight(String lotId, String programId) =>

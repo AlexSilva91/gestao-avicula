@@ -1834,6 +1834,20 @@ extension OperationsRepository on AppDatabase {
             ..orderBy([(e) => OrderingTerm.asc(e.startsAt)]))
           .watch();
 
+  Stream<List<CalendarEvent>> watchCalendarAlertEvents(
+    DateTime first,
+    DateTime last,
+  ) =>
+      (select(calendarEvents)
+            ..where(
+              (e) =>
+                  e.startsAt.isSmallerOrEqualValue(last) &
+                  (e.startsAt.isBiggerOrEqualValue(first) |
+                      e.repeatUntil.isBiggerOrEqualValue(first)),
+            )
+            ..orderBy([(e) => OrderingTerm.asc(e.startsAt)]))
+          .watch();
+
   Future<List<CalendarEvent>> futureAlertCalendarEvents(
     DateTime first,
     DateTime last,
@@ -1940,6 +1954,57 @@ extension OperationsRepository on AppDatabase {
       );
     });
     return id;
+  }
+
+  Future<void> updateCalendarEventAlert({
+    required CalendarEvent event,
+    required String title,
+    required DateTime startsAt,
+    required bool alertEnabled,
+    String? alertMessage,
+    required String alertTime,
+    required String recurrence,
+    DateTime? repeatUntil,
+    String? weekdays,
+    required String actorId,
+  }) async {
+    if (event.createdBy == 'system') {
+      throw ArgumentError(
+        'Alertas automáticos do sistema não podem ser editados.',
+      );
+    }
+    if (title.trim().isEmpty) {
+      throw ArgumentError('Informe o título do alerta.');
+    }
+    _validateAlertRecurrence(
+      alertTime: alertTime,
+      recurrence: recurrence,
+      weekdays: weekdays,
+      repeatUntil: repeatUntil,
+    );
+    await transaction(() async {
+      await (update(calendarEvents)..where((e) => e.id.equals(event.id))).write(
+        CalendarEventsCompanion(
+          title: Value(title.trim()),
+          startsAt: Value(startsAt),
+          alertEnabled: Value(alertEnabled),
+          alertMessage: Value(_cleanValue(alertMessage)),
+          alertTime: Value(alertTime),
+          recurrence: Value(recurrence),
+          repeatUntil: Value(repeatUntil),
+          weekdays: Value(_cleanValue(weekdays)),
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'calendar.update_alert',
+        entityType: 'calendar_event',
+        entityId: event.id,
+        description: alertEnabled
+            ? 'Alerta ${title.trim()} atualizado.'
+            : 'Alerta ${title.trim()} desativado.',
+      );
+    });
   }
 
   Future<void> assignLightingProgram({

@@ -95,6 +95,22 @@ Future<void> schedulePersistedAlerts(AppDatabase database) async {
   }
 }
 
+Future<void> cancelCalendarEventAlerts(CalendarEvent event) async {
+  final service = NotificationService();
+  if (!service.nativeSupported) return;
+  var index = 0;
+  for (final _ in alertOccurrences(
+    startsAt: event.startsAt,
+    alertTime: event.alertTime,
+    recurrence: event.recurrence,
+    repeatUntil: event.repeatUntil,
+    weekdays: parseWeekdays(event.weekdays),
+  )) {
+    await service.cancel(stableAlertId('calendar:${event.id}:$index'));
+    index++;
+  }
+}
+
 DateTime atConfiguredTime(DateTime date, String alertTime) {
   final parts = alertTime.split(':');
   final hour = int.tryParse(parts.first) ?? 8;

@@ -304,6 +304,72 @@ void main() {
     expect(events.every((event) => event.lotId == lotId), isTrue);
   });
 
+  test('calendar alerts can be edited and deactivated', () async {
+    final eventId = await db.addCalendarEvent(
+      title: 'Alerta de manejo',
+      type: 'ALERT',
+      startsAt: DateTime(2026, 9, 8, 8),
+      alertEnabled: true,
+      alertMessage: 'Mensagem original',
+      alertTime: '08:00',
+      actorId: actor,
+    );
+    final event =
+        (await db
+                .watchCalendarEvents(DateTime(2026, 9), DateTime(2026, 10))
+                .first)
+            .singleWhere((item) => item.id == eventId);
+
+    await db.updateCalendarEventAlert(
+      event: event,
+      title: 'Alerta editado',
+      startsAt: DateTime(2026, 9, 8, 14, 30),
+      alertEnabled: false,
+      alertMessage: 'Mensagem editada',
+      alertTime: '14:30',
+      recurrence: 'WEEKLY',
+      repeatUntil: DateTime(2026, 9, 30),
+      weekdays: '${DateTime.tuesday},${DateTime.thursday}',
+      actorId: actor,
+    );
+
+    final edited =
+        (await db
+                .watchCalendarEvents(DateTime(2026, 9), DateTime(2026, 10))
+                .first)
+            .singleWhere((item) => item.id == eventId);
+    expect(edited.title, 'Alerta editado');
+    expect(edited.startsAt, DateTime(2026, 9, 8, 14, 30));
+    expect(edited.alertEnabled, isFalse);
+    expect(edited.alertMessage, 'Mensagem editada');
+    expect(edited.alertTime, '14:30');
+    expect(edited.recurrence, 'WEEKLY');
+    expect(edited.weekdays, '${DateTime.tuesday},${DateTime.thursday}');
+  });
+
+  test(
+    'calendar alert list includes recurring alerts already started',
+    () async {
+      await db.addCalendarEvent(
+        title: 'Alerta semanal',
+        type: 'ALERT',
+        startsAt: DateTime(2026, 9, 1, 7),
+        alertEnabled: true,
+        alertTime: '07:00',
+        recurrence: 'WEEKLY',
+        repeatUntil: DateTime(2026, 9, 30),
+        weekdays: '${DateTime.tuesday}',
+        actorId: actor,
+      );
+
+      final alerts = await db
+          .watchCalendarAlertEvents(DateTime(2026, 9, 8), DateTime(2026, 9, 15))
+          .first;
+
+      expect(alerts.map((event) => event.title), contains('Alerta semanal'));
+    },
+  );
+
   test('ingredients and formulas can be edited and deactivated', () async {
     final ingredient = (await db.watchIngredientOverviews().first).first;
     await db.updateIngredient(

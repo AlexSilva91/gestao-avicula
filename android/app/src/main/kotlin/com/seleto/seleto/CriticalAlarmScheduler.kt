@@ -17,21 +17,22 @@ data class CriticalAlarm(
 
 object CriticalAlarmScheduler {
     fun schedule(context: Context, alarm: CriticalAlarm, persist: Boolean = true) {
+        val safeAlarm = alarm.copy(durationMillis = safeDuration(alarm.durationMillis))
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
             throw SecurityException("Permissao de alarmes exatos nao concedida.")
         }
         val showPendingIntent = PendingIntent.getActivity(
             context,
-            alarm.id,
+            safeAlarm.id,
             launchIntent(context),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         alarmManager.setAlarmClock(
-            AlarmManager.AlarmClockInfo(alarm.triggerAtMillis, showPendingIntent),
-            pendingIntent(context, alarm)
+            AlarmManager.AlarmClockInfo(safeAlarm.triggerAtMillis, showPendingIntent),
+            pendingIntent(context, safeAlarm)
         )
-        if (persist) save(context, alarm)
+        if (persist) save(context, safeAlarm)
     }
 
     fun cancel(context: Context, id: Int) {
@@ -72,7 +73,7 @@ object CriticalAlarmScheduler {
             title = json.getString("title"),
             body = json.getString("body"),
             triggerAtMillis = json.getLong("triggerAtMillis"),
-            durationMillis = json.optLong("durationMillis", DEFAULT_ALARM_DURATION_MS)
+            durationMillis = safeDuration(json.optLong("durationMillis", DEFAULT_ALARM_DURATION_MS))
         )
     }.getOrNull()
 
@@ -101,5 +102,10 @@ object CriticalAlarmScheduler {
     private fun prefs(context: Context) =
         context.getSharedPreferences("seleto_critical_alarms", Context.MODE_PRIVATE)
 
-    const val DEFAULT_ALARM_DURATION_MS = 30_000L
+    fun safeDuration(durationMillis: Long): Long =
+        durationMillis.coerceIn(MIN_ALARM_DURATION_MS, MAX_ALARM_DURATION_MS)
+
+    private const val MIN_ALARM_DURATION_MS = 1_000L
+    const val DEFAULT_ALARM_DURATION_MS = 5_000L
+    const val MAX_ALARM_DURATION_MS = 5_000L
 }

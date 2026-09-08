@@ -37,7 +37,7 @@ class CriticalAlarmService : Service() {
         val durationMillis = intent?.getLongExtra(
             "durationMillis",
             CriticalAlarmScheduler.DEFAULT_ALARM_DURATION_MS
-        )?.coerceIn(1_000L, 120_000L)
+        )?.let { CriticalAlarmScheduler.safeDuration(it) }
             ?: CriticalAlarmScheduler.DEFAULT_ALARM_DURATION_MS
 
         ensureAlarmChannel()

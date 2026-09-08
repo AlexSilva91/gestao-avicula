@@ -53,7 +53,7 @@ class _ScheduledAlertsCard extends StatelessWidget {
     final first = DateTime(today.year, today.month, today.day);
     final last = first.add(const Duration(days: 90));
     return ref
-        .watch(calendarEventsProvider((first: first, last: last)))
+        .watch(calendarAlertEventsProvider((first: first, last: last)))
         .when(
           loading: () => const Card(
             child: Padding(
@@ -63,7 +63,7 @@ class _ScheduledAlertsCard extends StatelessWidget {
           ),
           error: (_, _) => const SeletoAsyncError(),
           data: (events) {
-            final alerts = events.where((event) => event.alertEnabled).toList();
+            final alerts = events.where(_isManageableAlertEvent).toList();
             return Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -98,13 +98,44 @@ class _ScheduledAlertsCard extends StatelessWidget {
                         itemBuilder: (_, index) {
                           final event = alerts[index];
                           final nextTrigger = _nextAlertTrigger(event);
+                          final active = event.alertEnabled;
                           return ListTile(
-                            leading: const Icon(Icons.notifications_active),
+                            leading: Icon(
+                              active
+                                  ? Icons.notifications_active
+                                  : Icons.notifications_off_outlined,
+                            ),
                             title: Text(event.title),
                             subtitle: Text(
-                              nextTrigger == null
+                              !active
+                                  ? 'Alerta desativado'
+                                  : nextTrigger == null
                                   ? 'Sem próximo disparo futuro'
                                   : 'Próximo disparo: ${shortDate.format(nextTrigger)} · ${shortTime.format(nextTrigger)} · ${_AlertTile.recurrenceLabel(event.recurrence)}',
+                            ),
+                            trailing: Wrap(
+                              spacing: 4,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Editar alerta',
+                                  icon: const Icon(
+                                    Icons.edit_notifications_outlined,
+                                  ),
+                                  onPressed: () => _editAlert(context, event),
+                                ),
+                                IconButton(
+                                  tooltip: active
+                                      ? 'Desativar alerta'
+                                      : 'Ativar alerta',
+                                  icon: Icon(
+                                    active
+                                        ? Icons.notifications_off_outlined
+                                        : Icons.notifications_active_outlined,
+                                  ),
+                                  onPressed: () =>
+                                      _toggleAlert(context, event, !active),
+                                ),
+                              ],
                             ),
                           );
                         },
@@ -115,6 +146,48 @@ class _ScheduledAlertsCard extends StatelessWidget {
             );
           },
         );
+  }
+
+  bool _isManageableAlertEvent(CalendarEvent event) =>
+      event.createdBy != 'system' &&
+      const {
+        'ALERT',
+        'FEED',
+        'LITTER_CHANGE',
+        'SANITARY_TREATMENT',
+        'VACCINATION',
+        'LIGHTING',
+        'PHASE_CHANGE',
+        'LOW_STOCK',
+        'ORDER',
+        'DELIVERY',
+      }.contains(event.type);
+
+  Future<void> _editAlert(BuildContext context, CalendarEvent event) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _CalendarAlertEditDialog(ref: ref, event: event),
+    );
+  }
+
+  Future<void> _toggleAlert(
+    BuildContext context,
+    CalendarEvent event,
+    bool enabled,
+  ) async {
+    try {
+      await ref
+          .read(operationsControllerProvider)
+          .setCalendarAlertEnabled(event, enabled);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(enabled ? 'Alerta ativado.' : 'Alerta desativado.'),
+        ),
+      );
+    } catch (e) {
+      if (context.mounted) await showOperationError(context, e);
+    }
   }
 }
 
@@ -130,6 +203,277 @@ DateTime? _nextAlertTrigger(CalendarEvent event) {
     if (occurrence.isAfter(now)) return occurrence;
   }
   return null;
+}
+
+class _CalendarAlertEditDialog extends StatefulWidget {
+  const _CalendarAlertEditDialog({required this.ref, required this.event});
+
+  final WidgetRef ref;
+  final CalendarEvent event;
+
+  @override
+  State<_CalendarAlertEditDialog> createState() =>
+      _CalendarAlertEditDialogState();
+}
+
+class _CalendarAlertEditDialogState extends State<_CalendarAlertEditDialog> {
+  final title = TextEditingController();
+  final message = TextEditingController();
+  late final TextEditingController time;
+  late DateTime date;
+  late DateTime? repeatUntil;
+  late String recurrence;
+  late bool alertEnabled;
+  late final Set<int> weekdays;
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    title.text = widget.event.title;
+    message.text = widget.event.alertMessage ?? '';
+    time = TextEditingController(text: widget.event.alertTime);
+    date = widget.event.startsAt;
+    repeatUntil = widget.event.repeatUntil;
+    recurrence = widget.event.recurrence;
+    alertEnabled = widget.event.alertEnabled;
+    weekdays = parseWeekdays(widget.event.weekdays);
+    if (weekdays.isEmpty) weekdays.add(date.weekday);
+  }
+
+  @override
+  void dispose() {
+    title.dispose();
+    message.dispose();
+    time.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (saving) return;
+    setState(() => saving = true);
+    try {
+      await widget.ref
+          .read(operationsControllerProvider)
+          .updateCalendarAlert(
+            event: widget.event,
+            title: title.text,
+            date: date,
+            alertEnabled: alertEnabled,
+            alertMessage: message.text,
+            alertTime: time.text,
+            recurrence: recurrence,
+            repeatUntil: repeatUntil,
+            weekdays: weekdays,
+          );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            alertEnabled ? 'Alerta atualizado.' : 'Alerta desativado.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await showOperationError(context, e);
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !saving,
+    child: AlertDialog(
+      title: const Text('Editar alerta'),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: title,
+                enabled: !saving,
+                decoration: const InputDecoration(
+                  labelText: 'Título',
+                  prefixIcon: Icon(Icons.title),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Alerta ativo'),
+                value: alertEnabled,
+                onChanged: saving
+                    ? null
+                    : (value) => setState(() => alertEnabled = value),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  recurrence == 'ONCE' ? 'Data do alerta' : 'Data inicial',
+                ),
+                subtitle: Text(shortDate.format(date)),
+                trailing: const Icon(Icons.calendar_today),
+                onTap: saving
+                    ? null
+                    : () async {
+                        final picked = await pickSeletoDate(context, date);
+                        if (picked == null) return;
+                        setState(() {
+                          if (recurrence == 'WEEKLY' &&
+                              weekdays.length == 1 &&
+                              weekdays.contains(date.weekday)) {
+                            weekdays
+                              ..clear()
+                              ..add(picked.weekday);
+                          }
+                          date = picked;
+                          if (seletoAlertTimeIsPast(date, time.text)) {
+                            time.text = defaultSeletoAlertTime(date);
+                          }
+                        });
+                      },
+              ),
+              TextField(
+                controller: time,
+                enabled: !saving,
+                readOnly: true,
+                onTap: saving
+                    ? null
+                    : () async {
+                        final picked = await pickSeletoTime(context, time.text);
+                        if (picked != null) time.text = picked;
+                      },
+                decoration: const InputDecoration(
+                  labelText: 'Hora',
+                  hintText: '08:00',
+                  prefixIcon: Icon(Icons.access_time),
+                  suffixIcon: Icon(Icons.schedule),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: recurrence,
+                decoration: const InputDecoration(
+                  labelText: 'Repetição',
+                  prefixIcon: Icon(Icons.repeat),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'ONCE', child: Text('Uma vez')),
+                  DropdownMenuItem(value: 'DAILY', child: Text('Diário')),
+                  DropdownMenuItem(value: 'WEEKLY', child: Text('Semanal')),
+                  DropdownMenuItem(value: 'MONTHLY', child: Text('Mensal')),
+                ],
+                onChanged: saving
+                    ? null
+                    : (value) => setState(() {
+                        recurrence = value!;
+                        if (recurrence == 'WEEKLY' && weekdays.isEmpty) {
+                          weekdays.add(date.weekday);
+                        }
+                      }),
+              ),
+              if (recurrence == 'WEEKLY') ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Dias da semana',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final item in const [
+                            (DateTime.monday, 'Seg'),
+                            (DateTime.tuesday, 'Ter'),
+                            (DateTime.wednesday, 'Qua'),
+                            (DateTime.thursday, 'Qui'),
+                            (DateTime.friday, 'Sex'),
+                            (DateTime.saturday, 'Sáb'),
+                            (DateTime.sunday, 'Dom'),
+                          ])
+                            FilterChip(
+                              label: Text(item.$2),
+                              selected: weekdays.contains(item.$1),
+                              onSelected: saving
+                                  ? null
+                                  : (selected) => setState(() {
+                                      selected
+                                          ? weekdays.add(item.$1)
+                                          : weekdays.remove(item.$1);
+                                    }),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (recurrence != 'ONCE')
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Repetir até'),
+                  subtitle: Text(
+                    repeatUntil == null
+                        ? 'Limite automático'
+                        : shortDate.format(repeatUntil!),
+                  ),
+                  trailing: const Icon(Icons.event_repeat),
+                  onTap: saving
+                      ? null
+                      : () async {
+                          final picked = await pickSeletoDate(
+                            context,
+                            repeatUntil ?? date,
+                          );
+                          if (picked != null) {
+                            setState(() => repeatUntil = picked);
+                          }
+                        },
+                ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: message,
+                enabled: !saving,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Mensagem do alerta',
+                  prefixIcon: Icon(Icons.message_outlined),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: saving ? null : _save,
+          icon: saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.save),
+          label: Text(saving ? 'Salvando...' : 'Salvar'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _AlertsCard extends StatelessWidget {

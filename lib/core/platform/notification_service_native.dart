@@ -45,6 +45,7 @@ class NotificationReadiness {
 class NotificationService {
   static const _channelId = 'seleto_alarm';
   static const _messageChannelId = 'seleto_messages';
+  static const _maxAlarmDuration = Duration(seconds: 5);
   static const _criticalChannel = MethodChannel('seleto/critical_alerts');
   static final _plugin = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
@@ -201,7 +202,7 @@ class NotificationService {
         'Se você ouviu som e sentiu vibração, o alerta crítico está pronto.',
     at: DateTime.now().add(const Duration(seconds: 5)),
     urgent: true,
-    alarmDuration: const Duration(seconds: 5),
+    alarmDuration: _maxAlarmDuration,
   );
 
   Future<void> schedule({
@@ -226,7 +227,7 @@ class NotificationService {
         title: title,
         body: body,
         at: at,
-        alarmDuration: alarmDuration,
+        alarmDuration: _safeAlarmDuration(alarmDuration),
       );
     }
     await _plugin.zonedSchedule(
@@ -324,6 +325,13 @@ class NotificationService {
       'triggerAtMillis': at.millisecondsSinceEpoch,
       if (alarmDuration != null) 'durationMillis': alarmDuration.inMilliseconds,
     });
+  }
+
+  Duration _safeAlarmDuration(Duration? requested) {
+    if (requested == null || requested > _maxAlarmDuration) {
+      return _maxAlarmDuration;
+    }
+    return requested;
   }
 
   Future<bool> _isIgnoringBatteryOptimizations() async =>

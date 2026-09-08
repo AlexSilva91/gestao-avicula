@@ -81,6 +81,7 @@ String auditActionLabel(String value) => switch (value) {
   'finance.cancel' => 'Lançamento cancelado',
   'investments.create' => 'Investimento registrado',
   'calendar.create' => 'Evento criado',
+  'calendar.update_alert' => 'Alerta atualizado',
   'lighting.manage' => 'Programa de luz definido',
   'settings.update' => 'Configuração atualizada',
   'backup.restore' => 'Cópia de segurança restaurada',

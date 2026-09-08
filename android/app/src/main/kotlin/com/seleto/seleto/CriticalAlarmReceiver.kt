@@ -29,7 +29,7 @@ class CriticalAlarmReceiver : BroadcastReceiver() {
         val durationMillis = intent.getLongExtra(
             "durationMillis",
             CriticalAlarmScheduler.DEFAULT_ALARM_DURATION_MS
-        ).coerceIn(1_000L, 120_000L)
+        ).let { CriticalAlarmScheduler.safeDuration(it) }
         if (startAlarmService(appContext, id, title, body, durationMillis)) {
             return
         }
