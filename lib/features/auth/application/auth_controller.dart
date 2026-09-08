@@ -126,7 +126,7 @@ final authControllerProvider = ChangeNotifierProvider<AuthController>(
   (ref) => AuthController(
     LocalAuthRepository(
       ref.watch(databaseProvider),
-      syncService: ref.watch(supabaseSyncServiceProvider),
+      syncService: ref.read(supabaseSyncServiceProvider),
     ),
   ),
 );

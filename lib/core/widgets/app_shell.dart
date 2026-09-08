@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/application/auth_controller.dart';
 import '../constants/design_tokens.dart';
+import '../sync/supabase_sync_service.dart';
 import 'app_background.dart';
 import 'brand_mark.dart';
 
@@ -226,6 +227,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final width = MediaQuery.sizeOf(context).width;
     final path = GoRouterState.of(context).uri.path;
     final session = ref.watch(authControllerProvider).session;
+    final syncService = ref.watch(supabaseSyncServiceProvider);
     final destinations = seletoDestinations
         .where((d) => session?.allows(d.permission) ?? false)
         .toList();
@@ -270,6 +272,38 @@ class _AppShellState extends ConsumerState<AppShell> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                ),
+              ),
+            ),
+          if (syncService.isSynced)
+            Padding(
+              padding: EdgeInsets.only(left: mobile ? 4 : 8, right: 4),
+              child: Center(
+                child: Semantics(
+                  label: 'sincronizado',
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      child: Text(
+                        'sincronizado',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onPrimaryContainer,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),

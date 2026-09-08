@@ -4,7 +4,8 @@ import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:uuid/uuid.dart';
@@ -12,7 +13,16 @@ import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
 import '../database/operations_repository.dart';
 
-enum SyncStatus { idle, skipped, uploaded, downloaded, merged, offline, failed }
+enum SyncStatus {
+  idle,
+  syncing,
+  skipped,
+  uploaded,
+  downloaded,
+  merged,
+  offline,
+  failed,
+}
 
 class SyncResult {
   const SyncResult(this.status, {this.message});
@@ -26,7 +36,7 @@ class SyncResult {
       status == SyncStatus.merged;
 }
 
-class SupabaseSyncService {
+class SupabaseSyncService extends ChangeNotifier {
   SupabaseSyncService(this._database, {SupabaseClient? client})
     : _clientOverride = client;
 
@@ -36,6 +46,9 @@ class SupabaseSyncService {
   Future<SyncResult>? _activeSync;
   DateTime? _lastAttemptAt;
   bool _started = false;
+  bool _disposed = false;
+  bool _hasSuccessfulSync = false;
+  SyncResult _lastResult = const SyncResult(SyncStatus.idle);
 
   static const _deviceIdKey = 'seleto.sync.device_id';
   static const _lastLocalHashKey = 'seleto.sync.last_local_hash';
@@ -44,6 +57,8 @@ class SupabaseSyncService {
   static const _networkTimeout = Duration(seconds: 10);
 
   SupabaseClient get _client => _clientOverride ?? Supabase.instance.client;
+  SyncResult get lastResult => _lastResult;
+  bool get isSynced => _hasSuccessfulSync;
 
   Future<void> start() async {
     if (_started) return;
@@ -68,13 +83,37 @@ class SupabaseSyncService {
       return Future.value(const SyncResult(SyncStatus.skipped));
     }
     _lastAttemptAt = now;
-    final sync = _sync(reason).whenComplete(() => _activeSync = null);
+    _setResult(const SyncResult(SyncStatus.syncing));
+    final sync = _sync(reason)
+        .then((result) {
+          _setResult(result);
+          return result;
+        })
+        .whenComplete(() => _activeSync = null);
     _activeSync = sync;
     return sync;
   }
 
-  Future<void> dispose() async {
-    await _connectivitySubscription?.cancel();
+  @override
+  void dispose() {
+    _disposed = true;
+    unawaited(_connectivitySubscription?.cancel());
+    super.dispose();
+  }
+
+  void _setResult(SyncResult result) {
+    _lastResult = result;
+    if (result.status == SyncStatus.syncing ||
+        result.status == SyncStatus.offline ||
+        result.status == SyncStatus.failed) {
+      _hasSuccessfulSync = false;
+    } else if (result.status == SyncStatus.idle ||
+        result.status == SyncStatus.uploaded ||
+        result.status == SyncStatus.downloaded ||
+        result.status == SyncStatus.merged) {
+      _hasSuccessfulSync = true;
+    }
+    if (!_disposed) notifyListeners();
   }
 
   Future<SyncResult> _sync(String reason) async {
@@ -472,8 +511,9 @@ const _timestampKeys = [
   'changedAt',
 ];
 
-final supabaseSyncServiceProvider = Provider<SupabaseSyncService>((ref) {
-  final service = SupabaseSyncService(ref.watch(databaseProvider));
-  ref.onDispose(service.dispose);
-  return service;
-});
+final supabaseSyncServiceProvider = ChangeNotifierProvider<SupabaseSyncService>(
+  (ref) {
+    final service = SupabaseSyncService(ref.watch(databaseProvider));
+    return service;
+  },
+);
