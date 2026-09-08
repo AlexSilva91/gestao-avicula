@@ -208,11 +208,87 @@ class OrderStatusHistory extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+class PackagingItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get type => text()();
+  TextColumn get name => text()();
+  TextColumn get notes => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class PackagingLots extends Table {
+  TextColumn get id => text()();
+  TextColumn get itemId => text()();
+  TextColumn get batchCode => text().nullable()();
+  IntColumn get initialQuantity => integer()();
+  IntColumn get unitCostCents => integer().withDefault(const Constant(0))();
+  IntColumn get totalCostCents => integer().withDefault(const Constant(0))();
+  DateTimeColumn get purchasedAt => dateTime()();
+  TextColumn get supplier => text().nullable()();
+  TextColumn get notes => text().nullable()();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class PackagingStockMovements extends Table {
+  TextColumn get id => text()();
+  TextColumn get itemId => text()();
+  TextColumn get lotId => text()();
+  TextColumn get type => text()();
+  DateTimeColumn get occurredAt => dateTime()();
+  IntColumn get quantity => integer()();
+  TextColumn get reference => text().nullable()();
+  TextColumn get notes => text().nullable()();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+@DataClassName('EggTrayBatch')
+class EggTrayBatches extends Table {
+  TextColumn get id => text()();
+  TextColumn get trayLotId => text()();
+  TextColumn get labelLotId => text()();
+  IntColumn get quantity => integer()();
+  IntColumn get eggsPerTray => integer()();
+  DateTimeColumn get assembledAt => dateTime()();
+  IntColumn get unitPackagingCostCents =>
+      integer().withDefault(const Constant(0))();
+  TextColumn get notes => text().nullable()();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class EggTrayStockMovements extends Table {
+  TextColumn get id => text()();
+  TextColumn get batchId => text()();
+  TextColumn get type => text()();
+  DateTimeColumn get occurredAt => dateTime()();
+  IntColumn get quantity => integer()();
+  TextColumn get reference => text().nullable()();
+  TextColumn get notes => text().nullable()();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 class Sales extends Table {
   TextColumn get id => text()();
   DateTimeColumn get soldAt => dateTime()();
   TextColumn get customerId => text().nullable()();
   TextColumn get orderId => text().nullable().unique()();
+  TextColumn get trayBatchId => text().nullable()();
+  IntColumn get trayQuantity => integer().withDefault(const Constant(0))();
   IntColumn get dozens => integer().withDefault(const Constant(0))();
   IntColumn get looseEggs => integer().withDefault(const Constant(0))();
   IntColumn get dozenPriceCents => integer()();

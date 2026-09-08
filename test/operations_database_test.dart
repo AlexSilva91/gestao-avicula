@@ -494,6 +494,88 @@ void main() {
     expect(finance.first.amountCents, 6000);
   });
 
+  test('assembled tray sale consumes and restores ready tray stock', () async {
+    await db.registerLotPurchase(
+      name: 'Poedeiras',
+      quantity: 30,
+      receivedAt: DateTime(2026, 1, 1),
+      arrivalAgeDays: 200,
+      actorId: actor,
+    );
+    final lot = (await db.watchLotSummaries().first).single;
+    await db.registerEggCollection(
+      collectedOn: DateTime(2026, 9, 1),
+      lotId: lot.lot.id,
+      quantity: 120,
+      brokenEggs: 2,
+      discardedEggs: 2,
+      actorId: actor,
+    );
+
+    final trayItemId = await db.addPackagingItem(
+      type: 'TRAY',
+      name: 'Bandeja 30 ovos',
+      actorId: actor,
+    );
+    final labelItemId = await db.addPackagingItem(
+      type: 'LABEL',
+      name: 'Etiqueta branca',
+      actorId: actor,
+    );
+    final trayLotId = await db.addPackagingLot(
+      itemId: trayItemId,
+      batchCode: 'B30-01',
+      quantity: 10,
+      unitCostCents: 80,
+      purchasedAt: DateTime(2026, 9, 1),
+      actorId: actor,
+    );
+    final labelLotId = await db.addPackagingLot(
+      itemId: labelItemId,
+      batchCode: 'ET-01',
+      quantity: 10,
+      unitCostCents: 15,
+      purchasedAt: DateTime(2026, 9, 1),
+      actorId: actor,
+    );
+
+    final batchId = await db.assembleEggTrays(
+      trayLotId: trayLotId,
+      labelLotId: labelLotId,
+      quantity: 3,
+      eggsPerTray: 30,
+      assembledAt: DateTime(2026, 9, 2),
+      actorId: actor,
+    );
+
+    expect(await db.eggStockBalance(), 26);
+    expect(await db.packagingLotBalance(trayLotId), 7);
+    expect(await db.packagingLotBalance(labelLotId), 7);
+    expect(await db.eggTrayBatchBalance(batchId), 3);
+
+    await db.createEggTraySale(
+      trayBatchId: batchId,
+      trayQuantity: 2,
+      dozenPriceCents: 1200,
+      paymentMethod: 'PIX',
+      actorId: actor,
+    );
+
+    expect(await db.eggTrayBatchBalance(batchId), 1);
+    expect(await db.eggStockBalance(), 26);
+    final sale = (await db.watchSales().first).single;
+    expect(sale.trayBatchId, batchId);
+    expect(sale.trayQuantity, 2);
+    expect(sale.dozens, 5);
+    expect(sale.totalCents, 6000);
+
+    await db.cancelSale(sale.id, actorId: actor);
+
+    expect(await db.eggTrayBatchBalance(batchId), 3);
+    expect(await db.eggStockBalance(), 26);
+    expect((await db.watchFinance().first).single.status, 'CANCELLED');
+  });
+
   test('cancelled egg sale restores stock and cancels revenue', () async {
     await db.registerLotPurchase(
       name: 'Poedeiras',

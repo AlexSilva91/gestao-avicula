@@ -36,6 +36,17 @@ final ordersProvider = StreamProvider(
 final salesProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchSales(),
 );
+final packagingItemsProvider = StreamProvider(
+  (ref) => ref.watch(databaseProvider).watchPackagingItemStocks(),
+);
+final packagingLotsProvider =
+    StreamProvider.family<List<PackagingLotBalance>, String?>(
+      (ref, type) =>
+          ref.watch(databaseProvider).watchPackagingLotBalances(type: type),
+    );
+final eggTrayBatchesProvider = StreamProvider(
+  (ref) => ref.watch(databaseProvider).watchEggTrayBatchBalances(),
+);
 final financeProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchFinance(),
 );
@@ -310,6 +321,63 @@ class OperationsController {
     customerId: customerId,
     dozens: dozens,
     looseEggs: loose,
+    dozenPriceCents: dozenPrice,
+    paymentMethod: payment,
+    notes: notes,
+    actorId: _actor('sales.create'),
+  );
+  Future<void> addPackagingItem(String type, String name, String? notes) =>
+      _db.addPackagingItem(
+        type: type,
+        name: name,
+        notes: notes,
+        actorId: _actor('sales.create'),
+      );
+  Future<void> addPackagingLot({
+    required String itemId,
+    String? batchCode,
+    required int quantity,
+    required int unitCost,
+    DateTime? purchasedAt,
+    String? supplier,
+    String? notes,
+  }) => _db.addPackagingLot(
+    itemId: itemId,
+    batchCode: batchCode,
+    quantity: quantity,
+    unitCostCents: unitCost,
+    purchasedAt: purchasedAt,
+    supplier: supplier,
+    notes: notes,
+    actorId: _actor('sales.create'),
+  );
+  Future<void> assembleEggTrays({
+    required String trayLotId,
+    required String labelLotId,
+    required int quantity,
+    required int eggsPerTray,
+    DateTime? assembledAt,
+    String? notes,
+  }) => _db.assembleEggTrays(
+    trayLotId: trayLotId,
+    labelLotId: labelLotId,
+    quantity: quantity,
+    eggsPerTray: eggsPerTray,
+    assembledAt: assembledAt,
+    notes: notes,
+    actorId: _actor('sales.create'),
+  );
+  Future<void> sellEggTrays({
+    String? customerId,
+    required String trayBatchId,
+    required int trayQuantity,
+    required int dozenPrice,
+    required String payment,
+    String? notes,
+  }) => _db.createEggTraySale(
+    customerId: customerId,
+    trayBatchId: trayBatchId,
+    trayQuantity: trayQuantity,
     dozenPriceCents: dozenPrice,
     paymentMethod: payment,
     notes: notes,

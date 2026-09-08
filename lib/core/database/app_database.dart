@@ -182,6 +182,11 @@ class LayingRateHistoryEntry {
     Orders,
     OrderItems,
     OrderStatusHistory,
+    PackagingItems,
+    PackagingLots,
+    PackagingStockMovements,
+    EggTrayBatches,
+    EggTrayStockMovements,
     Sales,
     FinanceTransactions,
     Investments,
@@ -208,7 +213,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -278,6 +283,16 @@ class AppDatabase extends _$AppDatabase {
         await _createPerformanceIndexes();
         await _seedFeedConsumptionRecommendations('system', DateTime.now());
       }
+      if (from < 9) {
+        await m.createTable(packagingItems);
+        await m.createTable(packagingLots);
+        await m.createTable(packagingStockMovements);
+        await m.createTable(eggTrayBatches);
+        await m.createTable(eggTrayStockMovements);
+        await m.addColumn(sales, sales.trayBatchId);
+        await m.addColumn(sales, sales.trayQuantity);
+        await _createPerformanceIndexes();
+      }
     },
   );
 
@@ -299,6 +314,12 @@ class AppDatabase extends _$AppDatabase {
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_ingredient_stock_lot_date ON ingredient_stock_movements (ingredient_lot_id, occurred_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_packaging_stock_lot_date ON packaging_stock_movements (lot_id, occurred_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_egg_tray_stock_batch_date ON egg_tray_stock_movements (batch_id, occurred_at)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_batches_phase_date ON feed_batches (phase, produced_at)',

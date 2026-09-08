@@ -263,11 +263,75 @@ create table if not exists public.order_status_history (
   notes text
 );
 
+create table if not exists public.packaging_items (
+  id text primary key,
+  type text not null,
+  name text not null,
+  notes text,
+  is_active boolean not null default true,
+  created_by text not null,
+  created_at timestamptz not null
+);
+
+create table if not exists public.packaging_lots (
+  id text primary key,
+  item_id text not null,
+  batch_code text,
+  initial_quantity integer not null,
+  unit_cost_cents integer not null default 0,
+  total_cost_cents integer not null default 0,
+  purchased_at timestamptz not null,
+  supplier text,
+  notes text,
+  created_by text not null,
+  created_at timestamptz not null
+);
+
+create table if not exists public.packaging_stock_movements (
+  id text primary key,
+  item_id text not null,
+  lot_id text not null,
+  type text not null,
+  occurred_at timestamptz not null,
+  quantity integer not null,
+  reference text,
+  notes text,
+  created_by text not null,
+  created_at timestamptz not null
+);
+
+create table if not exists public.egg_tray_batches (
+  id text primary key,
+  tray_lot_id text not null,
+  label_lot_id text not null,
+  quantity integer not null,
+  eggs_per_tray integer not null,
+  assembled_at timestamptz not null,
+  unit_packaging_cost_cents integer not null default 0,
+  notes text,
+  created_by text not null,
+  created_at timestamptz not null
+);
+
+create table if not exists public.egg_tray_stock_movements (
+  id text primary key,
+  batch_id text not null,
+  type text not null,
+  occurred_at timestamptz not null,
+  quantity integer not null,
+  reference text,
+  notes text,
+  created_by text not null,
+  created_at timestamptz not null
+);
+
 create table if not exists public.sales (
   id text primary key,
   sold_at timestamptz not null,
   customer_id text,
   order_id text unique,
+  tray_batch_id text,
+  tray_quantity integer not null default 0,
   dozens integer not null default 0,
   loose_eggs integer not null default 0,
   dozen_price_cents integer not null,
@@ -278,6 +342,9 @@ create table if not exists public.sales (
   created_by text not null,
   created_at timestamptz not null
 );
+
+alter table public.sales add column if not exists tray_batch_id text;
+alter table public.sales add column if not exists tray_quantity integer not null default 0;
 
 create table if not exists public.finance_transactions (
   id text primary key,
@@ -400,6 +467,11 @@ declare
     'orders',
     'order_items',
     'order_status_history',
+    'packaging_items',
+    'packaging_lots',
+    'packaging_stock_movements',
+    'egg_tray_batches',
+    'egg_tray_stock_movements',
     'sales',
     'finance_transactions',
     'investments',

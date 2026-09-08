@@ -166,6 +166,45 @@ class EggStockMetrics {
   final int losses;
 }
 
+class PackagingItemStock {
+  const PackagingItemStock({
+    required this.item,
+    required this.balance,
+    required this.activeLotCount,
+  });
+  final PackagingItem item;
+  final int balance;
+  final int activeLotCount;
+}
+
+class PackagingLotBalance {
+  const PackagingLotBalance({
+    required this.lot,
+    required this.item,
+    required this.balance,
+  });
+  final PackagingLot lot;
+  final PackagingItem item;
+  final int balance;
+}
+
+class EggTrayBatchBalance {
+  const EggTrayBatchBalance({
+    required this.batch,
+    required this.balance,
+    required this.trayName,
+    required this.labelName,
+  });
+  final EggTrayBatch batch;
+  final int balance;
+  final String trayName;
+  final String labelName;
+
+  int get eggBalance => balance * batch.eggsPerTray;
+  int get dozens => eggBalance ~/ 12;
+  int get looseEggs => eggBalance % 12;
+}
+
 class BirdMetrics {
   const BirdMetrics({
     required this.purchased,
@@ -1227,6 +1266,534 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
+  Stream<List<PackagingItemStock>> watchPackagingItemStocks() {
+    return customSelect(
+      '''
+      SELECT i.*,
+        COALESCE(SUM(
+          CASE WHEN m.type IN ('PURCHASE_IN','ADJUSTMENT_IN')
+          THEN m.quantity ELSE -m.quantity END
+        ), 0) AS balance,
+        COALESCE((
+          SELECT COUNT(*) FROM packaging_lots l
+          WHERE l.item_id = i.id AND (
+            SELECT COALESCE(SUM(
+              CASE WHEN lm.type IN ('PURCHASE_IN','ADJUSTMENT_IN')
+              THEN lm.quantity ELSE -lm.quantity END
+            ), 0)
+            FROM packaging_stock_movements lm
+            WHERE lm.lot_id = l.id
+          ) > 0
+        ), 0) AS active_lot_count
+      FROM packaging_items i
+      LEFT JOIN packaging_stock_movements m ON m.item_id = i.id
+      GROUP BY i.id
+      ORDER BY i.type, i.name
+      ''',
+      readsFrom: {packagingItems, packagingLots, packagingStockMovements},
+    ).watch().map(
+      (rows) => rows
+          .map(
+            (row) => PackagingItemStock(
+              item: PackagingItem(
+                id: row.read<String>('id'),
+                type: row.read<String>('type'),
+                name: row.read<String>('name'),
+                notes: row.readNullable<String>('notes'),
+                isActive: row.read<bool>('is_active'),
+                createdBy: row.read<String>('created_by'),
+                createdAt: row.read<DateTime>('created_at'),
+              ),
+              balance: row.read<int>('balance'),
+              activeLotCount: row.read<int>('active_lot_count'),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Stream<List<PackagingLotBalance>> watchPackagingLotBalances({String? type}) {
+    final typeFilter = type == null ? '' : 'WHERE i.type = ?';
+    return customSelect(
+      '''
+      SELECT l.id AS lot_id, l.item_id, l.batch_code, l.initial_quantity,
+        l.unit_cost_cents, l.total_cost_cents, l.purchased_at, l.supplier,
+        l.notes AS lot_notes, l.created_by AS lot_created_by,
+        l.created_at AS lot_created_at,
+        i.id AS item_id_value, i.type AS item_type, i.name AS item_name,
+        i.notes AS item_notes, i.is_active, i.created_by AS item_created_by,
+        i.created_at AS item_created_at,
+        COALESCE(SUM(
+          CASE WHEN m.type IN ('PURCHASE_IN','ADJUSTMENT_IN')
+          THEN m.quantity ELSE -m.quantity END
+        ), 0) AS balance
+      FROM packaging_lots l
+      JOIN packaging_items i ON i.id = l.item_id
+      LEFT JOIN packaging_stock_movements m ON m.lot_id = l.id
+      $typeFilter
+      GROUP BY l.id
+      ORDER BY l.purchased_at, l.created_at
+      ''',
+      variables: [if (type != null) Variable.withString(type)],
+      readsFrom: {packagingItems, packagingLots, packagingStockMovements},
+    ).watch().map(
+      (rows) => rows
+          .map(
+            (row) => PackagingLotBalance(
+              lot: PackagingLot(
+                id: row.read<String>('lot_id'),
+                itemId: row.read<String>('item_id'),
+                batchCode: row.readNullable<String>('batch_code'),
+                initialQuantity: row.read<int>('initial_quantity'),
+                unitCostCents: row.read<int>('unit_cost_cents'),
+                totalCostCents: row.read<int>('total_cost_cents'),
+                purchasedAt: row.read<DateTime>('purchased_at'),
+                supplier: row.readNullable<String>('supplier'),
+                notes: row.readNullable<String>('lot_notes'),
+                createdBy: row.read<String>('lot_created_by'),
+                createdAt: row.read<DateTime>('lot_created_at'),
+              ),
+              item: PackagingItem(
+                id: row.read<String>('item_id_value'),
+                type: row.read<String>('item_type'),
+                name: row.read<String>('item_name'),
+                notes: row.readNullable<String>('item_notes'),
+                isActive: row.read<bool>('is_active'),
+                createdBy: row.read<String>('item_created_by'),
+                createdAt: row.read<DateTime>('item_created_at'),
+              ),
+              balance: row.read<int>('balance'),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Stream<List<EggTrayBatchBalance>> watchEggTrayBatchBalances() {
+    return customSelect(
+      '''
+      SELECT b.*, ti.name AS tray_name, li.name AS label_name,
+        COALESCE(SUM(
+          CASE WHEN m.type IN ('ASSEMBLY_IN','ADJUSTMENT_IN')
+          THEN m.quantity ELSE -m.quantity END
+        ), 0) AS balance
+      FROM egg_tray_batches b
+      JOIN packaging_lots tl ON tl.id = b.tray_lot_id
+      JOIN packaging_items ti ON ti.id = tl.item_id
+      JOIN packaging_lots ll ON ll.id = b.label_lot_id
+      JOIN packaging_items li ON li.id = ll.item_id
+      LEFT JOIN egg_tray_stock_movements m ON m.batch_id = b.id
+      GROUP BY b.id
+      ORDER BY b.assembled_at DESC, b.created_at DESC
+      ''',
+      readsFrom: {
+        eggTrayBatches,
+        eggTrayStockMovements,
+        packagingLots,
+        packagingItems,
+      },
+    ).watch().map(
+      (rows) => rows
+          .map(
+            (row) => EggTrayBatchBalance(
+              batch: EggTrayBatch(
+                id: row.read<String>('id'),
+                trayLotId: row.read<String>('tray_lot_id'),
+                labelLotId: row.read<String>('label_lot_id'),
+                quantity: row.read<int>('quantity'),
+                eggsPerTray: row.read<int>('eggs_per_tray'),
+                assembledAt: row.read<DateTime>('assembled_at'),
+                unitPackagingCostCents: row.read<int>(
+                  'unit_packaging_cost_cents',
+                ),
+                notes: row.readNullable<String>('notes'),
+                createdBy: row.read<String>('created_by'),
+                createdAt: row.read<DateTime>('created_at'),
+              ),
+              balance: row.read<int>('balance'),
+              trayName: row.read<String>('tray_name'),
+              labelName: row.read<String>('label_name'),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Future<int> packagingLotBalance(String lotId) async {
+    final row = await customSelect(
+      '''
+      SELECT COALESCE(SUM(
+        CASE WHEN type IN ('PURCHASE_IN','ADJUSTMENT_IN')
+        THEN quantity ELSE -quantity END
+      ), 0) AS balance
+      FROM packaging_stock_movements
+      WHERE lot_id = ?
+      ''',
+      variables: [Variable.withString(lotId)],
+      readsFrom: {packagingStockMovements},
+    ).getSingle();
+    return row.read<int>('balance');
+  }
+
+  Future<int> eggTrayBatchBalance(String batchId) async {
+    final row = await customSelect(
+      '''
+      SELECT COALESCE(SUM(
+        CASE WHEN type IN ('ASSEMBLY_IN','ADJUSTMENT_IN')
+        THEN quantity ELSE -quantity END
+      ), 0) AS balance
+      FROM egg_tray_stock_movements
+      WHERE batch_id = ?
+      ''',
+      variables: [Variable.withString(batchId)],
+      readsFrom: {eggTrayStockMovements},
+    ).getSingle();
+    return row.read<int>('balance');
+  }
+
+  Future<String> addPackagingItem({
+    required String type,
+    required String name,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (!{'TRAY', 'LABEL'}.contains(type)) {
+      throw ArgumentError('Tipo de material inválido.');
+    }
+    if (name.trim().isEmpty) {
+      throw ArgumentError('Informe o nome do material.');
+    }
+    final id = _uuid.v4();
+    await transaction(() async {
+      await into(packagingItems).insert(
+        PackagingItemsCompanion.insert(
+          id: id,
+          type: type,
+          name: name.trim(),
+          notes: Value(_cleanValue(notes)),
+          createdBy: actorId,
+          createdAt: DateTime.now(),
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'packaging.item_create',
+        entityType: 'packaging_item',
+        entityId: id,
+        description: '${_packagingTypeLabel(type)} ${name.trim()} cadastrada.',
+      );
+    });
+    return id;
+  }
+
+  Future<String> addPackagingLot({
+    required String itemId,
+    String? batchCode,
+    required int quantity,
+    required int unitCostCents,
+    DateTime? purchasedAt,
+    String? supplier,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (quantity <= 0 || unitCostCents < 0) {
+      throw ArgumentError('Informe quantidade e valor válidos.');
+    }
+    final item = await (select(
+      packagingItems,
+    )..where((i) => i.id.equals(itemId))).getSingle();
+    final id = _uuid.v4();
+    final now = DateTime.now();
+    final total = quantity * unitCostCents;
+    await transaction(() async {
+      await into(packagingLots).insert(
+        PackagingLotsCompanion.insert(
+          id: id,
+          itemId: itemId,
+          batchCode: Value(_cleanValue(batchCode)),
+          initialQuantity: quantity,
+          unitCostCents: Value(unitCostCents),
+          totalCostCents: Value(total),
+          purchasedAt: purchasedAt ?? now,
+          supplier: Value(_cleanValue(supplier)),
+          notes: Value(_cleanValue(notes)),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(packagingStockMovements).insert(
+        PackagingStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          itemId: itemId,
+          lotId: id,
+          type: 'PURCHASE_IN',
+          occurredAt: purchasedAt ?? now,
+          quantity: quantity,
+          notes: Value(_cleanValue(notes)),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'packaging.lot_create',
+        entityType: 'packaging_lot',
+        entityId: id,
+        description:
+            'Lote de ${_packagingTypeLabel(item.type).toLowerCase()} ${item.name} cadastrado.',
+      );
+    });
+    return id;
+  }
+
+  Future<String> assembleEggTrays({
+    required String trayLotId,
+    required String labelLotId,
+    required int quantity,
+    required int eggsPerTray,
+    DateTime? assembledAt,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (quantity <= 0 || eggsPerTray < 12) {
+      throw ArgumentError('Monte ao menos uma bandeja com 12 ovos ou mais.');
+    }
+    final trayLot = await _packagingLotWithItem(trayLotId, 'TRAY');
+    final labelLot = await _packagingLotWithItem(labelLotId, 'LABEL');
+    final trayBalance = await packagingLotBalance(trayLot.lot.id);
+    final labelBalance = await packagingLotBalance(labelLot.lot.id);
+    if (quantity > trayBalance) {
+      throw StateError('Estoque de bandejas insuficiente.');
+    }
+    if (quantity > labelBalance) {
+      throw StateError('Estoque de etiquetas insuficiente.');
+    }
+    final eggs = quantity * eggsPerTray;
+    final eggBalance = await eggStockBalance();
+    if (eggs > eggBalance) {
+      throw StateError('Estoque insuficiente. Disponível: $eggBalance ovos.');
+    }
+    final id = _uuid.v4();
+    final now = DateTime.now();
+    final occurredAt = assembledAt ?? now;
+    final unitPackagingCost =
+        trayLot.lot.unitCostCents + labelLot.lot.unitCostCents;
+    await transaction(() async {
+      await into(eggTrayBatches).insert(
+        EggTrayBatchesCompanion.insert(
+          id: id,
+          trayLotId: trayLotId,
+          labelLotId: labelLotId,
+          quantity: quantity,
+          eggsPerTray: eggsPerTray,
+          assembledAt: occurredAt,
+          unitPackagingCostCents: Value(unitPackagingCost),
+          notes: Value(_cleanValue(notes)),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(packagingStockMovements).insert(
+        PackagingStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          itemId: trayLot.item.id,
+          lotId: trayLot.lot.id,
+          type: 'ASSEMBLY_OUT',
+          occurredAt: occurredAt,
+          quantity: quantity,
+          reference: Value(id),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(packagingStockMovements).insert(
+        PackagingStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          itemId: labelLot.item.id,
+          lotId: labelLot.lot.id,
+          type: 'ASSEMBLY_OUT',
+          occurredAt: occurredAt,
+          quantity: quantity,
+          reference: Value(id),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(eggStockMovements).insert(
+        EggStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          type: 'ASSEMBLY_OUT',
+          occurredAt: occurredAt,
+          quantity: eggs,
+          reference: Value(id),
+          notes: Value('Montagem de $quantity bandeja(s).'),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(eggTrayStockMovements).insert(
+        EggTrayStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          batchId: id,
+          type: 'ASSEMBLY_IN',
+          occurredAt: occurredAt,
+          quantity: quantity,
+          notes: Value(_cleanValue(notes)),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'egg_trays.assemble',
+        entityType: 'egg_tray_batch',
+        entityId: id,
+        description: '$quantity bandeja(s) com $eggsPerTray ovos montada(s).',
+      );
+    });
+    return id;
+  }
+
+  Future<void> createEggTraySale({
+    String? customerId,
+    required String trayBatchId,
+    required int trayQuantity,
+    required int dozenPriceCents,
+    required String paymentMethod,
+    DateTime? date,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (trayQuantity <= 0 || dozenPriceCents <= 0) {
+      throw ArgumentError('Revise quantidade e valor da venda.');
+    }
+    final batch = await (select(
+      eggTrayBatches,
+    )..where((b) => b.id.equals(trayBatchId))).getSingle();
+    final balance = await eggTrayBatchBalance(trayBatchId);
+    if (trayQuantity > balance) {
+      throw StateError('Estoque de bandejas montadas insuficiente.');
+    }
+    final id = _uuid.v4();
+    final now = DateTime.now();
+    final soldAt = date ?? now;
+    final eggs = trayQuantity * batch.eggsPerTray;
+    final dozens = eggs ~/ 12;
+    final looseEggs = eggs % 12;
+    final total = (eggs * dozenPriceCents / 12).round();
+    await transaction(() async {
+      await into(sales).insert(
+        SalesCompanion.insert(
+          id: id,
+          soldAt: soldAt,
+          customerId: Value(customerId),
+          trayBatchId: Value(trayBatchId),
+          trayQuantity: Value(trayQuantity),
+          dozens: Value(dozens),
+          looseEggs: Value(looseEggs),
+          dozenPriceCents: dozenPriceCents,
+          totalCents: total,
+          paymentMethod: paymentMethod,
+          notes: Value(_cleanValue(notes)),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(eggTrayStockMovements).insert(
+        EggTrayStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          batchId: trayBatchId,
+          type: 'SALE_OUT',
+          occurredAt: soldAt,
+          quantity: trayQuantity,
+          reference: Value(id),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(financeTransactions).insert(
+        FinanceTransactionsCompanion.insert(
+          id: _uuid.v4(),
+          occurredAt: soldAt,
+          type: 'INCOME',
+          category: 'Venda de ovos',
+          description: 'Venda de $trayQuantity bandeja(s)',
+          amountCents: total,
+          referenceType: const Value('SALE'),
+          referenceId: Value(id),
+          paymentMethod: Value(paymentMethod),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'sales.create',
+        entityType: 'sale',
+        entityId: id,
+        description:
+            'Venda de bandejas no valor de $total centavos registrada.',
+      );
+    });
+  }
+
+  Future<PackagingLotBalance> _packagingLotWithItem(
+    String lotId,
+    String expectedType,
+  ) async {
+    final row = await customSelect(
+      '''
+      SELECT l.id AS lot_id, l.item_id, l.batch_code, l.initial_quantity,
+        l.unit_cost_cents, l.total_cost_cents, l.purchased_at, l.supplier,
+        l.notes AS lot_notes, l.created_by AS lot_created_by,
+        l.created_at AS lot_created_at,
+        i.id AS item_id_value, i.type AS item_type, i.name AS item_name,
+        i.notes AS item_notes, i.is_active, i.created_by AS item_created_by,
+        i.created_at AS item_created_at
+      FROM packaging_lots l
+      JOIN packaging_items i ON i.id = l.item_id
+      WHERE l.id = ? AND i.type = ?
+      ''',
+      variables: [
+        Variable.withString(lotId),
+        Variable.withString(expectedType),
+      ],
+      readsFrom: {packagingItems, packagingLots},
+    ).getSingleOrNull();
+    if (row == null) {
+      throw ArgumentError(
+        expectedType == 'TRAY'
+            ? 'Escolha um lote de bandejas válido.'
+            : 'Escolha um lote de etiquetas válido.',
+      );
+    }
+    return PackagingLotBalance(
+      lot: PackagingLot(
+        id: row.read<String>('lot_id'),
+        itemId: row.read<String>('item_id'),
+        batchCode: row.readNullable<String>('batch_code'),
+        initialQuantity: row.read<int>('initial_quantity'),
+        unitCostCents: row.read<int>('unit_cost_cents'),
+        totalCostCents: row.read<int>('total_cost_cents'),
+        purchasedAt: row.read<DateTime>('purchased_at'),
+        supplier: row.readNullable<String>('supplier'),
+        notes: row.readNullable<String>('lot_notes'),
+        createdBy: row.read<String>('lot_created_by'),
+        createdAt: row.read<DateTime>('lot_created_at'),
+      ),
+      item: PackagingItem(
+        id: row.read<String>('item_id_value'),
+        type: row.read<String>('item_type'),
+        name: row.read<String>('item_name'),
+        notes: row.readNullable<String>('item_notes'),
+        isActive: row.read<bool>('is_active'),
+        createdBy: row.read<String>('item_created_by'),
+        createdAt: row.read<DateTime>('item_created_at'),
+      ),
+      balance: 0,
+    );
+  }
+
   Stream<List<Customer>> watchCustomers({String search = ''}) {
     final query = select(customers)
       ..orderBy([(c) => OrderingTerm.asc(c.name)])
@@ -1574,20 +2141,36 @@ extension OperationsRepository on AppDatabase {
       await (update(sales)..where((s) => s.id.equals(saleId))).write(
         const SalesCompanion(status: Value('CANCELLED')),
       );
-      final eggs = sale.dozens * 12 + sale.looseEggs;
-      if (eggs > 0) {
-        await into(eggStockMovements).insert(
-          EggStockMovementsCompanion.insert(
+      if (sale.trayBatchId != null && sale.trayQuantity > 0) {
+        await into(eggTrayStockMovements).insert(
+          EggTrayStockMovementsCompanion.insert(
             id: _uuid.v4(),
+            batchId: sale.trayBatchId!,
             type: 'ADJUSTMENT_IN',
             occurredAt: DateTime.now(),
-            quantity: eggs,
+            quantity: sale.trayQuantity,
             reference: Value('REVERSAL:$saleId'),
             notes: const Value('Estorno de venda cancelada'),
             createdBy: actorId,
             createdAt: DateTime.now(),
           ),
         );
+      } else {
+        final eggs = sale.dozens * 12 + sale.looseEggs;
+        if (eggs > 0) {
+          await into(eggStockMovements).insert(
+            EggStockMovementsCompanion.insert(
+              id: _uuid.v4(),
+              type: 'ADJUSTMENT_IN',
+              occurredAt: DateTime.now(),
+              quantity: eggs,
+              reference: Value('REVERSAL:$saleId'),
+              notes: const Value('Estorno de venda cancelada'),
+              createdBy: actorId,
+              createdAt: DateTime.now(),
+            ),
+          );
+        }
       }
       await (update(financeTransactions)..where(
             (f) =>
@@ -2398,6 +2981,21 @@ extension OperationsRepository on AppDatabase {
       'orderStatusHistory': (await select(
         orderStatusHistory,
       ).get()).map((e) => e.toJson()).toList(),
+      'packagingItems': (await select(
+        packagingItems,
+      ).get()).map((e) => e.toJson()).toList(),
+      'packagingLots': (await select(
+        packagingLots,
+      ).get()).map((e) => e.toJson()).toList(),
+      'packagingStockMovements': (await select(
+        packagingStockMovements,
+      ).get()).map((e) => e.toJson()).toList(),
+      'eggTrayBatches': (await select(
+        eggTrayBatches,
+      ).get()).map((e) => e.toJson()).toList(),
+      'eggTrayStockMovements': (await select(
+        eggTrayStockMovements,
+      ).get()).map((e) => e.toJson()).toList(),
       'sales': (await select(sales).get()).map((e) => e.toJson()).toList(),
       'finance': (await select(
         financeTransactions,
@@ -2454,6 +3052,11 @@ extension OperationsRepository on AppDatabase {
       await delete(orderItems).go();
       await delete(orders).go();
       await delete(sales).go();
+      await delete(eggTrayStockMovements).go();
+      await delete(eggTrayBatches).go();
+      await delete(packagingStockMovements).go();
+      await delete(packagingLots).go();
+      await delete(packagingItems).go();
       await delete(investments).go();
       await delete(financeTransactions).go();
       await delete(dailyFeedings).go();
@@ -2536,8 +3139,27 @@ extension OperationsRepository on AppDatabase {
           orderStatusHistory,
         ).insert(OrderStatusHistoryData.fromJson(e));
       }
+      for (final e in rows('packagingItems')) {
+        await into(packagingItems).insert(PackagingItem.fromJson(e));
+      }
+      for (final e in rows('packagingLots')) {
+        await into(packagingLots).insert(PackagingLot.fromJson(e));
+      }
+      for (final e in rows('packagingStockMovements')) {
+        await into(
+          packagingStockMovements,
+        ).insert(PackagingStockMovement.fromJson(e));
+      }
+      for (final e in rows('eggTrayBatches')) {
+        await into(eggTrayBatches).insert(EggTrayBatch.fromJson(e));
+      }
+      for (final e in rows('eggTrayStockMovements')) {
+        await into(
+          eggTrayStockMovements,
+        ).insert(EggTrayStockMovement.fromJson(e));
+      }
       for (final e in rows('sales')) {
-        await into(sales).insert(Sale.fromJson(e));
+        await into(sales).insert(Sale.fromJson(_saleJson(e)));
       }
       for (final e in rows('finance')) {
         await into(financeTransactions).insert(FinanceTransaction.fromJson(e));
@@ -2600,6 +3222,12 @@ Map<String, dynamic> _notificationJson(Map<String, dynamic> json) => {
   ...json,
   'defaultMessage': json['defaultMessage'],
   'defaultRecurrence': json['defaultRecurrence'] ?? 'ONCE',
+};
+
+Map<String, dynamic> _saleJson(Map<String, dynamic> json) => {
+  ...json,
+  'trayBatchId': json['trayBatchId'],
+  'trayQuantity': json['trayQuantity'] ?? 0,
 };
 
 FeedConsumptionRecommendationsCompanion
@@ -2790,3 +3418,9 @@ Set<int> _parseWeekdays(String? value) => (value ?? '')
     .whereType<int>()
     .where((day) => day >= DateTime.monday && day <= DateTime.sunday)
     .toSet();
+
+String _packagingTypeLabel(String type) => switch (type) {
+  'TRAY' => 'Bandeja',
+  'LABEL' => 'Etiqueta',
+  _ => 'Material',
+};
