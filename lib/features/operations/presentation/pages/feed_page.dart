@@ -7,6 +7,7 @@ import '../../../../core/database/operations_repository.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
+import '../../../auth/application/auth_controller.dart';
 import '../../../lots/application/lots_controller.dart';
 import '../../../lots/domain/value_objects/lot_lifecycle.dart';
 import '../../application/operations_controller.dart';
@@ -1010,7 +1011,10 @@ class _PriceHistoryDialog extends StatelessWidget {
       child: StreamBuilder<List<IngredientPriceHistoryData>>(
         stream: ref
             .read(databaseProvider)
-            .watchIngredientPrices(item.ingredient.id),
+            .watchIngredientPrices(
+              item.ingredient.id,
+              tenantId: _tenantScope(ref),
+            ),
         builder: (context, snapshot) {
           final prices = snapshot.data ?? [];
           if (prices.isEmpty) {
@@ -1045,6 +1049,11 @@ class _PriceHistoryDialog extends StatelessWidget {
       ),
     ],
   );
+}
+
+String? _tenantScope(WidgetRef ref) {
+  final session = ref.read(authControllerProvider).session;
+  return session?.allows('tenant.view_all') == true ? null : session?.tenantId;
 }
 
 class _IngredientEntryDialog extends StatefulWidget {

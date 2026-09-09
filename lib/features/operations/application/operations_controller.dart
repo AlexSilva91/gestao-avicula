@@ -9,58 +9,86 @@ import '../../../core/platform/alert_scheduler.dart';
 import '../../../core/platform/notification_service.dart';
 import '../../auth/application/auth_controller.dart';
 
+String? _tenantScope(Ref ref) {
+  final session = ref.watch(authControllerProvider).session;
+  return session?.allows('tenant.view_all') == true ? null : session?.tenantId;
+}
+
 final ingredientsProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchIngredientOverviews(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchIngredientOverviews(tenantId: _tenantScope(ref)),
 );
 final ingredientLotsProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchIngredientLotBalances(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchIngredientLotBalances(tenantId: _tenantScope(ref)),
 );
 final formulasProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchFormulaOverviews(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchFormulaOverviews(tenantId: _tenantScope(ref)),
 );
 final feedBatchesProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchFeedBatchBalances(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchFeedBatchBalances(tenantId: _tenantScope(ref)),
 );
 final feedingsProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchFeedings(),
+  (ref) =>
+      ref.watch(databaseProvider).watchFeedings(tenantId: _tenantScope(ref)),
 );
 final feedRecommendationsProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchFeedConsumptionRecommendations(),
 );
 final customersProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchCustomers(),
+  (ref) =>
+      ref.watch(databaseProvider).watchCustomers(tenantId: _tenantScope(ref)),
 );
 final ordersProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchOrders(),
+  (ref) => ref.watch(databaseProvider).watchOrders(tenantId: _tenantScope(ref)),
 );
 final salesProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchSales(),
+  (ref) => ref.watch(databaseProvider).watchSales(tenantId: _tenantScope(ref)),
 );
 final packagingItemsProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchPackagingItemStocks(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchPackagingItemStocks(tenantId: _tenantScope(ref)),
 );
 final packagingLotsProvider =
     StreamProvider.family<List<PackagingLotBalance>, String?>(
-      (ref, type) =>
-          ref.watch(databaseProvider).watchPackagingLotBalances(type: type),
+      (ref, type) => ref
+          .watch(databaseProvider)
+          .watchPackagingLotBalances(type: type, tenantId: _tenantScope(ref)),
     );
 final eggTrayBatchesProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchEggTrayBatchBalances(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchEggTrayBatchBalances(tenantId: _tenantScope(ref)),
 );
 final estimatedEggUnitCostProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchEstimatedEggUnitCostCents(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchEstimatedEggUnitCostCents(tenantId: _tenantScope(ref)),
 );
 final financeProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchFinance(),
+  (ref) =>
+      ref.watch(databaseProvider).watchFinance(tenantId: _tenantScope(ref)),
 );
 final financeMetricsProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchFinanceMetrics(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchFinanceMetrics(tenantId: _tenantScope(ref)),
 );
 final investmentsProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchInvestments(),
+  (ref) =>
+      ref.watch(databaseProvider).watchInvestments(tenantId: _tenantScope(ref)),
 );
 final eggStockProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchEggStockMetrics(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchEggStockMetrics(tenantId: _tenantScope(ref)),
 );
 final lightingProgramsProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchLightingPrograms(),
@@ -72,34 +100,52 @@ final appSettingsProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchAppSettings(),
 );
 final auditLogsProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchAuditLogs(),
+  (ref) =>
+      ref.watch(databaseProvider).watchAuditLogs(tenantId: _tenantScope(ref)),
 );
 final birdMovementsProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchBirdMovementOverviews(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchBirdMovementOverviews(tenantId: _tenantScope(ref)),
 );
 final birdMetricsProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchBirdMetrics(),
+  (ref) =>
+      ref.watch(databaseProvider).watchBirdMetrics(tenantId: _tenantScope(ref)),
 );
 final dashboardMetricsProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchDashboardMetrics(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchDashboardMetrics(tenantId: _tenantScope(ref)),
 );
 final eggProductionSeriesProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchEggProductionSeries(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchEggProductionSeries(tenantId: _tenantScope(ref)),
 );
 final eggProductionSeriesRangeProvider =
     StreamProvider.family<List<ReportPoint>, ({DateTime start, DateTime end})>(
       (ref, range) => ref
           .watch(databaseProvider)
-          .watchEggProductionSeries(start: range.start, end: range.end),
+          .watchEggProductionSeries(
+            start: range.start,
+            end: range.end,
+            tenantId: _tenantScope(ref),
+          ),
     );
 final financeSeriesProvider = StreamProvider(
-  (ref) => ref.watch(databaseProvider).watchFinanceSeries(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchFinanceSeries(tenantId: _tenantScope(ref)),
 );
 final financeSeriesRangeProvider =
     StreamProvider.family<List<ReportPoint>, ({DateTime start, DateTime end})>(
       (ref, range) => ref
           .watch(databaseProvider)
-          .watchFinanceSeries(start: range.start, end: range.end),
+          .watchFinanceSeries(
+            start: range.start,
+            end: range.end,
+            tenantId: _tenantScope(ref),
+          ),
     );
 final calendarEventsProvider =
     StreamProvider.family<
@@ -108,7 +154,11 @@ final calendarEventsProvider =
     >(
       (ref, range) => ref
           .watch(databaseProvider)
-          .watchCalendarEvents(range.first, range.last),
+          .watchCalendarEvents(
+            range.first,
+            range.last,
+            tenantId: _tenantScope(ref),
+          ),
     );
 final calendarAlertEventsProvider =
     StreamProvider.family<
@@ -117,7 +167,11 @@ final calendarAlertEventsProvider =
     >(
       (ref, range) => ref
           .watch(databaseProvider)
-          .watchCalendarAlertEvents(range.first, range.last),
+          .watchCalendarAlertEvents(
+            range.first,
+            range.last,
+            tenantId: _tenantScope(ref),
+          ),
     );
 final lightingStepsProvider =
     StreamProvider.family<List<LightingProgramStep>, String>(
@@ -575,7 +629,7 @@ class OperationsController {
     );
     await cancelCalendarEventAlerts(event);
     if (alertEnabled) {
-      await schedulePersistedAlerts(_db);
+      await schedulePersistedAlerts(_db, tenantId: _tenantScope(ref));
     }
   }
 
@@ -640,7 +694,7 @@ class OperationsController {
       recurrence: recurrence,
       actorId: _actor('settings.update'),
     );
-    await schedulePersistedAlerts(_db);
+    await schedulePersistedAlerts(_db, tenantId: _tenantScope(ref));
   }
 
   Future<void> transfer(

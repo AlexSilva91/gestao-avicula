@@ -3,20 +3,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../auth/application/auth_controller.dart';
 
+String? _tenantScope(Ref ref) {
+  final session = ref.watch(authControllerProvider).session;
+  return session?.allows('tenant.view_all') == true ? null : session?.tenantId;
+}
+
 final eggMetricsProvider = StreamProvider<EggMetrics>(
-  (ref) => ref.watch(databaseProvider).watchEggMetrics(),
+  (ref) =>
+      ref.watch(databaseProvider).watchEggMetrics(tenantId: _tenantScope(ref)),
 );
 
 final recentEggCollectionsProvider = StreamProvider<List<EggCollection>>(
-  (ref) => ref.watch(databaseProvider).watchRecentEggCollections(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchRecentEggCollections(tenantId: _tenantScope(ref)),
 );
 
 final dailyLayingRatesProvider = StreamProvider<List<LayingRateHistoryEntry>>(
-  (ref) => ref.watch(databaseProvider).watchDailyLayingRates(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchDailyLayingRates(tenantId: _tenantScope(ref)),
 );
 
 final monthlyLayingRatesProvider = StreamProvider<List<LayingRateHistoryEntry>>(
-  (ref) => ref.watch(databaseProvider).watchMonthlyLayingRates(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchMonthlyLayingRates(tenantId: _tenantScope(ref)),
 );
 final monthlyLayingRatesRangeProvider =
     StreamProvider.family<
@@ -25,7 +37,11 @@ final monthlyLayingRatesRangeProvider =
     >(
       (ref, range) => ref
           .watch(databaseProvider)
-          .watchMonthlyLayingRates(start: range.start, end: range.end),
+          .watchMonthlyLayingRates(
+            start: range.start,
+            end: range.end,
+            tenantId: _tenantScope(ref),
+          ),
     );
 
 class EggCollectionController {

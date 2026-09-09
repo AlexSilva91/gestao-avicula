@@ -2,7 +2,10 @@ import '../database/app_database.dart';
 import '../database/operations_repository.dart';
 import 'notification_service.dart';
 
-Future<void> schedulePersistedAlerts(AppDatabase database) async {
+Future<void> schedulePersistedAlerts(
+  AppDatabase database, {
+  String? tenantId,
+}) async {
   final service = NotificationService();
   if (!service.nativeSupported) return;
   if (!await service.prepareMessages()) return;
@@ -13,6 +16,7 @@ Future<void> schedulePersistedAlerts(AppDatabase database) async {
   final calendarEvents = await database.futureAlertCalendarEvents(
     now.subtract(const Duration(days: 1)),
     now.add(const Duration(days: 365)),
+    tenantId: tenantId,
   );
   for (final event in calendarEvents) {
     final setting = await database.notificationSettingFor(event.type);
@@ -55,7 +59,7 @@ Future<void> schedulePersistedAlerts(AppDatabase database) async {
 
   final phaseSetting = await database.notificationSettingFor('PHASE_CHANGE');
   if (!(phaseSetting?.isEnabled ?? false)) return;
-  final lots = await database.currentLotSummaries();
+  final lots = await database.currentLotSummaries(tenantId: tenantId);
   for (final summary in lots.where((lot) => lot.activeBirds > 0)) {
     for (final phase in phaseMilestones) {
       final phaseDate =

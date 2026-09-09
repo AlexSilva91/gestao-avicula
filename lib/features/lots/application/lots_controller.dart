@@ -6,9 +6,13 @@ import '../../../core/platform/alert_scheduler.dart';
 import '../../../core/platform/notification_service.dart';
 import '../../auth/application/auth_controller.dart';
 
-final lotSummariesProvider = StreamProvider<List<LotSummary>>(
-  (ref) => ref.watch(databaseProvider).watchLotSummaries(),
-);
+final lotSummariesProvider = StreamProvider<List<LotSummary>>((ref) {
+  final session = ref.watch(authControllerProvider).session;
+  final tenantId = session?.allows('tenant.view_all') == true
+      ? null
+      : session?.tenantId;
+  return ref.watch(databaseProvider).watchLotSummaries(tenantId: tenantId);
+});
 
 class LotsController {
   LotsController(this.ref);

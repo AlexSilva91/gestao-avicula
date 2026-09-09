@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../auth/application/auth_controller.dart';
 import '../../application/users_controller.dart';
 import '../../../../core/constants/permissions.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
@@ -10,122 +11,149 @@ import '../../../../core/widgets/seleto_widgets.dart';
 class UsersPage extends ConsumerWidget {
   const UsersPage({super.key});
   @override
-  Widget build(BuildContext context, WidgetRef ref) => AppShell(
-    title: 'Usuários e acessos',
-    child: ref
-        .watch(usersProvider)
-        .when(
-          loading: () => const Center(
-            child: Padding(
-              padding: EdgeInsets.all(48),
-              child: CircularProgressIndicator(),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(authControllerProvider).session;
+    final tenants =
+        ref.watch(tenantsProvider).asData?.value ?? const <Tenant>[];
+    final tenantNames = {for (final tenant in tenants) tenant.id: tenant.name};
+    return AppShell(
+      title: 'Usuários e acessos',
+      child: ref
+          .watch(usersProvider)
+          .when(
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(48),
+                child: CircularProgressIndicator(),
+              ),
+            ),
+            error: (_, _) =>
+                const Text('Não foi possível carregar os usuários.'),
+            data: (users) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  alignment: WrapAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${users.length} usuário(s) · ${session?.tenantName ?? 'Parceria'}',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (session?.allows('tenants.create') == true)
+                      OutlinedButton.icon(
+                        onPressed: () => _showCreateTenant(context, ref),
+                        icon: const Icon(Icons.business),
+                        label: const Text('Nova parceria'),
+                      ),
+                    FilledButton.icon(
+                      onPressed: () => _showCreate(context, ref, tenants),
+                      icon: const Icon(Icons.person_add_alt_1),
+                      label: const Text('Novo usuário'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: users.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (_, index) {
+                      final user = users[index];
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
+                        leading: CircleAvatar(
+                          child: Text(
+                            user.displayName.substring(0, 1).toUpperCase(),
+                          ),
+                        ),
+                        title: Text(
+                          user.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              '@${user.username}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Chip(
+                              visualDensity: VisualDensity.compact,
+                              label: Text(user.isActive ? 'Ativo' : 'Inativo'),
+                            ),
+                            if (user.isSuperuser)
+                              const Chip(
+                                visualDensity: VisualDensity.compact,
+                                label: Text('Administrador'),
+                              ),
+                            Chip(
+                              visualDensity: VisualDensity.compact,
+                              label: Text(
+                                tenantNames[user.tenantId] ?? 'Parceria padrão',
+                              ),
+                            ),
+                          ],
+                        ),
+                        trailing: PopupMenuButton<String>(
+                          tooltip: 'Ações do usuário',
+                          onSelected: (action) =>
+                              _handleUserAction(context, ref, user, action),
+                          itemBuilder: (_) => [
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Text('Editar usuário'),
+                            ),
+                            if (!user.isSuperuser)
+                              const PopupMenuItem(
+                                value: 'permissions',
+                                child: Text('Editar permissões'),
+                              ),
+                            const PopupMenuItem(
+                              value: 'password',
+                              child: Text('Redefinir senha'),
+                            ),
+                            PopupMenuItem(
+                              value: 'toggle',
+                              child: Text(
+                                user.isActive
+                                    ? 'Desativar usuário'
+                                    : 'Ativar usuário',
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
-          error: (_, _) => const Text('Não foi possível carregar os usuários.'),
-          data: (users) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 12,
-                runSpacing: 10,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                alignment: WrapAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '${users.length} usuário(s) cadastrado(s)',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  FilledButton.icon(
-                    onPressed: () => _showCreate(context, ref),
-                    icon: const Icon(Icons.person_add_alt_1),
-                    label: const Text('Novo usuário'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: users.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (_, index) {
-                    final user = users[index];
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                      leading: CircleAvatar(
-                        child: Text(
-                          user.displayName.substring(0, 1).toUpperCase(),
-                        ),
-                      ),
-                      title: Text(
-                        user.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Text(
-                            '@${user.username}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Chip(
-                            visualDensity: VisualDensity.compact,
-                            label: Text(user.isActive ? 'Ativo' : 'Inativo'),
-                          ),
-                          if (user.isSuperuser)
-                            const Chip(
-                              visualDensity: VisualDensity.compact,
-                              label: Text('Administrador'),
-                            ),
-                        ],
-                      ),
-                      trailing: PopupMenuButton<String>(
-                        tooltip: 'Ações do usuário',
-                        onSelected: (action) =>
-                            _handleUserAction(context, ref, user, action),
-                        itemBuilder: (_) => [
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Text('Editar usuário'),
-                          ),
-                          if (!user.isSuperuser)
-                            const PopupMenuItem(
-                              value: 'permissions',
-                              child: Text('Editar permissões'),
-                            ),
-                          const PopupMenuItem(
-                            value: 'password',
-                            child: Text('Redefinir senha'),
-                          ),
-                          PopupMenuItem(
-                            value: 'toggle',
-                            child: Text(
-                              user.isActive
-                                  ? 'Desativar usuário'
-                                  : 'Ativar usuário',
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-  );
-  void _showCreate(BuildContext context, WidgetRef ref) => showDialog(
+    );
+  }
+
+  void _showCreate(BuildContext context, WidgetRef ref, List<Tenant> tenants) =>
+      showDialog(
+        context: context,
+        builder: (_) => _CreateUserDialog(ref: ref, tenants: tenants),
+      );
+
+  void _showCreateTenant(BuildContext context, WidgetRef ref) => showDialog(
     context: context,
-    builder: (_) => _CreateUserDialog(ref: ref),
+    builder: (_) => _CreateTenantDialog(ref: ref),
   );
+
   Future<void> _handleUserAction(
     BuildContext context,
     WidgetRef ref,
@@ -133,9 +161,11 @@ class UsersPage extends ConsumerWidget {
     String action,
   ) async {
     if (action == 'edit') {
+      final tenants =
+          ref.read(tenantsProvider).asData?.value ?? const <Tenant>[];
       await showDialog<void>(
         context: context,
-        builder: (_) => _EditUserDialog(ref: ref, user: user),
+        builder: (_) => _EditUserDialog(ref: ref, user: user, tenants: tenants),
       );
       return;
     }
@@ -162,8 +192,9 @@ class UsersPage extends ConsumerWidget {
 }
 
 class _CreateUserDialog extends StatefulWidget {
-  const _CreateUserDialog({required this.ref});
+  const _CreateUserDialog({required this.ref, required this.tenants});
   final WidgetRef ref;
+  final List<Tenant> tenants;
   @override
   State<_CreateUserDialog> createState() => _CreateUserDialogState();
 }
@@ -175,7 +206,15 @@ class _CreateUserDialogState extends State<_CreateUserDialog> {
   final _password = TextEditingController();
   bool _admin = false;
   final Set<String> _permissions = {'dashboard.view'};
+  late String? _tenantId;
   bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tenantId = widget.ref.read(authControllerProvider).session?.tenantId;
+  }
+
   @override
   void dispose() {
     _name.dispose();
@@ -219,6 +258,24 @@ class _CreateUserDialogState extends State<_CreateUserDialog> {
                 validator: (value) =>
                     (value?.length ?? 0) < 8 ? 'Mínimo de 8 caracteres.' : null,
               ),
+              if (widget.tenants.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue:
+                      widget.tenants.any((tenant) => tenant.id == _tenantId)
+                      ? _tenantId
+                      : widget.tenants.first.id,
+                  decoration: const InputDecoration(labelText: 'Parceria'),
+                  items: [
+                    for (final tenant in widget.tenants)
+                      DropdownMenuItem(
+                        value: tenant.id,
+                        child: Text(tenant.name),
+                      ),
+                  ],
+                  onChanged: (value) => setState(() => _tenantId = value),
+                ),
+              ],
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Administrador'),
@@ -279,6 +336,7 @@ class _CreateUserDialogState extends State<_CreateUserDialog> {
             password: _password.text,
             superuser: _admin,
             permissions: _admin ? ['*'] : _permissions.toList(),
+            tenantId: _tenantId,
           );
       if (mounted) {
         Navigator.pop(context);
@@ -298,9 +356,14 @@ class _CreateUserDialogState extends State<_CreateUserDialog> {
 }
 
 class _EditUserDialog extends StatefulWidget {
-  const _EditUserDialog({required this.ref, required this.user});
+  const _EditUserDialog({
+    required this.ref,
+    required this.user,
+    required this.tenants,
+  });
   final WidgetRef ref;
   final User user;
+  final List<Tenant> tenants;
 
   @override
   State<_EditUserDialog> createState() => _EditUserDialogState();
@@ -311,6 +374,7 @@ class _EditUserDialogState extends State<_EditUserDialog> {
   late final TextEditingController _name;
   late final TextEditingController _username;
   late bool _active;
+  late String _tenantId;
   bool _loading = false;
 
   @override
@@ -319,6 +383,7 @@ class _EditUserDialogState extends State<_EditUserDialog> {
     _name = TextEditingController(text: widget.user.displayName);
     _username = TextEditingController(text: widget.user.username);
     _active = widget.user.isActive;
+    _tenantId = widget.user.tenantId;
   }
 
   @override
@@ -352,6 +417,30 @@ class _EditUserDialogState extends State<_EditUserDialog> {
                   ? 'Mínimo de 3 caracteres.'
                   : null,
             ),
+            if (widget.tenants.isNotEmpty &&
+                (widget.ref
+                        .read(authControllerProvider)
+                        .session
+                        ?.allows('tenant.view_all') ??
+                    false)) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue:
+                    widget.tenants.any((tenant) => tenant.id == _tenantId)
+                    ? _tenantId
+                    : widget.tenants.first.id,
+                decoration: const InputDecoration(labelText: 'Parceria'),
+                items: [
+                  for (final tenant in widget.tenants)
+                    DropdownMenuItem(
+                      value: tenant.id,
+                      child: Text(tenant.name),
+                    ),
+                ],
+                onChanged: (value) =>
+                    setState(() => _tenantId = value ?? widget.user.tenantId),
+              ),
+            ],
             const SizedBox(height: 8),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -392,7 +481,70 @@ class _EditUserDialogState extends State<_EditUserDialog> {
             username: _username.text,
             displayName: _name.text,
             isActive: _active,
+            tenantId: _tenantId,
           );
+      if (mounted) Navigator.pop(context);
+    } catch (error) {
+      if (mounted) await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+}
+
+class _CreateTenantDialog extends StatefulWidget {
+  const _CreateTenantDialog({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  State<_CreateTenantDialog> createState() => _CreateTenantDialogState();
+}
+
+class _CreateTenantDialogState extends State<_CreateTenantDialog> {
+  final _form = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Nova parceria'),
+    content: Form(
+      key: _form,
+      child: TextFormField(
+        controller: _name,
+        decoration: const InputDecoration(labelText: 'Nome da parceria'),
+        validator: (value) =>
+            (value?.trim().length ?? 0) < 3 ? 'Mínimo de 3 caracteres.' : null,
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: _loading ? null : () => Navigator.pop(context),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton(
+        onPressed: _loading ? null : _save,
+        child: _loading
+            ? const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Text('Criar'),
+      ),
+    ],
+  );
+
+  Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    setState(() => _loading = true);
+    try {
+      await widget.ref.read(usersControllerProvider).createTenant(_name.text);
       if (mounted) Navigator.pop(context);
     } catch (error) {
       if (mounted) await showOperationError(context, error);

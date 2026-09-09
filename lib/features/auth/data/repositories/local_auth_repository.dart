@@ -121,6 +121,8 @@ class LocalAuthRepository implements AuthRepository {
 
   Future<AuthSession> _sessionFromUser(User user) async => AuthSession(
     userId: user.id,
+    tenantId: user.tenantId,
+    tenantName: await _database.tenantNameFor(user.tenantId),
     displayName: user.displayName,
     isSuperuser: user.isSuperuser,
     permissions: (await _database.permissionsOf(user.id)).toSet(),

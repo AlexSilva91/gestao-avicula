@@ -7,6 +7,7 @@ import '../../../../core/platform/notification_service.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
+import '../../../auth/application/auth_controller.dart';
 import '../../../lots/application/lots_controller.dart';
 import '../../application/operations_controller.dart';
 
@@ -1231,7 +1232,13 @@ class _AlertInfoCardState extends State<_AlertInfoCard> {
           ),
         );
       } else {
-        await schedulePersistedAlerts(widget.ref.read(databaseProvider));
+        final session = widget.ref.read(authControllerProvider).session;
+        await schedulePersistedAlerts(
+          widget.ref.read(databaseProvider),
+          tenantId: session?.allows('tenant.view_all') == true
+              ? null
+              : session?.tenantId,
+        );
       }
     } catch (e) {
       if (mounted) await showOperationError(context, e);

@@ -361,6 +361,9 @@ class FirebaseBackupService extends ChangeNotifier {
     final payload = (backup as Map).cast<String, dynamic>()
       ..remove('exportedAt')
       ..['format'] = 'SELETO_SYNC_V1';
+    payload['tenants'] = (await _database.select(_database.tenants).get())
+        .map((row) => row.toJson())
+        .toList();
     payload['users'] = (await _database.select(_database.users).get())
         .map((row) => row.toJson())
         .toList();
@@ -387,10 +390,15 @@ class FirebaseBackupService extends ChangeNotifier {
 
   Future<void> _restoreAuthPayload(Map<String, dynamic> payload) async {
     await _database.transaction(() async {
+      for (final row in _rows(payload, 'tenants')) {
+        await _database
+            .into(_database.tenants)
+            .insertOnConflictUpdate(Tenant.fromJson(row));
+      }
       for (final row in _rows(payload, 'users')) {
         await _database
             .into(_database.users)
-            .insertOnConflictUpdate(User.fromJson(row));
+            .insertOnConflictUpdate(User.fromJson(_userJson(row)));
       }
       await _database.delete(_database.userPermissions).go();
       for (final row in _rows(payload, 'userPermissions')) {
@@ -628,6 +636,11 @@ class FirebaseBackupService extends ChangeNotifier {
       _syncTables.firstWhere((spec) => spec.collectionKey == collectionKey);
 }
 
+Map<String, dynamic> _userJson(Map<String, dynamic> json) => {
+  ...json,
+  'tenantId': json['tenantId'] ?? defaultTenantId,
+};
+
 class _SyncTableSpec {
   const _SyncTableSpec(
     this.collectionKey,
@@ -648,6 +661,7 @@ String _snakeToCamelStatic(String value) => value.replaceAllMapped(
 );
 
 const _syncTables = [
+  _SyncTableSpec('tenants', 'tenants'),
   _SyncTableSpec('users', 'users'),
   _SyncTableSpec('userPermissions', 'user_permissions'),
   _SyncTableSpec('auditLogs', 'audit_logs'),

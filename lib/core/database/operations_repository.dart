@@ -234,6 +234,55 @@ class ReportPoint {
 }
 
 extension OperationsRepository on AppDatabase {
+  String _tenantSql(String alias, String? tenantId) => tenantId == null
+      ? '1=1'
+      : '''($alias.created_by = 'system' OR EXISTS (
+          SELECT 1 FROM users tenant_user
+          WHERE tenant_user.id = $alias.created_by
+            AND tenant_user.tenant_id = ?
+        ) OR NOT EXISTS (
+          SELECT 1 FROM users any_user
+          WHERE any_user.id = $alias.created_by
+        ))''';
+
+  List<Variable<String>> _tenantVariables(String? tenantId, [int count = 1]) =>
+      tenantId == null
+      ? const []
+      : List.generate(count, (_) => Variable.withString(tenantId));
+
+  Expression<bool> _tenantExpression(
+    GeneratedColumn<String> createdBy,
+    String tenantId,
+  ) {
+    final tenantUsers = selectOnly(users)
+      ..addColumns([users.id])
+      ..where(users.tenantId.equals(tenantId));
+    final knownUsers = selectOnly(users)..addColumns([users.id]);
+    return createdBy.equals('system') |
+        createdBy.isInQuery(tenantUsers) |
+        createdBy.isNotInQuery(knownUsers);
+  }
+
+  Future<String> _actorTenantId(String actorId) => tenantIdForUser(actorId);
+
+  Future<void> _assertActorCanUseRecord({
+    required String tableName,
+    required String recordId,
+    required String actorId,
+  }) async {
+    final row = await customSelect(
+      'SELECT created_by FROM $tableName WHERE id = ? LIMIT 1',
+      variables: [Variable.withString(recordId)],
+    ).getSingleOrNull();
+    final ownerId = row?.readNullable<String>('created_by');
+    if (ownerId == null || ownerId == 'system') return;
+    final actorTenantId = await _actorTenantId(actorId);
+    final ownerTenantId = await tenantIdForUser(ownerId);
+    if (ownerTenantId != actorTenantId) {
+      throw StateError('Este registro pertence a outra parceria.');
+    }
+  }
+
   Future<OperationalImportResult> importOperationalData({
     required String filename,
     required Uint8List bytes,
@@ -300,12 +349,15 @@ extension OperationsRepository on AppDatabase {
     return FeedRecommendationImportResult(rowCount: recommendations.length);
   }
 
-  Stream<BirdMetrics> watchBirdMetrics() =>
+  Stream<BirdMetrics> watchBirdMetrics({String? tenantId}) =>
       customSelect(
         '''SELECT
     COALESCE(SUM(CASE WHEN type='PURCHASE' THEN quantity ELSE 0 END),0) purchased,
     COALESCE(SUM(CASE WHEN type IN ('PURCHASE','TRANSFER_IN','ADJUSTMENT_IN') THEN quantity ELSE -quantity END),0) active,
-    COALESCE(SUM(CASE WHEN type='MORTALITY' THEN quantity ELSE 0 END),0) mortality FROM bird_movements''',
+    COALESCE(SUM(CASE WHEN type='MORTALITY' THEN quantity ELSE 0 END),0) mortality
+    FROM bird_movements
+    WHERE ${_tenantSql('bird_movements', tenantId)}''',
+        variables: _tenantVariables(tenantId),
         readsFrom: {birdMovements},
       ).watchSingle().map(
         (r) => BirdMetrics(
@@ -318,6 +370,7 @@ extension OperationsRepository on AppDatabase {
     int days = 30,
     DateTime? start,
     DateTime? end,
+    String? tenantId,
   }) {
     final now = DateTime.now();
     final startDate = start ?? now.subtract(Duration(days: days));
@@ -326,10 +379,12 @@ extension OperationsRepository on AppDatabase {
       '''SELECT collected_on, SUM(quantity-broken_eggs-discarded_eggs) total
          FROM egg_collections
          WHERE collected_on>=? AND collected_on<?
+           AND ${_tenantSql('egg_collections', tenantId)}
          GROUP BY date(collected_on) ORDER BY collected_on''',
       variables: [
         Variable.withDateTime(startDate),
         Variable.withDateTime(endDate),
+        ..._tenantVariables(tenantId),
       ],
       readsFrom: {eggCollections},
     ).watch().map(
@@ -348,6 +403,7 @@ extension OperationsRepository on AppDatabase {
     int months = 6,
     DateTime? start,
     DateTime? end,
+    String? tenantId,
   }) {
     final now = DateTime.now();
     final startDate = start ?? DateTime(now.year, now.month - months + 1);
@@ -358,10 +414,12 @@ extension OperationsRepository on AppDatabase {
          SUM(CASE WHEN type='EXPENSE' AND status='CONFIRMED' THEN amount_cents ELSE 0 END) expense
          FROM finance_transactions
          WHERE occurred_at>=? AND occurred_at<?
+           AND ${_tenantSql('finance_transactions', tenantId)}
          GROUP BY strftime('%Y-%m', occurred_at, 'unixepoch') ORDER BY occurred_at''',
       variables: [
         Variable.withDateTime(startDate),
         Variable.withDateTime(endDate),
+        ..._tenantVariables(tenantId),
       ],
       readsFrom: {financeTransactions},
     ).watch().map(
@@ -377,19 +435,24 @@ extension OperationsRepository on AppDatabase {
     );
   }
 
-  Stream<List<IngredientOverview>> watchIngredientOverviews() {
+  Stream<List<IngredientOverview>> watchIngredientOverviews({
+    String? tenantId,
+  }) {
     final query = customSelect(
       '''
       SELECT i.*,
-        (SELECT price_per_kg_cents FROM ingredient_price_history p WHERE p.ingredient_id=i.id ORDER BY effective_date DESC, created_at DESC LIMIT 1) current_price,
-        (SELECT price_per_kg_cents FROM ingredient_price_history p WHERE p.ingredient_id=i.id ORDER BY effective_date DESC, created_at DESC LIMIT 1 OFFSET 1) previous_price,
-        (SELECT MIN(price_per_kg_cents) FROM ingredient_price_history p WHERE p.ingredient_id=i.id) minimum_price,
-        (SELECT MAX(price_per_kg_cents) FROM ingredient_price_history p WHERE p.ingredient_id=i.id) maximum_price,
-        (SELECT AVG(price_per_kg_cents) FROM ingredient_price_history p WHERE p.ingredient_id=i.id) average_price,
-        COALESCE((SELECT SUM(CASE WHEN m.type IN ('PURCHASE_IN','ADJUSTMENT_IN') THEN m.quantity_kg ELSE -m.quantity_kg END) FROM ingredient_stock_movements m WHERE m.ingredient_id=i.id),0) stock_kg,
+        (SELECT price_per_kg_cents FROM ingredient_price_history p WHERE p.ingredient_id=i.id AND ${_tenantSql('p', tenantId)} ORDER BY effective_date DESC, created_at DESC LIMIT 1) current_price,
+        (SELECT price_per_kg_cents FROM ingredient_price_history p WHERE p.ingredient_id=i.id AND ${_tenantSql('p', tenantId)} ORDER BY effective_date DESC, created_at DESC LIMIT 1 OFFSET 1) previous_price,
+        (SELECT MIN(price_per_kg_cents) FROM ingredient_price_history p WHERE p.ingredient_id=i.id AND ${_tenantSql('p', tenantId)}) minimum_price,
+        (SELECT MAX(price_per_kg_cents) FROM ingredient_price_history p WHERE p.ingredient_id=i.id AND ${_tenantSql('p', tenantId)}) maximum_price,
+        (SELECT AVG(price_per_kg_cents) FROM ingredient_price_history p WHERE p.ingredient_id=i.id AND ${_tenantSql('p', tenantId)}) average_price,
+        COALESCE((SELECT SUM(CASE WHEN m.type IN ('PURCHASE_IN','ADJUSTMENT_IN') THEN m.quantity_kg ELSE -m.quantity_kg END) FROM ingredient_stock_movements m WHERE m.ingredient_id=i.id AND ${_tenantSql('m', tenantId)}),0) stock_kg,
         COALESCE((SELECT COUNT(*) FROM ingredient_lots l WHERE l.ingredient_id=i.id AND (SELECT COALESCE(SUM(CASE WHEN m.type IN ('PURCHASE_IN','ADJUSTMENT_IN') THEN m.quantity_kg ELSE -m.quantity_kg END),0) FROM ingredient_stock_movements m WHERE m.ingredient_lot_id=l.id) > 0.0001),0) active_lot_count
-      FROM ingredients i ORDER BY is_active DESC, name
+      FROM ingredients i
+      WHERE ${_tenantSql('i', tenantId)}
+      ORDER BY is_active DESC, name
     ''',
+      variables: _tenantVariables(tenantId, 7),
       readsFrom: {
         ingredients,
         ingredientPriceHistory,
@@ -424,18 +487,28 @@ extension OperationsRepository on AppDatabase {
   }
 
   Stream<List<IngredientPriceHistoryData>> watchIngredientPrices(
-    String ingredientId,
-  ) =>
-      (select(ingredientPriceHistory)
-            ..where((p) => p.ingredientId.equals(ingredientId))
-            ..orderBy([(p) => OrderingTerm.desc(p.effectiveDate)])
-            ..limit(100))
-          .watch();
+    String ingredientId, {
+    String? tenantId,
+  }) {
+    final query = select(ingredientPriceHistory)
+      ..where((p) => p.ingredientId.equals(ingredientId))
+      ..orderBy([(p) => OrderingTerm.desc(p.effectiveDate)])
+      ..limit(100);
+    if (tenantId != null) {
+      query.where((p) => _tenantExpression(p.createdBy, tenantId));
+    }
+    return query.watch();
+  }
 
   Stream<List<IngredientLotBalance>> watchIngredientLotBalances({
     String? ingredientId,
+    String? tenantId,
   }) {
-    final where = ingredientId == null ? '' : 'WHERE l.ingredient_id = ?';
+    final filters = [
+      if (ingredientId != null) 'l.ingredient_id = ?',
+      _tenantSql('l', tenantId),
+    ];
+    final where = 'WHERE ${filters.join(' AND ')}';
     final query = customSelect(
       '''
       SELECT l.*, i.name ingredient_name,
@@ -447,7 +520,10 @@ extension OperationsRepository on AppDatabase {
       GROUP BY l.id
       ORDER BY l.entry_date DESC, l.created_at DESC
     ''',
-      variables: [if (ingredientId != null) Variable.withString(ingredientId)],
+      variables: [
+        if (ingredientId != null) Variable.withString(ingredientId),
+        ..._tenantVariables(tenantId),
+      ],
       readsFrom: {ingredientLots, ingredients, ingredientStockMovements},
     );
     return query.watch().map(
@@ -492,6 +568,11 @@ extension OperationsRepository on AppDatabase {
     if (packageQuantity <= 0 || packageWeightKg <= 0 || totalCostCents <= 0) {
       throw ArgumentError('Informe quantidade, peso e valor válidos.');
     }
+    await _assertActorCanUseRecord(
+      tableName: 'ingredients',
+      recordId: ingredientId,
+      actorId: actorId,
+    );
     final normalizedUnit = packageUnit.trim().toUpperCase();
     if (normalizedUnit != 'KG' && normalizedUnit != 'SACO') {
       throw ArgumentError('Use KG ou SACO como unidade do lote.');
@@ -569,6 +650,11 @@ extension OperationsRepository on AppDatabase {
     required String actorId,
   }) async {
     if (quantityKg <= 0) throw ArgumentError('Informe uma quantidade válida.');
+    await _assertActorCanUseRecord(
+      tableName: 'ingredient_lots',
+      recordId: ingredientLotId,
+      actorId: actorId,
+    );
     final lot = await (select(
       ingredientLots,
     )..where((l) => l.id.equals(ingredientLotId))).getSingle();
@@ -650,6 +736,11 @@ extension OperationsRepository on AppDatabase {
     if (name.trim().isEmpty || unit.trim().isEmpty) {
       throw ArgumentError('Informe nome e unidade do insumo.');
     }
+    await _assertActorCanUseRecord(
+      tableName: 'ingredients',
+      recordId: ingredientId,
+      actorId: actorId,
+    );
     await transaction(() async {
       await (update(
         ingredients,
@@ -682,6 +773,11 @@ extension OperationsRepository on AppDatabase {
     if (priceCents <= 0) {
       throw ArgumentError('O preço deve ser maior que zero.');
     }
+    await _assertActorCanUseRecord(
+      tableName: 'ingredients',
+      recordId: ingredientId,
+      actorId: actorId,
+    );
     final id = _uuid.v4();
     await transaction(() async {
       await into(ingredientPriceHistory).insert(
@@ -706,14 +802,16 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
-  Stream<List<FormulaOverview>> watchFormulaOverviews() {
+  Stream<List<FormulaOverview>> watchFormulaOverviews({String? tenantId}) {
     final query = customSelect(
       '''
       SELECT f.*, fi.ingredient_id, i.name ingredient_name, fi.base_quantity_kg
       FROM feed_formulas f JOIN feed_formula_items fi ON fi.formula_id=f.id
       JOIN ingredients i ON i.id=fi.ingredient_id
+      WHERE ${_tenantSql('f', tenantId)}
       ORDER BY f.phase, f.version DESC, i.name
     ''',
+      variables: _tenantVariables(tenantId),
       readsFrom: {feedFormulas, feedFormulaItems, ingredients},
     );
     return query.watch().map((rows) {
@@ -755,6 +853,11 @@ extension OperationsRepository on AppDatabase {
     String? notes,
     required String actorId,
   }) async {
+    await _assertActorCanUseRecord(
+      tableName: 'feed_formulas',
+      recordId: source.formula.id,
+      actorId: actorId,
+    );
     final total = quantities.values.fold<double>(
       0,
       (sum, value) => sum + value,
@@ -767,10 +870,25 @@ extension OperationsRepository on AppDatabase {
     }
     final id = _uuid.v4();
     final now = DateTime.now();
+    final actorTenantId = await _actorTenantId(actorId);
     await transaction(() async {
-      await (update(feedFormulas)
-            ..where((f) => f.phase.equals(source.formula.phase)))
-          .write(const FeedFormulasCompanion(isActive: Value(false)));
+      await customStatement(
+        '''
+        UPDATE feed_formulas
+        SET is_active = 0
+        WHERE phase = ?
+          AND created_by != 'system'
+          AND EXISTS (
+            SELECT 1 FROM users tenant_user
+            WHERE tenant_user.id = feed_formulas.created_by
+              AND tenant_user.tenant_id = ?
+          )
+        ''',
+        [
+          Variable.withString(source.formula.phase),
+          Variable.withString(actorTenantId),
+        ],
+      );
       await into(feedFormulas).insert(
         FeedFormulasCompanion.insert(
           id: id,
@@ -812,6 +930,17 @@ extension OperationsRepository on AppDatabase {
     String? notes,
     required String actorId,
   }) async {
+    await _assertActorCanUseRecord(
+      tableName: 'feed_formulas',
+      recordId: source.formula.id,
+      actorId: actorId,
+    );
+    if (source.formula.createdBy == 'system' &&
+        await userById(actorId) != null) {
+      throw StateError(
+        'Crie uma nova versão antes de alterar uma formulação padrão do sistema.',
+      );
+    }
     if (name.trim().isEmpty || phase.trim().isEmpty) {
       throw ArgumentError('Informe nome e fase da fórmula.');
     }
@@ -875,6 +1004,7 @@ extension OperationsRepository on AppDatabase {
     required String ingredientId,
     required double quantityKg,
     required DateTime producedAt,
+    String? tenantId,
   }) async {
     final rows = await customSelect(
       '''
@@ -883,6 +1013,7 @@ extension OperationsRepository on AppDatabase {
       FROM ingredient_lots l
       LEFT JOIN ingredient_stock_movements m ON m.ingredient_lot_id = l.id
       WHERE l.ingredient_id = ? AND l.entry_date <= ?
+        AND ${_tenantSql('l', tenantId)}
       GROUP BY l.id
       HAVING balance_kg > 0.0001
       ORDER BY l.entry_date ASC, l.created_at ASC
@@ -890,6 +1021,7 @@ extension OperationsRepository on AppDatabase {
       variables: [
         Variable.withString(ingredientId),
         Variable.withDateTime(producedAt),
+        ..._tenantVariables(tenantId),
       ],
       readsFrom: {ingredientLots, ingredientStockMovements},
     ).get();
@@ -945,8 +1077,14 @@ extension OperationsRepository on AppDatabase {
     if (quantityKg <= 0) {
       throw ArgumentError('A quantidade produzida deve ser maior que zero.');
     }
+    await _assertActorCanUseRecord(
+      tableName: 'feed_formulas',
+      recordId: formula.formula.id,
+      actorId: actorId,
+    );
     final now = DateTime.now();
     final producedAt = date ?? now;
+    final actorTenantId = await _actorTenantId(actorId);
     final snapshots =
         <
           ({
@@ -963,6 +1101,7 @@ extension OperationsRepository on AppDatabase {
         ingredientId: item.ingredientId,
         quantityKg: scaled,
         producedAt: producedAt,
+        tenantId: actorTenantId,
       );
       final cost = usages.fold<int>(0, (sum, item) => sum + item.costCents);
       snapshots.add((
@@ -1137,7 +1276,7 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
-  Stream<List<FeedBatchBalance>> watchFeedBatchBalances() {
+  Stream<List<FeedBatchBalance>> watchFeedBatchBalances({String? tenantId}) {
     final query = customSelect(
       '''
       SELECT b.*, f.name formula_name,
@@ -1145,9 +1284,11 @@ extension OperationsRepository on AppDatabase {
       FROM feed_batches b
       LEFT JOIN feed_formulas f ON f.id=b.formula_id
       LEFT JOIN feed_stock_movements m ON m.batch_id=b.id
+      WHERE ${_tenantSql('b', tenantId)}
       GROUP BY b.id
       ORDER BY b.produced_at DESC
     ''',
+      variables: _tenantVariables(tenantId),
       readsFrom: {feedBatches, feedFormulas, feedStockMovements},
     );
     return query.watch().map(
@@ -1175,11 +1316,18 @@ extension OperationsRepository on AppDatabase {
     );
   }
 
-  Stream<List<DailyFeeding>> watchFeedings({int limit = 100}) =>
-      (select(dailyFeedings)
-            ..orderBy([(f) => OrderingTerm.desc(f.feedingDate)])
-            ..limit(limit))
-          .watch();
+  Stream<List<DailyFeeding>> watchFeedings({
+    int limit = 100,
+    String? tenantId,
+  }) {
+    final query = select(dailyFeedings)
+      ..orderBy([(f) => OrderingTerm.desc(f.feedingDate)])
+      ..limit(limit);
+    if (tenantId != null) {
+      query.where((f) => _tenantExpression(f.createdBy, tenantId));
+    }
+    return query.watch();
+  }
 
   Stream<List<FeedConsumptionRecommendation>>
   watchFeedConsumptionRecommendations() =>
@@ -1198,6 +1346,16 @@ extension OperationsRepository on AppDatabase {
     required String actorId,
   }) async {
     if (quantityKg <= 0) throw ArgumentError('Informe uma quantidade válida.');
+    await _assertActorCanUseRecord(
+      tableName: 'lots',
+      recordId: lotId,
+      actorId: actorId,
+    );
+    await _assertActorCanUseRecord(
+      tableName: 'feed_batches',
+      recordId: batchId,
+      actorId: actorId,
+    );
     if (await activeBirdsFor(lotId) <= 0) {
       throw StateError('O lote não possui aves ativas.');
     }
@@ -1259,6 +1417,11 @@ extension OperationsRepository on AppDatabase {
     required String actorId,
   }) async {
     if (quantityKg <= 0) throw ArgumentError('Informe uma quantidade válida.');
+    await _assertActorCanUseRecord(
+      tableName: 'feed_batches',
+      recordId: batchId,
+      actorId: actorId,
+    );
     if (!input && quantityKg > await feedBalanceFor(batchId)) {
       throw StateError('O ajuste deixaria o estoque negativo.');
     }
@@ -1286,7 +1449,9 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
-  Stream<List<PackagingItemStock>> watchPackagingItemStocks() {
+  Stream<List<PackagingItemStock>> watchPackagingItemStocks({
+    String? tenantId,
+  }) {
     return customSelect(
       '''
       SELECT i.*,
@@ -1307,9 +1472,11 @@ extension OperationsRepository on AppDatabase {
         ), 0) AS active_lot_count
       FROM packaging_items i
       LEFT JOIN packaging_stock_movements m ON m.item_id = i.id
+      WHERE ${_tenantSql('i', tenantId)}
       GROUP BY i.id
       ORDER BY i.type, i.name
       ''',
+      variables: _tenantVariables(tenantId),
       readsFrom: {packagingItems, packagingLots, packagingStockMovements},
     ).watch().map(
       (rows) => rows
@@ -1332,8 +1499,12 @@ extension OperationsRepository on AppDatabase {
     );
   }
 
-  Stream<List<PackagingLotBalance>> watchPackagingLotBalances({String? type}) {
-    final typeFilter = type == null ? '' : 'WHERE i.type = ?';
+  Stream<List<PackagingLotBalance>> watchPackagingLotBalances({
+    String? type,
+    String? tenantId,
+  }) {
+    final filters = [if (type != null) 'i.type = ?', _tenantSql('l', tenantId)];
+    final typeFilter = 'WHERE ${filters.join(' AND ')}';
     return customSelect(
       '''
       SELECT l.id AS lot_id, l.item_id, l.batch_code, l.initial_quantity,
@@ -1354,7 +1525,10 @@ extension OperationsRepository on AppDatabase {
       GROUP BY l.id
       ORDER BY l.purchased_at, l.created_at
       ''',
-      variables: [if (type != null) Variable.withString(type)],
+      variables: [
+        if (type != null) Variable.withString(type),
+        ..._tenantVariables(tenantId),
+      ],
       readsFrom: {packagingItems, packagingLots, packagingStockMovements},
     ).watch().map(
       (rows) => rows
@@ -1389,7 +1563,9 @@ extension OperationsRepository on AppDatabase {
     );
   }
 
-  Stream<List<EggTrayBatchBalance>> watchEggTrayBatchBalances() {
+  Stream<List<EggTrayBatchBalance>> watchEggTrayBatchBalances({
+    String? tenantId,
+  }) {
     return customSelect(
       '''
       SELECT b.*, ti.name AS tray_name, li.name AS label_name,
@@ -1403,9 +1579,11 @@ extension OperationsRepository on AppDatabase {
       JOIN packaging_lots ll ON ll.id = b.label_lot_id
       JOIN packaging_items li ON li.id = ll.item_id
       LEFT JOIN egg_tray_stock_movements m ON m.batch_id = b.id
+      WHERE ${_tenantSql('b', tenantId)}
       GROUP BY b.id
       ORDER BY b.assembled_at DESC, b.created_at DESC
       ''',
+      variables: _tenantVariables(tenantId),
       readsFrom: {
         eggTrayBatches,
         eggTrayStockMovements,
@@ -1475,7 +1653,7 @@ extension OperationsRepository on AppDatabase {
     return row.read<int>('balance');
   }
 
-  Stream<int> watchEstimatedEggUnitCostCents() {
+  Stream<int> watchEstimatedEggUnitCostCents({String? tenantId}) {
     final now = DateTime.now();
     final month = DateTime(now.year, now.month);
     final nextMonth = DateTime(now.year, now.month + 1);
@@ -1487,18 +1665,22 @@ extension OperationsRepository on AppDatabase {
           FROM daily_feedings d
           JOIN feed_batches b ON b.id = d.batch_id
           WHERE d.feeding_date >= ? AND d.feeding_date < ?
+            AND ${_tenantSql('d', tenantId)}
         ), 0.0) AS feed_cost,
         COALESCE((
           SELECT SUM(quantity - broken_eggs - discarded_eggs)
           FROM egg_collections
           WHERE collected_on >= ? AND collected_on < ?
+            AND ${_tenantSql('egg_collections', tenantId)}
         ), 0) AS eggs
       ''',
       variables: [
         Variable.withDateTime(month),
         Variable.withDateTime(nextMonth),
+        ..._tenantVariables(tenantId),
         Variable.withDateTime(month),
         Variable.withDateTime(nextMonth),
+        ..._tenantVariables(tenantId),
       ],
       readsFrom: {dailyFeedings, feedBatches, eggCollections},
     ).watchSingle().map((row) {
@@ -1588,6 +1770,11 @@ extension OperationsRepository on AppDatabase {
     if (quantity <= 0 || unitCostCents < 0) {
       throw ArgumentError('Informe quantidade e valor válidos.');
     }
+    await _assertActorCanUseRecord(
+      tableName: 'packaging_items',
+      recordId: itemId,
+      actorId: actorId,
+    );
     final item = await (select(
       packagingItems,
     )..where((i) => i.id.equals(itemId))).getSingle();
@@ -1651,6 +1838,16 @@ extension OperationsRepository on AppDatabase {
     if (quantity <= 0 || eggsPerTray < 12) {
       throw ArgumentError('Monte ao menos uma bandeja com 12 ovos ou mais.');
     }
+    await _assertActorCanUseRecord(
+      tableName: 'packaging_lots',
+      recordId: trayLotId,
+      actorId: actorId,
+    );
+    await _assertActorCanUseRecord(
+      tableName: 'packaging_lots',
+      recordId: labelLotId,
+      actorId: actorId,
+    );
     final trayLot = await _packagingLotWithItem(trayLotId, 'TRAY');
     final labelLot = await _packagingLotWithItem(labelLotId, 'LABEL');
     final trayBalance = await packagingLotBalance(trayLot.lot.id);
@@ -1662,7 +1859,8 @@ extension OperationsRepository on AppDatabase {
       throw StateError('Estoque de etiquetas insuficiente.');
     }
     final eggs = quantity * eggsPerTray;
-    final eggBalance = await eggStockBalance();
+    final actorTenantId = await _actorTenantId(actorId);
+    final eggBalance = await eggStockBalance(tenantId: actorTenantId);
     if (eggs > eggBalance) {
       throw StateError('Estoque insuficiente. Disponível: $eggBalance ovos.');
     }
@@ -1766,6 +1964,11 @@ extension OperationsRepository on AppDatabase {
     required String batchId,
     required String actorId,
   }) async {
+    await _assertActorCanUseRecord(
+      tableName: 'egg_tray_batches',
+      recordId: batchId,
+      actorId: actorId,
+    );
     final batch = await (select(
       eggTrayBatches,
     )..where((b) => b.id.equals(batchId))).getSingle();
@@ -1863,6 +2066,11 @@ extension OperationsRepository on AppDatabase {
     if (trayQuantity <= 0 || (!hasTrayPrice && !hasDozenPrice)) {
       throw ArgumentError('Revise quantidade e valor da venda.');
     }
+    await _assertActorCanUseRecord(
+      tableName: 'egg_tray_batches',
+      recordId: trayBatchId,
+      actorId: actorId,
+    );
     final batch = await (select(
       eggTrayBatches,
     )..where((b) => b.id.equals(trayBatchId))).getSingle();
@@ -1998,10 +2206,16 @@ extension OperationsRepository on AppDatabase {
     );
   }
 
-  Stream<List<Customer>> watchCustomers({String search = ''}) {
+  Stream<List<Customer>> watchCustomers({
+    String search = '',
+    String? tenantId,
+  }) {
     final query = select(customers)
       ..orderBy([(c) => OrderingTerm.asc(c.name)])
       ..limit(100);
+    if (tenantId != null) {
+      query.where((c) => _tenantExpression(c.createdBy, tenantId));
+    }
     if (search.trim().isNotEmpty) {
       query.where(
         (c) => c.name.lower().like('%${search.trim().toLowerCase()}%'),
@@ -2041,10 +2255,17 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
-  Stream<List<Order>> watchOrders({String? status, int limit = 100}) {
+  Stream<List<Order>> watchOrders({
+    String? status,
+    int limit = 100,
+    String? tenantId,
+  }) {
     final query = select(orders)
       ..orderBy([(o) => OrderingTerm.desc(o.createdAt)])
       ..limit(limit);
+    if (tenantId != null) {
+      query.where((o) => _tenantExpression(o.createdBy, tenantId));
+    }
     if (status != null) query.where((o) => o.status.equals(status));
     return query.watch();
   }
@@ -2064,6 +2285,13 @@ extension OperationsRepository on AppDatabase {
     }
     if (!{'DOZEN', 'EGG', 'BIRD'}.contains(productType)) {
       throw ArgumentError('Produto inválido.');
+    }
+    if (customerId != null) {
+      await _assertActorCanUseRecord(
+        tableName: 'customers',
+        recordId: customerId,
+        actorId: actorId,
+      );
     }
     final numberRow = await customSelect(
       'SELECT COALESCE(MAX(order_number),100)+1 number FROM orders',
@@ -2136,6 +2364,11 @@ extension OperationsRepository on AppDatabase {
       'CANCELLED',
     };
     if (!allowed.contains(newStatus)) throw ArgumentError('Status inválido.');
+    await _assertActorCanUseRecord(
+      tableName: 'orders',
+      recordId: orderId,
+      actorId: actorId,
+    );
     await transaction(() async {
       final order = await (select(
         orders,
@@ -2192,7 +2425,8 @@ extension OperationsRepository on AppDatabase {
               ? i.quantity.round()
               : 0),
     );
-    if (eggs > await eggStockBalance()) {
+    final actorTenantId = await _actorTenantId(actorId);
+    if (eggs > await eggStockBalance(tenantId: actorTenantId)) {
       throw StateError('Estoque de ovos insuficiente para entregar o pedido.');
     }
     final saleId = _uuid.v4();
@@ -2249,11 +2483,15 @@ extension OperationsRepository on AppDatabase {
     );
   }
 
-  Stream<List<Sale>> watchSales({int limit = 100}) =>
-      (select(sales)
-            ..orderBy([(s) => OrderingTerm.desc(s.soldAt)])
-            ..limit(limit))
-          .watch();
+  Stream<List<Sale>> watchSales({int limit = 100, String? tenantId}) {
+    final query = select(sales)
+      ..orderBy([(s) => OrderingTerm.desc(s.soldAt)])
+      ..limit(limit);
+    if (tenantId != null) {
+      query.where((s) => _tenantExpression(s.createdBy, tenantId));
+    }
+    return query.watch();
+  }
 
   Future<void> createEggSale({
     String? customerId,
@@ -2271,11 +2509,18 @@ extension OperationsRepository on AppDatabase {
         dozenPriceCents <= 0) {
       throw ArgumentError('Revise quantidade e valor da venda.');
     }
-    final eggs = dozens * 12 + looseEggs;
-    if (eggs > await eggStockBalance()) {
-      throw StateError(
-        'Estoque insuficiente. Disponível: ${await eggStockBalance()} ovos.',
+    if (customerId != null) {
+      await _assertActorCanUseRecord(
+        tableName: 'customers',
+        recordId: customerId,
+        actorId: actorId,
       );
+    }
+    final eggs = dozens * 12 + looseEggs;
+    final actorTenantId = await _actorTenantId(actorId);
+    final balance = await eggStockBalance(tenantId: actorTenantId);
+    if (eggs > balance) {
+      throw StateError('Estoque insuficiente. Disponível: $balance ovos.');
     }
     final id = _uuid.v4();
     final now = DateTime.now();
@@ -2334,6 +2579,11 @@ extension OperationsRepository on AppDatabase {
   }
 
   Future<void> cancelSale(String saleId, {required String actorId}) async {
+    await _assertActorCanUseRecord(
+      tableName: 'sales',
+      recordId: saleId,
+      actorId: actorId,
+    );
     await transaction(() async {
       final sale = await (select(
         sales,
@@ -2393,21 +2643,27 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
-  Future<int> eggStockBalance() async {
+  Future<int> eggStockBalance({String? tenantId}) async {
     final row = await customSelect(
-      "SELECT COALESCE(SUM(CASE WHEN type IN ('COLLECTION_IN','ADJUSTMENT_IN') THEN quantity ELSE -quantity END),0) balance FROM egg_stock_movements",
+      '''SELECT COALESCE(SUM(CASE WHEN type IN ('COLLECTION_IN','ADJUSTMENT_IN') THEN quantity ELSE -quantity END),0) balance
+         FROM egg_stock_movements
+         WHERE ${_tenantSql('egg_stock_movements', tenantId)}''',
+      variables: _tenantVariables(tenantId),
       readsFrom: {eggStockMovements},
     ).getSingle();
     return row.read<int>('balance');
   }
 
-  Stream<EggStockMetrics> watchEggStockMetrics() =>
+  Stream<EggStockMetrics> watchEggStockMetrics({String? tenantId}) =>
       customSelect(
         '''SELECT
     COALESCE(SUM(CASE WHEN type IN ('COLLECTION_IN','ADJUSTMENT_IN') THEN quantity ELSE -quantity END),0) balance,
     COALESCE(SUM(CASE WHEN type IN ('COLLECTION_IN','ADJUSTMENT_IN') THEN quantity ELSE 0 END),0) entries,
     COALESCE(SUM(CASE WHEN type NOT IN ('COLLECTION_IN','ADJUSTMENT_IN') THEN quantity ELSE 0 END),0) outputs,
-    COALESCE(SUM(CASE WHEN type='LOSS_OUT' THEN quantity ELSE 0 END),0) losses FROM egg_stock_movements''',
+    COALESCE(SUM(CASE WHEN type='LOSS_OUT' THEN quantity ELSE 0 END),0) losses
+    FROM egg_stock_movements
+    WHERE ${_tenantSql('egg_stock_movements', tenantId)}''',
+        variables: _tenantVariables(tenantId),
         readsFrom: {eggStockMovements},
       ).watchSingle().map(
         (r) => EggStockMetrics(
@@ -2428,8 +2684,12 @@ extension OperationsRepository on AppDatabase {
         !{'LOSS_OUT', 'ADJUSTMENT_IN', 'ADJUSTMENT_OUT'}.contains(type)) {
       throw ArgumentError('Ajuste inválido.');
     }
-    if (type != 'ADJUSTMENT_IN' && quantity > await eggStockBalance()) {
-      throw StateError('O ajuste deixaria o estoque negativo.');
+    if (type != 'ADJUSTMENT_IN') {
+      final actorTenantId = await _actorTenantId(actorId);
+      final balance = await eggStockBalance(tenantId: actorTenantId);
+      if (quantity > balance) {
+        throw StateError('O ajuste deixaria o estoque negativo.');
+      }
     }
     final id = _uuid.v4();
     await transaction(() async {
@@ -2454,17 +2714,31 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
-  Stream<List<FinanceTransaction>> watchFinance({int limit = 200}) =>
-      (select(financeTransactions)
-            ..orderBy([(f) => OrderingTerm.desc(f.occurredAt)])
-            ..limit(limit))
-          .watch();
-  Stream<FinanceMetrics> watchFinanceMetrics() =>
+  Stream<List<FinanceTransaction>> watchFinance({
+    int limit = 200,
+    String? tenantId,
+  }) {
+    final query = select(financeTransactions)
+      ..orderBy([(f) => OrderingTerm.desc(f.occurredAt)])
+      ..limit(limit);
+    if (tenantId != null) {
+      query.where((f) => _tenantExpression(f.createdBy, tenantId));
+    }
+    return query.watch();
+  }
+
+  Stream<FinanceMetrics> watchFinanceMetrics({String? tenantId}) =>
       customSelect(
         '''SELECT
     COALESCE(SUM(CASE WHEN type='INCOME' AND status='CONFIRMED' THEN amount_cents ELSE 0 END),0) income,
     COALESCE(SUM(CASE WHEN type='EXPENSE' AND status='CONFIRMED' THEN amount_cents ELSE 0 END),0) expense,
-    COALESCE((SELECT SUM(amount_cents) FROM investments),0) investment FROM finance_transactions''',
+    COALESCE((SELECT SUM(amount_cents) FROM investments WHERE ${_tenantSql('investments', tenantId)}),0) investment
+    FROM finance_transactions
+    WHERE ${_tenantSql('finance_transactions', tenantId)}''',
+        variables: [
+          ..._tenantVariables(tenantId),
+          ..._tenantVariables(tenantId),
+        ],
         readsFrom: {financeTransactions, investments},
       ).watchSingle().map(
         (r) => FinanceMetrics(
@@ -2517,6 +2791,11 @@ extension OperationsRepository on AppDatabase {
   }
 
   Future<void> cancelFinance(String id, {required String actorId}) async {
+    await _assertActorCanUseRecord(
+      tableName: 'finance_transactions',
+      recordId: id,
+      actorId: actorId,
+    );
     await transaction(() async {
       final item = await (select(
         financeTransactions,
@@ -2540,9 +2819,15 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
-  Stream<List<Investment>> watchInvestments() => (select(
-    investments,
-  )..orderBy([(i) => OrderingTerm.desc(i.investmentDate)])).watch();
+  Stream<List<Investment>> watchInvestments({String? tenantId}) {
+    final query = select(investments)
+      ..orderBy([(i) => OrderingTerm.desc(i.investmentDate)]);
+    if (tenantId != null) {
+      query.where((i) => _tenantExpression(i.createdBy, tenantId));
+    }
+    return query.watch();
+  }
+
   Future<void> addInvestment({
     required String description,
     required String category,
@@ -2555,6 +2840,13 @@ extension OperationsRepository on AppDatabase {
         category.trim().isEmpty ||
         amountCents <= 0) {
       throw ArgumentError('Revise os dados do investimento.');
+    }
+    if (lotId != null) {
+      await _assertActorCanUseRecord(
+        tableName: 'lots',
+        recordId: lotId,
+        actorId: actorId,
+      );
     }
     final id = _uuid.v4();
     final now = DateTime.now();
@@ -2610,47 +2902,62 @@ extension OperationsRepository on AppDatabase {
           .watch();
   Stream<List<CalendarEvent>> watchCalendarEvents(
     DateTime first,
-    DateTime last,
-  ) =>
-      (select(calendarEvents)
-            ..where(
-              (e) =>
-                  e.startsAt.isBiggerOrEqualValue(first) &
-                  e.startsAt.isSmallerThanValue(last),
-            )
-            ..orderBy([(e) => OrderingTerm.asc(e.startsAt)]))
-          .watch();
+    DateTime last, {
+    String? tenantId,
+  }) {
+    final query = select(calendarEvents)
+      ..where(
+        (e) =>
+            e.startsAt.isBiggerOrEqualValue(first) &
+            e.startsAt.isSmallerThanValue(last),
+      )
+      ..orderBy([(e) => OrderingTerm.asc(e.startsAt)]);
+    if (tenantId != null) {
+      query.where((e) => _tenantExpression(e.createdBy, tenantId));
+    }
+    return query.watch();
+  }
 
   Stream<List<CalendarEvent>> watchCalendarAlertEvents(
     DateTime first,
-    DateTime last,
-  ) =>
-      (select(calendarEvents)
-            ..where(
-              (e) =>
-                  e.startsAt.isSmallerOrEqualValue(last) &
-                  (e.startsAt.isBiggerOrEqualValue(first) |
-                      e.repeatUntil.isBiggerOrEqualValue(first)),
-            )
-            ..orderBy([(e) => OrderingTerm.asc(e.startsAt)]))
-          .watch();
+    DateTime last, {
+    String? tenantId,
+  }) {
+    final query = select(calendarEvents)
+      ..where(
+        (e) =>
+            e.startsAt.isSmallerOrEqualValue(last) &
+            (e.startsAt.isBiggerOrEqualValue(first) |
+                e.repeatUntil.isBiggerOrEqualValue(first)),
+      )
+      ..orderBy([(e) => OrderingTerm.asc(e.startsAt)]);
+    if (tenantId != null) {
+      query.where((e) => _tenantExpression(e.createdBy, tenantId));
+    }
+    return query.watch();
+  }
 
   Future<List<CalendarEvent>> futureAlertCalendarEvents(
     DateTime first,
-    DateTime last,
-  ) =>
-      (select(calendarEvents)
-            ..where(
-              (e) =>
-                  e.alertEnabled.equals(true) &
-                  e.startsAt.isSmallerOrEqualValue(last) &
-                  (e.repeatUntil.isNull() |
-                      e.repeatUntil.isBiggerOrEqualValue(first)),
-            )
-            ..orderBy([(e) => OrderingTerm.asc(e.startsAt)]))
-          .get();
+    DateTime last, {
+    String? tenantId,
+  }) {
+    final query = select(calendarEvents)
+      ..where(
+        (e) =>
+            e.alertEnabled.equals(true) &
+            e.startsAt.isSmallerOrEqualValue(last) &
+            (e.repeatUntil.isNull() |
+                e.repeatUntil.isBiggerOrEqualValue(first)),
+      )
+      ..orderBy([(e) => OrderingTerm.asc(e.startsAt)]);
+    if (tenantId != null) {
+      query.where((e) => _tenantExpression(e.createdBy, tenantId));
+    }
+    return query.get();
+  }
 
-  Future<List<LotSummary>> currentLotSummaries() async {
+  Future<List<LotSummary>> currentLotSummaries({String? tenantId}) async {
     final rows = await customSelect(
       '''
         SELECT l.*, COALESCE(SUM(
@@ -2659,9 +2966,11 @@ extension OperationsRepository on AppDatabase {
         ), 0) AS active_birds
         FROM lots l
         LEFT JOIN bird_movements m ON m.lot_id = l.id
+        WHERE ${_tenantSql('l', tenantId)}
         GROUP BY l.id
         ORDER BY CASE l.status WHEN 'ACTIVE' THEN 0 ELSE 1 END, l.received_at DESC
       ''',
+      variables: _tenantVariables(tenantId),
       readsFrom: {lots, birdMovements},
     ).get();
     return rows
@@ -2704,6 +3013,13 @@ extension OperationsRepository on AppDatabase {
   }) async {
     if (title.trim().isEmpty) {
       throw ArgumentError('Informe o título do evento.');
+    }
+    if (lotId != null) {
+      await _assertActorCanUseRecord(
+        tableName: 'lots',
+        recordId: lotId,
+        actorId: actorId,
+      );
     }
     _validateAlertRecurrence(
       alertTime: alertTime,
@@ -2763,6 +3079,11 @@ extension OperationsRepository on AppDatabase {
     if (title.trim().isEmpty) {
       throw ArgumentError('Informe o título do alerta.');
     }
+    await _assertActorCanUseRecord(
+      tableName: 'calendar_events',
+      recordId: event.id,
+      actorId: actorId,
+    );
     _validateAlertRecurrence(
       alertTime: alertTime,
       recurrence: recurrence,
@@ -2799,6 +3120,11 @@ extension OperationsRepository on AppDatabase {
     required String programId,
     required String actorId,
   }) async {
+    await _assertActorCanUseRecord(
+      tableName: 'lots',
+      recordId: lotId,
+      actorId: actorId,
+    );
     await into(lotLightingPrograms).insertOnConflictUpdate(
       LotLightingProgramsCompanion.insert(
         id: _uuid.v4(),
@@ -2882,19 +3208,35 @@ extension OperationsRepository on AppDatabase {
     );
   }
 
-  Stream<List<AuditLog>> watchAuditLogs({int limit = 200}) =>
-      (select(auditLogs)
-            ..orderBy([(a) => OrderingTerm.desc(a.timestamp)])
-            ..limit(limit))
-          .watch();
-  Stream<List<BirdMovement>> watchBirdMovements({int limit = 200}) =>
-      (select(birdMovements)
-            ..orderBy([(m) => OrderingTerm.desc(m.occurredAt)])
-            ..limit(limit))
-          .watch();
+  Stream<List<AuditLog>> watchAuditLogs({int limit = 200, String? tenantId}) {
+    final query = select(auditLogs)
+      ..orderBy([(a) => OrderingTerm.desc(a.timestamp)])
+      ..limit(limit);
+    if (tenantId != null) {
+      final tenantUsers = selectOnly(users)
+        ..addColumns([users.id])
+        ..where(users.tenantId.equals(tenantId));
+      query.where((a) => a.userId.isNull() | a.userId.isInQuery(tenantUsers));
+    }
+    return query.watch();
+  }
+
+  Stream<List<BirdMovement>> watchBirdMovements({
+    int limit = 200,
+    String? tenantId,
+  }) {
+    final query = select(birdMovements)
+      ..orderBy([(m) => OrderingTerm.desc(m.occurredAt)])
+      ..limit(limit);
+    if (tenantId != null) {
+      query.where((m) => _tenantExpression(m.createdBy, tenantId));
+    }
+    return query.watch();
+  }
 
   Stream<List<BirdMovementOverview>> watchBirdMovementOverviews({
     int limit = 200,
+    String? tenantId,
   }) {
     final query = customSelect(
       '''
@@ -2906,10 +3248,11 @@ extension OperationsRepository on AppDatabase {
       FROM bird_movements m
       LEFT JOIN lots l ON l.id = m.lot_id
       LEFT JOIN lots rl ON rl.id = m.related_lot_id
+      WHERE ${_tenantSql('m', tenantId)}
       ORDER BY m.occurred_at DESC, m.created_at DESC
       LIMIT ?
     ''',
-      variables: [Variable.withInt(limit)],
+      variables: [..._tenantVariables(tenantId), Variable.withInt(limit)],
       readsFrom: {birdMovements, lots},
     );
     return query.watch().map(
@@ -2953,6 +3296,16 @@ extension OperationsRepository on AppDatabase {
         'Selecione lotes diferentes e uma quantidade válida.',
       );
     }
+    await _assertActorCanUseRecord(
+      tableName: 'lots',
+      recordId: fromLotId,
+      actorId: actorId,
+    );
+    await _assertActorCanUseRecord(
+      tableName: 'lots',
+      recordId: toLotId,
+      actorId: actorId,
+    );
     final activeFrom = await activeBirdsFor(fromLotId);
     if (quantity > activeFrom) {
       throw StateError('Saldo insuficiente no lote de origem.');
@@ -3085,24 +3438,32 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
-  Stream<DashboardMetrics> watchDashboardMetrics() {
+  Stream<DashboardMetrics> watchDashboardMetrics({String? tenantId}) {
     final now = DateTime.now();
     final month = DateTime(now.year, now.month);
     final query = customSelect(
       '''SELECT
-      COALESCE((SELECT SUM(CASE WHEN type IN ('PURCHASE','TRANSFER_IN','ADJUSTMENT_IN') THEN quantity ELSE -quantity END) FROM bird_movements),0) birds,
-      COALESCE((SELECT COUNT(*) FROM lots WHERE status='ACTIVE'),0) lots,
-      COALESCE((SELECT SUM(CASE WHEN type IN ('COLLECTION_IN','ADJUSTMENT_IN') THEN quantity ELSE -quantity END) FROM egg_stock_movements),0) eggs,
-      COALESCE((SELECT SUM(CASE WHEN type IN ('PRODUCTION_IN','ADJUSTMENT_IN') THEN quantity_kg ELSE -quantity_kg END) FROM feed_stock_movements),0) feed,
-      COALESCE((SELECT COUNT(*) FROM orders WHERE status NOT IN ('DELIVERED','CANCELLED')),0) pending,
-      COALESCE((SELECT SUM(amount_cents) FROM finance_transactions WHERE type='INCOME' AND status='CONFIRMED' AND occurred_at>=?),0) income,
-      COALESCE((SELECT SUM(amount_cents) FROM finance_transactions WHERE type='EXPENSE' AND status='CONFIRMED' AND occurred_at>=?),0) expense,
-      COALESCE((SELECT SUM(quantity_kg) FROM daily_feedings WHERE feeding_date>=?),0) month_feed
+      COALESCE((SELECT SUM(CASE WHEN type IN ('PURCHASE','TRANSFER_IN','ADJUSTMENT_IN') THEN quantity ELSE -quantity END) FROM bird_movements WHERE ${_tenantSql('bird_movements', tenantId)}),0) birds,
+      COALESCE((SELECT COUNT(*) FROM lots WHERE status='ACTIVE' AND ${_tenantSql('lots', tenantId)}),0) lots,
+      COALESCE((SELECT SUM(CASE WHEN type IN ('COLLECTION_IN','ADJUSTMENT_IN') THEN quantity ELSE -quantity END) FROM egg_stock_movements WHERE ${_tenantSql('egg_stock_movements', tenantId)}),0) eggs,
+      COALESCE((SELECT SUM(CASE WHEN type IN ('PRODUCTION_IN','ADJUSTMENT_IN') THEN quantity_kg ELSE -quantity_kg END) FROM feed_stock_movements WHERE ${_tenantSql('feed_stock_movements', tenantId)}),0) feed,
+      COALESCE((SELECT COUNT(*) FROM orders WHERE status NOT IN ('DELIVERED','CANCELLED') AND ${_tenantSql('orders', tenantId)}),0) pending,
+      COALESCE((SELECT SUM(amount_cents) FROM finance_transactions WHERE type='INCOME' AND status='CONFIRMED' AND occurred_at>=? AND ${_tenantSql('finance_transactions', tenantId)}),0) income,
+      COALESCE((SELECT SUM(amount_cents) FROM finance_transactions WHERE type='EXPENSE' AND status='CONFIRMED' AND occurred_at>=? AND ${_tenantSql('finance_transactions', tenantId)}),0) expense,
+      COALESCE((SELECT SUM(quantity_kg) FROM daily_feedings WHERE feeding_date>=? AND ${_tenantSql('daily_feedings', tenantId)}),0) month_feed
     ''',
       variables: [
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
         Variable.withDateTime(month),
+        ..._tenantVariables(tenantId),
         Variable.withDateTime(month),
+        ..._tenantVariables(tenantId),
         Variable.withDateTime(month),
+        ..._tenantVariables(tenantId),
       ],
       readsFrom: {
         birdMovements,

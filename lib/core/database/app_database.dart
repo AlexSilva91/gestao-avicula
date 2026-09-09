@@ -8,8 +8,23 @@ import 'operations_tables.dart';
 
 part 'app_database.g.dart';
 
+const defaultTenantId = 'tenant-default';
+const defaultTenantName = 'Granja Seleto';
+
+class Tenants extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text().unique()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime()();
+  TextColumn get createdBy => text().nullable()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 class Users extends Table {
   TextColumn get id => text()();
+  TextColumn get tenantId =>
+      text().withDefault(const Constant(defaultTenantId))();
   TextColumn get username => text().unique()();
   TextColumn get displayName => text()();
   TextColumn get passwordHash => text()();
@@ -163,6 +178,7 @@ class LayingRateHistoryEntry {
 
 @DriftDatabase(
   tables: [
+    Tenants,
     Users,
     UserPermissions,
     AuditLogs,
@@ -216,7 +232,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -320,6 +336,15 @@ class AppDatabase extends _$AppDatabase {
             cracked_eggs = discarded_eggs
         ''');
       }
+      if (from < 13) {
+        await m.createTable(tenants);
+        await m.addColumn(users, users.tenantId);
+        await _ensureDefaultTenant();
+        await _createPerformanceIndexes();
+      }
+    },
+    beforeOpen: (_) async {
+      await _ensureDefaultTenant();
     },
   );
 
@@ -371,6 +396,23 @@ class AppDatabase extends _$AppDatabase {
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_events_date_type ON calendar_events (starts_at, type)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_users_tenant ON users (tenant_id, is_active)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_audit_user_timestamp ON audit_logs (user_id, timestamp)',
+    );
+  }
+
+  Future<void> _ensureDefaultTenant() async {
+    await into(tenants).insert(
+      TenantsCompanion.insert(
+        id: defaultTenantId,
+        name: defaultTenantName,
+        createdAt: DateTime.now(),
+      ),
+      mode: InsertMode.insertOrIgnore,
     );
   }
 
@@ -633,9 +675,67 @@ class AppDatabase extends _$AppDatabase {
     return (select(users)..where((u) => u.id.equals(userId))).getSingleOrNull();
   }
 
-  Stream<List<User>> watchUsers() => (select(
-    users,
-  )..orderBy([(u) => OrderingTerm.asc(u.displayName)])).watch();
+  Stream<List<Tenant>> watchTenants({bool includeInactive = false}) {
+    final query = select(tenants)..orderBy([(t) => OrderingTerm.asc(t.name)]);
+    if (!includeInactive) query.where((t) => t.isActive.equals(true));
+    return query.watch();
+  }
+
+  Future<Tenant?> tenantById(String tenantId) async {
+    if (tenantId.trim().isEmpty) return null;
+    return (select(
+      tenants,
+    )..where((t) => t.id.equals(tenantId))).getSingleOrNull();
+  }
+
+  Future<String> tenantNameFor(String tenantId) async {
+    final tenant = await tenantById(tenantId);
+    return tenant?.name ?? defaultTenantName;
+  }
+
+  Future<String> tenantIdForUser(String userId) async {
+    final user = await userById(userId);
+    return user?.tenantId ?? defaultTenantId;
+  }
+
+  Future<void> createTenant({
+    required String name,
+    required String actorId,
+  }) async {
+    final cleanName = name.trim();
+    if (cleanName.length < 3) {
+      throw ArgumentError(
+        'Informe um nome de parceria com ao menos 3 caracteres.',
+      );
+    }
+    final now = DateTime.now();
+    final id = const Uuid().v4();
+    await transaction(() async {
+      await into(tenants).insert(
+        TenantsCompanion.insert(
+          id: id,
+          name: cleanName,
+          createdAt: now,
+          createdBy: Value(actorId),
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'tenants.create',
+        entityType: 'tenant',
+        entityId: id,
+        description: 'Parceria $cleanName criada.',
+      );
+    });
+  }
+
+  Stream<List<User>> watchUsers({String? tenantId}) {
+    final query = select(users)
+      ..orderBy([(u) => OrderingTerm.asc(u.displayName)]);
+    if (tenantId != null) query.where((u) => u.tenantId.equals(tenantId));
+    return query.watch();
+  }
+
   Future<List<String>> permissionsOf(String userId) async => (select(
     userPermissions,
   )..where((p) => p.userId.equals(userId))).map((p) => p.permission).get();
@@ -647,6 +747,7 @@ class AppDatabase extends _$AppDatabase {
     required bool isSuperuser,
     required List<String> permissions,
     required String actorId,
+    String? tenantId,
   }) async {
     final normalizedUsername = username.trim().toLowerCase();
     if (normalizedUsername.length < 3 ||
@@ -658,10 +759,16 @@ class AppDatabase extends _$AppDatabase {
     }
     final now = DateTime.now();
     final id = const Uuid().v4();
+    final resolvedTenantId = tenantId ?? await tenantIdForUser(actorId);
+    final tenant = await tenantById(resolvedTenantId);
+    if (tenant == null || !tenant.isActive) {
+      throw ArgumentError('Selecione uma parceria ativa para o usuário.');
+    }
     await transaction(() async {
       await into(users).insert(
         UsersCompanion.insert(
           id: id,
+          tenantId: Value(resolvedTenantId),
           username: normalizedUsername,
           displayName: displayName.trim(),
           passwordHash: PasswordHasher.hash(password),
@@ -712,6 +819,7 @@ class AppDatabase extends _$AppDatabase {
       await into(users).insert(
         UsersCompanion.insert(
           id: id,
+          tenantId: const Value(defaultTenantId),
           username: normalizedUsername,
           displayName: displayName.trim(),
           passwordHash: PasswordHasher.hash(password),
@@ -770,6 +878,7 @@ class AppDatabase extends _$AppDatabase {
       await into(users).insert(
         UsersCompanion.insert(
           id: id,
+          tenantId: const Value(defaultTenantId),
           username: normalizedUsername,
           displayName: displayName.trim(),
           passwordHash: PasswordHasher.hash(password),
@@ -816,6 +925,7 @@ class AppDatabase extends _$AppDatabase {
     required String displayName,
     required bool isActive,
     required String actorId,
+    String? tenantId,
   }) async {
     final normalizedUsername = username.trim().toLowerCase();
     if (normalizedUsername.length < 3 || displayName.trim().isEmpty) {
@@ -825,11 +935,16 @@ class AppDatabase extends _$AppDatabase {
     if (existing != null && existing.id != userId) {
       throw ArgumentError('Esse nome de usuário já está em uso.');
     }
+    final tenantValue = tenantId == null ? null : await tenantById(tenantId);
+    if (tenantId != null && (tenantValue == null || !tenantValue.isActive)) {
+      throw ArgumentError('Selecione uma parceria ativa para o usuário.');
+    }
     await (update(users)..where((u) => u.id.equals(userId))).write(
       UsersCompanion(
         username: Value(normalizedUsername),
         displayName: Value(displayName.trim()),
         isActive: Value(isActive),
+        tenantId: tenantId == null ? const Value.absent() : Value(tenantId),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -914,7 +1029,54 @@ class AppDatabase extends _$AppDatabase {
     ),
   );
 
-  Stream<List<LotSummary>> watchLotSummaries() {
+  String _tenantSql(String alias, String? tenantId) => tenantId == null
+      ? '1=1'
+      : '''($alias.created_by = 'system' OR EXISTS (
+          SELECT 1 FROM users tenant_user
+          WHERE tenant_user.id = $alias.created_by
+            AND tenant_user.tenant_id = ?
+        ) OR NOT EXISTS (
+          SELECT 1 FROM users any_user
+          WHERE any_user.id = $alias.created_by
+        ))''';
+
+  List<Variable<String>> _tenantVariables(String? tenantId, [int count = 1]) =>
+      tenantId == null
+      ? const []
+      : List.generate(count, (_) => Variable.withString(tenantId));
+
+  Expression<bool> _tenantExpression(
+    GeneratedColumn<String> createdBy,
+    String tenantId,
+  ) {
+    final tenantUsers = selectOnly(users)
+      ..addColumns([users.id])
+      ..where(users.tenantId.equals(tenantId));
+    final knownUsers = selectOnly(users)..addColumns([users.id]);
+    return createdBy.equals('system') |
+        createdBy.isInQuery(tenantUsers) |
+        createdBy.isNotInQuery(knownUsers);
+  }
+
+  Future<void> _assertActorCanUseRecord({
+    required String tableName,
+    required String recordId,
+    required String actorId,
+  }) async {
+    final row = await customSelect(
+      'SELECT created_by FROM $tableName WHERE id = ? LIMIT 1',
+      variables: [Variable.withString(recordId)],
+    ).getSingleOrNull();
+    final ownerId = row?.readNullable<String>('created_by');
+    if (ownerId == null || ownerId == 'system') return;
+    final actorTenantId = await tenantIdForUser(actorId);
+    final ownerTenantId = await tenantIdForUser(ownerId);
+    if (ownerTenantId != actorTenantId) {
+      throw StateError('Este registro pertence a outra parceria.');
+    }
+  }
+
+  Stream<List<LotSummary>> watchLotSummaries({String? tenantId}) {
     final query = customSelect(
       '''
         SELECT l.*, COALESCE(SUM(
@@ -923,9 +1085,11 @@ class AppDatabase extends _$AppDatabase {
         ), 0) AS active_birds
         FROM lots l
         LEFT JOIN bird_movements m ON m.lot_id = l.id
+        WHERE ${_tenantSql('l', tenantId)}
         GROUP BY l.id
         ORDER BY CASE l.status WHEN 'ACTIVE' THEN 0 ELSE 1 END, l.received_at DESC
       ''',
+      variables: _tenantVariables(tenantId),
       readsFrom: {lots, birdMovements},
     );
     return query.watch().map(
@@ -1050,6 +1214,11 @@ class AppDatabase extends _$AppDatabase {
         quantity <= 0) {
       throw ArgumentError('Movimentação de saída inválida.');
     }
+    await _assertActorCanUseRecord(
+      tableName: 'lots',
+      recordId: lotId,
+      actorId: actorId,
+    );
     final now = DateTime.now();
     await transaction(() async {
       final activeBirds = await activeBirdsFor(lotId);
@@ -1115,6 +1284,11 @@ class AppDatabase extends _$AppDatabase {
     if (name.trim().isEmpty || !{'ACTIVE', 'INACTIVE'}.contains(status)) {
       throw ArgumentError('Revise os dados do lote.');
     }
+    await _assertActorCanUseRecord(
+      tableName: 'lots',
+      recordId: lotId,
+      actorId: actorId,
+    );
     await transaction(() async {
       await (update(lots)..where((l) => l.id.equals(lotId))).write(
         LotsCompanion(
@@ -1162,7 +1336,7 @@ class AppDatabase extends _$AppDatabase {
     return row.read<int>('active_birds');
   }
 
-  Stream<EggMetrics> watchEggMetrics() {
+  Stream<EggMetrics> watchEggMetrics({String? tenantId}) {
     final today = DateTime.now();
     final startOfToday = DateTime(today.year, today.month, today.day);
     final startOfTomorrow = startOfToday.add(const Duration(days: 1));
@@ -1171,16 +1345,22 @@ class AppDatabase extends _$AppDatabase {
       '''
       SELECT
         COALESCE((SELECT SUM(quantity - broken_eggs - discarded_eggs)
-          FROM egg_collections WHERE collected_on >= ? AND collected_on < ?), 0) AS eggs_today,
+          FROM egg_collections WHERE collected_on >= ? AND collected_on < ?
+            AND ${_tenantSql('egg_collections', tenantId)}), 0) AS eggs_today,
         COALESCE((SELECT SUM(quantity - broken_eggs - discarded_eggs)
-          FROM egg_collections WHERE collected_on >= ?), 0) AS eggs_month,
+          FROM egg_collections WHERE collected_on >= ?
+            AND ${_tenantSql('egg_collections', tenantId)}), 0) AS eggs_month,
         COALESCE((SELECT SUM(CASE WHEN type IN ('COLLECTION_IN', 'ADJUSTMENT_IN')
-          THEN quantity ELSE -quantity END) FROM egg_stock_movements), 0) AS stock
+          THEN quantity ELSE -quantity END) FROM egg_stock_movements
+          WHERE ${_tenantSql('egg_stock_movements', tenantId)}), 0) AS stock
       ''',
       variables: [
         Variable.withDateTime(startOfToday),
         Variable.withDateTime(startOfTomorrow),
+        ..._tenantVariables(tenantId),
         Variable.withDateTime(startOfMonth),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
       ],
       readsFrom: {eggCollections, eggStockMovements},
     );
@@ -1193,13 +1373,23 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  Stream<List<EggCollection>> watchRecentEggCollections({int limit = 30}) =>
-      (select(eggCollections)
-            ..orderBy([(item) => OrderingTerm.desc(item.collectedOn)])
-            ..limit(limit))
-          .watch();
+  Stream<List<EggCollection>> watchRecentEggCollections({
+    int limit = 30,
+    String? tenantId,
+  }) {
+    final query = select(eggCollections)
+      ..orderBy([(item) => OrderingTerm.desc(item.collectedOn)])
+      ..limit(limit);
+    if (tenantId != null) {
+      query.where((item) => _tenantExpression(item.createdBy, tenantId));
+    }
+    return query.watch();
+  }
 
-  Stream<List<LayingRateHistoryEntry>> watchDailyLayingRates({int days = 60}) {
+  Stream<List<LayingRateHistoryEntry>> watchDailyLayingRates({
+    int days = 60,
+    String? tenantId,
+  }) {
     final today = DateTime.now();
     final start = DateTime(
       today.year,
@@ -1225,11 +1415,11 @@ class AppDatabase extends _$AppDatabase {
         1 AS collection_days
       FROM egg_collections e
       INNER JOIN lots l ON l.id = e.lot_id
-      WHERE e.collected_on >= ?
+      WHERE e.collected_on >= ? AND ${_tenantSql('e', tenantId)}
       GROUP BY e.lot_id, date(e.collected_on, 'unixepoch')
       ORDER BY period_start DESC, l.name
       ''',
-      variables: [Variable.withDateTime(start)],
+      variables: [Variable.withDateTime(start), ..._tenantVariables(tenantId)],
       readsFrom: {eggCollections, lots, birdMovements},
     );
     return query.watch().map(_mapLayingRateRows);
@@ -1239,6 +1429,7 @@ class AppDatabase extends _$AppDatabase {
     int months = 12,
     DateTime? start,
     DateTime? end,
+    String? tenantId,
   }) {
     final today = DateTime.now();
     final startDate = start ?? DateTime(today.year, today.month - months + 1);
@@ -1264,6 +1455,7 @@ class AppDatabase extends _$AppDatabase {
         FROM egg_collections e
         INNER JOIN lots l ON l.id = e.lot_id
         WHERE e.collected_on >= ? AND e.collected_on < ?
+          AND ${_tenantSql('e', tenantId)}
         GROUP BY e.lot_id, date(e.collected_on, 'unixepoch')
       )
       SELECT
@@ -1282,6 +1474,7 @@ class AppDatabase extends _$AppDatabase {
       variables: [
         Variable.withDateTime(startDate),
         Variable.withDateTime(endDate),
+        ..._tenantVariables(tenantId),
       ],
       readsFrom: {eggCollections, lots, birdMovements},
     );
@@ -1320,6 +1513,11 @@ class AppDatabase extends _$AppDatabase {
         brokenEggs + resolvedDiscardedEggs > quantity) {
       throw ArgumentError('Revise as quantidades da coleta.');
     }
+    await _assertActorCanUseRecord(
+      tableName: 'lots',
+      recordId: lotId,
+      actorId: actorId,
+    );
     final collectionDay = DateTime(
       collectedOn.year,
       collectedOn.month,

@@ -932,4 +932,65 @@ void main() {
     expect(await db.userByUsername('novo-admin'), isNull);
     expect(await db.permissionsOf(admin.id), beforePermissions);
   });
+
+  test('tenant scope isolates operational data by user partnership', () async {
+    final admin = await db.createFirstAdminAccount(
+      username: 'admin',
+      displayName: 'Admin SELETO',
+      password: 'Seleto@2026',
+    );
+    await db.createTenant(name: 'Parceiro independente', actorId: admin.id);
+    final partnerTenant = (await db.watchTenants().first).firstWhere(
+      (tenant) => tenant.name == 'Parceiro independente',
+    );
+    await db.createUser(
+      username: 'parceiro',
+      displayName: 'Sócio parceiro',
+      password: 'Seleto@2026',
+      isSuperuser: false,
+      permissions: const ['dashboard.view', 'lots.view', 'birds.purchase'],
+      actorId: admin.id,
+      tenantId: partnerTenant.id,
+    );
+    final partner = await db.userByUsername('parceiro');
+    final adminLotId = await db.registerLotPurchase(
+      name: 'Lote matriz',
+      quantity: 20,
+      receivedAt: DateTime(2026, 8, 1),
+      arrivalAgeDays: 30,
+      actorId: admin.id,
+    );
+    await db.registerLotPurchase(
+      name: 'Lote parceiro',
+      quantity: 10,
+      receivedAt: DateTime(2026, 8, 2),
+      arrivalAgeDays: 30,
+      actorId: partner!.id,
+    );
+
+    final adminLots = await db
+        .watchLotSummaries(tenantId: admin.tenantId)
+        .first;
+    final partnerLots = await db
+        .watchLotSummaries(tenantId: partnerTenant.id)
+        .first;
+    final allLots = await db.watchLotSummaries().first;
+
+    expect(adminLots.map((item) => item.lot.name), ['LOTE MATRIZ']);
+    expect(partnerLots.map((item) => item.lot.name), ['LOTE PARCEIRO']);
+    expect(allLots.map((item) => item.lot.name).toSet(), {
+      'LOTE MATRIZ',
+      'LOTE PARCEIRO',
+    });
+    await expectLater(
+      db.registerBirdOutflow(
+        lotId: adminLotId,
+        type: 'MORTALITY',
+        quantity: 1,
+        occurredAt: DateTime(2026, 8, 3),
+        actorId: partner.id,
+      ),
+      throwsStateError,
+    );
+  });
 }
