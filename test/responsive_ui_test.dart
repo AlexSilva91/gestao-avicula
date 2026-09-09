@@ -266,6 +266,42 @@ void main() {
     },
   );
 
+  testWidgets('user details dialog shows profile and last online date', (
+    tester,
+  ) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    await db.seedInitialData();
+    await _createTestAdmin(db);
+    addTearDown(db.close);
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db)],
+        child: const SeletoApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _loginAsAdmin(tester);
+    await tester.pumpAndSettle();
+    GoRouter.of(tester.element(find.byType(AppShell))).go('/users');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.tap(find.text('Administrador').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Perfil'), findsOneWidget);
+    expect(find.text('Super Admin'), findsWidgets);
+    expect(find.text('Última vez online'), findsOneWidget);
+    expect(find.text('Nunca acessou'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
   testWidgets('all modules render on a 412 px mobile viewport', (tester) async {
     final db = AppDatabase(NativeDatabase.memory());
     await db.seedInitialData();

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/utils/formatters.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../application/users_controller.dart';
 import '../../../../core/constants/permissions.dart';
@@ -56,107 +57,37 @@ class UsersPage extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Card(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: users.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (_, index) {
-                      final user = users[index];
-                      final userPermissions = ref
-                          .watch(userPermissionsProvider(user.id))
-                          .asData
-                          ?.value;
-                      final isSuperAdmin =
-                          userPermissions?.contains('system.super_admin') ??
-                          false;
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 6,
-                        ),
-                        leading: CircleAvatar(
-                          child: Text(
-                            user.displayName.substring(0, 1).toUpperCase(),
-                          ),
-                        ),
-                        title: Text(
-                          user.displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              '@${user.username}',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Chip(
-                              visualDensity: VisualDensity.compact,
-                              label: Text(user.isActive ? 'Ativo' : 'Inativo'),
-                            ),
-                            if (isSuperAdmin)
-                              const Chip(
-                                visualDensity: VisualDensity.compact,
-                                avatar: Icon(Icons.verified_user, size: 16),
-                                label: Text('Super Admin'),
-                              )
-                            else if (user.isSuperuser)
-                              const Chip(
-                                visualDensity: VisualDensity.compact,
-                                avatar: Icon(
-                                  Icons.admin_panel_settings,
-                                  size: 16,
-                                ),
-                                label: Text('Admin da granja'),
-                              ),
-                            Chip(
-                              visualDensity: VisualDensity.compact,
-                              label: Text(
-                                tenantNames[user.tenantId] ?? 'Parceria padrão',
-                              ),
-                            ),
-                          ],
-                        ),
-                        trailing: PopupMenuButton<String>(
-                          tooltip: 'Ações do usuário',
-                          onSelected: (action) =>
-                              _handleUserAction(context, ref, user, action),
-                          itemBuilder: (_) => [
-                            const PopupMenuItem(
-                              value: 'edit',
-                              child: Text('Editar usuário'),
-                            ),
-                            if (!user.isSuperuser)
-                              const PopupMenuItem(
-                                value: 'permissions',
-                                child: Text('Editar permissões'),
-                              ),
-                            const PopupMenuItem(
-                              value: 'password',
-                              child: Text('Redefinir senha'),
-                            ),
-                            PopupMenuItem(
-                              value: 'toggle',
-                              child: Text(
-                                user.isActive
-                                    ? 'Desativar usuário'
-                                    : 'Ativar usuário',
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                _UsersGrid(
+                  users: users,
+                  tenantNames: tenantNames,
+                  onAction: (user, action) =>
+                      _handleUserAction(context, ref, user, action),
+                  onDetails: (user) => _showDetails(context, ref, user),
                 ),
               ],
             ),
           ),
+    );
+  }
+
+  Future<void> _showDetails(
+    BuildContext context,
+    WidgetRef ref,
+    User user,
+  ) async {
+    final tenants = ref.read(tenantsProvider).asData?.value ?? const <Tenant>[];
+    final tenantNames = {for (final tenant in tenants) tenant.id: tenant.name};
+    final permissions = await ref
+        .read(usersControllerProvider)
+        .permissions(user);
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _UserDetailsDialog(
+        user: user,
+        tenantName: tenantNames[user.tenantId] ?? 'Parceria padrão',
+        permissions: permissions,
+      ),
     );
   }
 
@@ -177,6 +108,10 @@ class UsersPage extends ConsumerWidget {
     User user,
     String action,
   ) async {
+    if (action == 'details') {
+      await _showDetails(context, ref, user);
+      return;
+    }
     if (action == 'edit') {
       final tenants =
           ref.read(tenantsProvider).asData?.value ?? const <Tenant>[];
@@ -206,6 +141,456 @@ class UsersPage extends ConsumerWidget {
       await showOperationError(context, error);
     }
   }
+}
+
+class _UsersGrid extends StatelessWidget {
+  const _UsersGrid({
+    required this.users,
+    required this.tenantNames,
+    required this.onAction,
+    required this.onDetails,
+  });
+
+  final List<User> users;
+  final Map<String, String> tenantNames;
+  final void Function(User user, String action) onAction;
+  final void Function(User user) onDetails;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 1040
+          ? 3
+          : constraints.maxWidth >= 680
+          ? 2
+          : 1;
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: users.length,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          mainAxisExtent: 178,
+        ),
+        itemBuilder: (context, index) {
+          final user = users[index];
+          return _UserCard(
+            user: user,
+            tenantName: tenantNames[user.tenantId] ?? 'Parceria padrão',
+            onAction: onAction,
+            onDetails: onDetails,
+          );
+        },
+      );
+    },
+  );
+}
+
+class _UserCard extends ConsumerWidget {
+  const _UserCard({
+    required this.user,
+    required this.tenantName,
+    required this.onAction,
+    required this.onDetails,
+  });
+
+  final User user;
+  final String tenantName;
+  final void Function(User user, String action) onAction;
+  final void Function(User user) onDetails;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final permissions = ref
+        .watch(userPermissionsProvider(user.id))
+        .asData
+        ?.value;
+    final isSuperAdmin = permissions?.contains('system.super_admin') ?? false;
+    final role = _roleLabel(user, permissions);
+    final accent = isSuperAdmin
+        ? scheme.tertiary
+        : user.isSuperuser
+        ? scheme.primary
+        : scheme.secondary;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => onDetails(user),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 22,
+                    backgroundColor: accent.withValues(alpha: .16),
+                    foregroundColor: accent,
+                    child: Text(
+                      _initials(user.displayName),
+                      style: textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '@${user.username}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Ações do usuário',
+                    onSelected: (action) => onAction(user, action),
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: 'details',
+                        child: ListTile(
+                          leading: Icon(Icons.badge_outlined),
+                          title: Text('Ver detalhes'),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Editar usuário'),
+                        ),
+                      ),
+                      if (!user.isSuperuser)
+                        const PopupMenuItem(
+                          value: 'permissions',
+                          child: ListTile(
+                            leading: Icon(Icons.tune),
+                            title: Text('Editar permissões'),
+                          ),
+                        ),
+                      const PopupMenuItem(
+                        value: 'password',
+                        child: ListTile(
+                          leading: Icon(Icons.lock_reset),
+                          title: Text('Redefinir senha'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'toggle',
+                        child: ListTile(
+                          leading: Icon(
+                            user.isActive
+                                ? Icons.person_off_outlined
+                                : Icons.person_outline,
+                          ),
+                          title: Text(
+                            user.isActive
+                                ? 'Desativar usuário'
+                                : 'Ativar usuário',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _TinyBadge(
+                    icon: user.isActive ? Icons.check_circle : Icons.block,
+                    label: user.isActive ? 'Ativo' : 'Inativo',
+                    color: user.isActive ? scheme.primary : scheme.error,
+                  ),
+                  _TinyBadge(
+                    icon: _roleIcon(user, isSuperAdmin),
+                    label: role,
+                    color: accent,
+                  ),
+                ],
+              ),
+              const Spacer(),
+              _CardInfoLine(icon: Icons.business_outlined, text: tenantName),
+              const SizedBox(height: 6),
+              _CardInfoLine(
+                icon: Icons.schedule,
+                text: 'Última vez online: ${_formatDateTime(user.lastLoginAt)}',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TinyBadge extends StatelessWidget {
+  const _TinyBadge({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .10),
+      borderRadius: BorderRadius.circular(7),
+      border: Border.all(color: color.withValues(alpha: .22)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _CardInfoLine extends StatelessWidget {
+  const _CardInfoLine({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Icon(
+        icon,
+        size: 15,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+      const SizedBox(width: 6),
+      Expanded(
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+class _UserDetailsDialog extends StatelessWidget {
+  const _UserDetailsDialog({
+    required this.user,
+    required this.tenantName,
+    required this.permissions,
+  });
+
+  final User user;
+  final String tenantName;
+  final List<String> permissions;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isSuperAdmin = permissions.contains('system.super_admin');
+    final role = _roleLabel(user, permissions);
+    final labels = {
+      for (final permission in seletoPermissions)
+        permission.key: permission.label,
+    };
+    final visiblePermissions =
+        permissions
+            .where((permission) => permission != 'system.super_admin')
+            .toList()
+          ..sort();
+    return AlertDialog(
+      title: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: scheme.primaryContainer,
+            foregroundColor: scheme.onPrimaryContainer,
+            child: Text(_initials(user.displayName)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              user.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _DetailRow(
+                icon: _roleIcon(user, isSuperAdmin),
+                label: 'Perfil',
+                value: role,
+              ),
+              _DetailRow(
+                icon: Icons.alternate_email,
+                label: 'Usuário',
+                value: '@${user.username}',
+              ),
+              _DetailRow(
+                icon: Icons.business_outlined,
+                label: 'Parceria',
+                value: tenantName,
+              ),
+              _DetailRow(
+                icon: user.isActive ? Icons.check_circle : Icons.block,
+                label: 'Status',
+                value: user.isActive ? 'Ativo' : 'Inativo',
+              ),
+              _DetailRow(
+                icon: Icons.login,
+                label: 'Última vez online',
+                value: _formatDateTime(user.lastLoginAt),
+              ),
+              _DetailRow(
+                icon: Icons.event_available,
+                label: 'Criado em',
+                value: _formatDateTime(user.createdAt),
+              ),
+              _DetailRow(
+                icon: Icons.update,
+                label: 'Atualizado em',
+                value: _formatDateTime(user.updatedAt),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Permissões',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    if (user.isSuperuser)
+                      _TinyBadge(
+                        icon: Icons.all_inclusive,
+                        label: isSuperAdmin
+                            ? 'Todas as parcerias'
+                            : 'Todas da granja',
+                        color: scheme.primary,
+                      )
+                    else if (visiblePermissions.isEmpty)
+                      _TinyBadge(
+                        icon: Icons.lock_outline,
+                        label: 'Nenhuma',
+                        color: scheme.outline,
+                      )
+                    else
+                      for (final permission in visiblePermissions)
+                        _TinyBadge(
+                          icon: Icons.key,
+                          label: labels[permission] ?? permission,
+                          color: scheme.secondary,
+                        ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Fechar'),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          icon,
+          size: 18,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 132,
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _CreateUserDialog extends StatefulWidget {
@@ -670,6 +1055,35 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
       ],
     );
   }
+}
+
+String _initials(String name) {
+  final parts = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .toList();
+  if (parts.isEmpty) return '?';
+  final first = parts.first.characters.first;
+  final second = parts.length > 1 ? parts.last.characters.first : '';
+  return (first + second).toUpperCase();
+}
+
+String _roleLabel(User user, List<String>? permissions) {
+  if (permissions?.contains('system.super_admin') == true) return 'Super Admin';
+  if (user.isSuperuser) return 'Admin da granja';
+  return 'Usuário';
+}
+
+IconData _roleIcon(User user, bool isSuperAdmin) {
+  if (isSuperAdmin) return Icons.verified_user;
+  if (user.isSuperuser) return Icons.admin_panel_settings;
+  return Icons.person_outline;
+}
+
+String _formatDateTime(DateTime? value) {
+  if (value == null) return 'Nunca acessou';
+  return '${shortDate.format(value)} às ${shortTime.format(value)}';
 }
 
 List<SeletoPermission> _grantablePermissions(WidgetRef ref) {
