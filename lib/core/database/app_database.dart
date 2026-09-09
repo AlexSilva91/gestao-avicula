@@ -10,6 +10,11 @@ part 'app_database.g.dart';
 
 const defaultTenantId = 'tenant-default';
 const defaultTenantName = 'Granja Seleto';
+const _globalUserPermissions = {
+  'system.super_admin',
+  'tenant.view_all',
+  'tenants.create',
+};
 
 class Tenants extends Table {
   TextColumn get id => text()();
@@ -345,6 +350,7 @@ class AppDatabase extends _$AppDatabase {
     },
     beforeOpen: (_) async {
       await _ensureDefaultTenant();
+      await _ensureInitialSuperAdminPermission();
     },
   );
 
@@ -410,6 +416,27 @@ class AppDatabase extends _$AppDatabase {
       TenantsCompanion.insert(
         id: defaultTenantId,
         name: defaultTenantName,
+        createdAt: DateTime.now(),
+      ),
+      mode: InsertMode.insertOrIgnore,
+    );
+  }
+
+  Future<void> _ensureInitialSuperAdminPermission() async {
+    final admin =
+        await (select(users)
+              ..where((u) => u.isSuperuser.equals(true))
+              ..orderBy([(u) => OrderingTerm.asc(u.createdAt)])
+              ..limit(1))
+            .getSingleOrNull();
+    if (admin == null) return;
+    final permissions = await permissionsOf(admin.id);
+    if (permissions.contains('system.super_admin')) return;
+    await into(userPermissions).insert(
+      UserPermissionsCompanion.insert(
+        id: const Uuid().v4(),
+        userId: admin.id,
+        permission: 'system.super_admin',
         createdAt: DateTime.now(),
       ),
       mode: InsertMode.insertOrIgnore,
@@ -698,10 +725,44 @@ class AppDatabase extends _$AppDatabase {
     return user?.tenantId ?? defaultTenantId;
   }
 
+  Future<bool> _isSuperAdminActor(String actorId) async {
+    final permissions = await permissionsOf(actorId);
+    return permissions.contains('system.super_admin');
+  }
+
+  Future<void> _assertSuperAdminActor(String actorId) async {
+    if (!await _isSuperAdminActor(actorId)) {
+      throw StateError(
+        'Apenas o Super Admin pode gerenciar todas as parcerias.',
+      );
+    }
+  }
+
+  Future<void> _assertActorCanManageUser({
+    required String targetUserId,
+    required String actorId,
+  }) async {
+    if (targetUserId == actorId) return;
+    final target = await userById(targetUserId);
+    final actor = await userById(actorId);
+    if (target == null || actor == null) return;
+    if (target.tenantId == actor.tenantId) return;
+    await _assertSuperAdminActor(actorId);
+  }
+
+  Future<void> _assertGrantablePermissions({
+    required String actorId,
+    required Iterable<String> permissions,
+  }) async {
+    if (!permissions.any(_globalUserPermissions.contains)) return;
+    await _assertSuperAdminActor(actorId);
+  }
+
   Future<void> createTenant({
     required String name,
     required String actorId,
   }) async {
+    await _assertSuperAdminActor(actorId);
     final cleanName = name.trim();
     if (cleanName.length < 3) {
       throw ArgumentError(
@@ -760,6 +821,13 @@ class AppDatabase extends _$AppDatabase {
     final now = DateTime.now();
     final id = const Uuid().v4();
     final resolvedTenantId = tenantId ?? await tenantIdForUser(actorId);
+    if (resolvedTenantId != await tenantIdForUser(actorId)) {
+      await _assertSuperAdminActor(actorId);
+    }
+    await _assertGrantablePermissions(
+      actorId: actorId,
+      permissions: permissions,
+    );
     final tenant = await tenantById(resolvedTenantId);
     if (tenant == null || !tenant.isActive) {
       throw ArgumentError('Selecione uma parceria ativa para o usuário.');
@@ -836,6 +904,14 @@ class AppDatabase extends _$AppDatabase {
           createdAt: now,
         ),
       );
+      await into(userPermissions).insert(
+        UserPermissionsCompanion.insert(
+          id: const Uuid().v4(),
+          userId: id,
+          permission: 'system.super_admin',
+          createdAt: now,
+        ),
+      );
       await addAudit(
         userId: id,
         action: 'users.first_admin',
@@ -904,6 +980,7 @@ class AppDatabase extends _$AppDatabase {
     required bool isActive,
     required String actorId,
   }) async {
+    await _assertActorCanManageUser(targetUserId: userId, actorId: actorId);
     await (update(users)..where((u) => u.id.equals(userId))).write(
       UsersCompanion(
         isActive: Value(isActive),
@@ -935,6 +1012,10 @@ class AppDatabase extends _$AppDatabase {
     if (existing != null && existing.id != userId) {
       throw ArgumentError('Esse nome de usuário já está em uso.');
     }
+    await _assertActorCanManageUser(targetUserId: userId, actorId: actorId);
+    if (tenantId != null && tenantId != await tenantIdForUser(userId)) {
+      await _assertSuperAdminActor(actorId);
+    }
     final tenantValue = tenantId == null ? null : await tenantById(tenantId);
     if (tenantId != null && (tenantValue == null || !tenantValue.isActive)) {
       throw ArgumentError('Selecione uma parceria ativa para o usuário.');
@@ -962,6 +1043,7 @@ class AppDatabase extends _$AppDatabase {
     required String password,
     required String actorId,
   }) async {
+    await _assertActorCanManageUser(targetUserId: userId, actorId: actorId);
     if (password.length < 8) {
       throw ArgumentError('A senha deve possuir ao menos 8 caracteres.');
     }
@@ -985,6 +1067,11 @@ class AppDatabase extends _$AppDatabase {
     required List<String> permissions,
     required String actorId,
   }) async {
+    await _assertActorCanManageUser(targetUserId: userId, actorId: actorId);
+    await _assertGrantablePermissions(
+      actorId: actorId,
+      permissions: permissions,
+    );
     await transaction(() async {
       await (delete(
         userPermissions,

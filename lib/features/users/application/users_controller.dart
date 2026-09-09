@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../auth/domain/entities/auth_session.dart';
 
 final usersProvider = StreamProvider<List<User>>((ref) {
   final session = ref.watch(authControllerProvider).session;
@@ -10,9 +11,22 @@ final usersProvider = StreamProvider<List<User>>((ref) {
   return ref.watch(databaseProvider).watchUsers(tenantId: tenantId);
 });
 
-final tenantsProvider = StreamProvider<List<Tenant>>(
-  (ref) => ref.watch(databaseProvider).watchTenants(),
-);
+final tenantsProvider = StreamProvider<List<Tenant>>((ref) {
+  final session = ref.watch(authControllerProvider).session;
+  final source = ref.watch(databaseProvider).watchTenants();
+  if (session?.allows('tenant.view_all') == true) return source;
+  return source.map(
+    (tenants) => tenants
+        .where((tenant) => tenant.id == session?.tenantId)
+        .toList(growable: false),
+  );
+});
+
+const _globalPermissions = {
+  'system.super_admin',
+  'tenant.view_all',
+  'tenants.create',
+};
 
 class UsersController {
   UsersController(this.ref);
@@ -34,6 +48,7 @@ class UsersController {
         !session.allows('tenant.view_all')) {
       throw StateError('Você não pode criar usuários em outra parceria.');
     }
+    _assertGrantablePermissions(session, permissions);
     await ref
         .read(databaseProvider)
         .createUser(
@@ -88,6 +103,10 @@ class UsersController {
     if (user.id == session.userId && !isActive) {
       throw StateError('Não é possível desativar sua própria conta.');
     }
+    if (user.tenantId != session.tenantId &&
+        !session.allows('tenant.view_all')) {
+      throw StateError('Você não pode alterar usuários de outra parceria.');
+    }
     if (tenantId != null &&
         tenantId != user.tenantId &&
         !session.allows('tenant.view_all')) {
@@ -112,6 +131,11 @@ class UsersController {
     if (session == null || !session.allows('users.permissions')) {
       throw StateError('Você não tem permissão para alterar acessos.');
     }
+    if (user.tenantId != session.tenantId &&
+        !session.allows('tenant.view_all')) {
+      throw StateError('Você não pode alterar acessos de outra parceria.');
+    }
+    _assertGrantablePermissions(session, permissions);
     await ref
         .read(databaseProvider)
         .replaceUserPermissions(
@@ -126,6 +150,10 @@ class UsersController {
     if (session == null || !session.allows('users.update')) {
       throw StateError('Você não tem permissão para redefinir senhas.');
     }
+    if (user.tenantId != session.tenantId &&
+        !session.allows('tenant.view_all')) {
+      throw StateError('Você não pode redefinir senha de outra parceria.');
+    }
     await ref
         .read(databaseProvider)
         .resetUserPassword(
@@ -137,3 +165,15 @@ class UsersController {
 }
 
 final usersControllerProvider = Provider(UsersController.new);
+
+void _assertGrantablePermissions(
+  AuthSession session,
+  List<String> permissions,
+) {
+  if (session.isSuperAdmin) return;
+  if (permissions.any(_globalPermissions.contains)) {
+    throw StateError(
+      'Apenas o Super Admin pode liberar permissões globais de parceria.',
+    );
+  }
+}

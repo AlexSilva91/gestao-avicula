@@ -224,106 +224,111 @@ class _CreateUserDialogState extends State<_CreateUserDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Novo usuário'),
-    content: SizedBox(
-      width: 410,
-      child: Form(
-        key: _form,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _name,
-                decoration: const InputDecoration(
-                  labelText: 'Nome de exibição',
+  Widget build(BuildContext context) {
+    final permissions = _grantablePermissions(widget.ref);
+    return AlertDialog(
+      title: const Text('Novo usuário'),
+      content: SizedBox(
+        width: 410,
+        child: Form(
+          key: _form,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _name,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome de exibição',
+                  ),
+                  validator: (value) =>
+                      value!.trim().isEmpty ? 'Informe o nome.' : null,
                 ),
-                validator: (value) =>
-                    value!.trim().isEmpty ? 'Informe o nome.' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _username,
-                decoration: const InputDecoration(labelText: 'Usuário'),
-                validator: (value) => (value?.trim().length ?? 0) < 3
-                    ? 'Mínimo de 3 caracteres.'
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _password,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Senha inicial'),
-                validator: (value) =>
-                    (value?.length ?? 0) < 8 ? 'Mínimo de 8 caracteres.' : null,
-              ),
-              if (widget.tenants.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue:
-                      widget.tenants.any((tenant) => tenant.id == _tenantId)
-                      ? _tenantId
-                      : widget.tenants.first.id,
-                  decoration: const InputDecoration(labelText: 'Parceria'),
-                  items: [
-                    for (final tenant in widget.tenants)
-                      DropdownMenuItem(
-                        value: tenant.id,
-                        child: Text(tenant.name),
-                      ),
-                  ],
-                  onChanged: (value) => setState(() => _tenantId = value),
+                TextFormField(
+                  controller: _username,
+                  decoration: const InputDecoration(labelText: 'Usuário'),
+                  validator: (value) => (value?.trim().length ?? 0) < 3
+                      ? 'Mínimo de 3 caracteres.'
+                      : null,
                 ),
-              ],
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Administrador'),
-                subtitle: const Text('Acesso integral ao sistema'),
-                value: _admin,
-                onChanged: (value) => setState(() => _admin = value),
-              ),
-              if (!_admin)
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  title: Text('Permissões (${_permissions.length})'),
-                  children: [
-                    for (final permission in seletoPermissions)
-                      CheckboxListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(permission.label),
-                        subtitle: Text(permission.group),
-                        value: _permissions.contains(permission.key),
-                        onChanged: (checked) => setState(
-                          () => checked == true
-                              ? _permissions.add(permission.key)
-                              : _permissions.remove(permission.key),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _password,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Senha inicial'),
+                  validator: (value) => (value?.length ?? 0) < 8
+                      ? 'Mínimo de 8 caracteres.'
+                      : null,
+                ),
+                if (widget.tenants.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue:
+                        widget.tenants.any((tenant) => tenant.id == _tenantId)
+                        ? _tenantId
+                        : widget.tenants.first.id,
+                    decoration: const InputDecoration(labelText: 'Parceria'),
+                    items: [
+                      for (final tenant in widget.tenants)
+                        DropdownMenuItem(
+                          value: tenant.id,
+                          child: Text(tenant.name),
                         ),
-                      ),
-                  ],
+                    ],
+                    onChanged: (value) => setState(() => _tenantId = value),
+                  ),
+                ],
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Administrador'),
+                  subtitle: const Text('Acesso integral ao sistema'),
+                  value: _admin,
+                  onChanged: (value) => setState(() => _admin = value),
                 ),
-            ],
+                if (!_admin)
+                  ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    title: Text('Permissões (${_permissions.length})'),
+                    children: [
+                      for (final permission in permissions)
+                        CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(permission.label),
+                          subtitle: Text(permission.group),
+                          value: _permissions.contains(permission.key),
+                          onChanged: (checked) => setState(
+                            () => checked == true
+                                ? _permissions.add(permission.key)
+                                : _permissions.remove(permission.key),
+                          ),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
           ),
         ),
       ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: _loading ? null : () => Navigator.pop(context),
-        child: const Text('Cancelar'),
-      ),
-      FilledButton(
-        onPressed: _loading ? null : _save,
-        child: _loading
-            ? const SizedBox.square(
-                dimension: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Text('Criar'),
-      ),
-    ],
-  );
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _loading ? null : _save,
+          child: _loading
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Criar'),
+        ),
+      ],
+    );
+  }
+
   Future<void> _save() async {
     if (!(_form.currentState?.validate() ?? false)) return;
     setState(() => _loading = true);
@@ -582,69 +587,83 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text('Permissões · ${widget.user.displayName}'),
-    content: SizedBox(
-      width: 520,
-      height: 520,
-      child: loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              children: [
-                for (final group
-                    in seletoPermissions.map((p) => p.group).toSet()) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
-                    child: Text(
-                      group,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
+  Widget build(BuildContext context) {
+    final permissions = _grantablePermissions(widget.ref);
+    selected.removeWhere(
+      (permission) => !permissions.any((item) => item.key == permission),
+    );
+    return AlertDialog(
+      title: Text('Permissões · ${widget.user.displayName}'),
+      content: SizedBox(
+        width: 520,
+        height: 520,
+        child: loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                children: [
+                  for (final group
+                      in permissions.map((p) => p.group).toSet()) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+                      child: Text(
+                        group,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                     ),
-                  ),
-                  for (final p in seletoPermissions.where(
-                    (p) => p.group == group,
-                  ))
-                    CheckboxListTile(
-                      dense: true,
-                      title: Text(p.label),
-                      subtitle: Text(p.key),
-                      value: selected.contains(p.key),
-                      onChanged: (v) => setState(
-                        () => v == true
-                            ? selected.add(p.key)
-                            : selected.remove(p.key),
+                    for (final p in permissions.where((p) => p.group == group))
+                      CheckboxListTile(
+                        dense: true,
+                        title: Text(p.label),
+                        subtitle: Text(p.key),
+                        value: selected.contains(p.key),
+                        onChanged: (v) => setState(
+                          () => v == true
+                              ? selected.add(p.key)
+                              : selected.remove(p.key),
+                        ),
                       ),
-                    ),
+                  ],
                 ],
-              ],
-            ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: saving ? null : () => Navigator.pop(context),
-        child: const Text('Cancelar'),
+              ),
       ),
-      FilledButton(
-        onPressed: saving
-            ? null
-            : () async {
-                setState(() => saving = true);
-                try {
-                  await widget.ref
-                      .read(usersControllerProvider)
-                      .savePermissions(widget.user, selected.toList());
-                  if (context.mounted) Navigator.pop(context);
-                } catch (e) {
-                  await showOperationError(context, e);
-                  if (mounted) setState(() => saving = false);
-                }
-              },
-        child: const Text('Salvar acessos'),
-      ),
-    ],
-  );
+      actions: [
+        TextButton(
+          onPressed: saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: saving
+              ? null
+              : () async {
+                  setState(() => saving = true);
+                  try {
+                    await widget.ref
+                        .read(usersControllerProvider)
+                        .savePermissions(widget.user, selected.toList());
+                    if (context.mounted) Navigator.pop(context);
+                  } catch (e) {
+                    await showOperationError(context, e);
+                    if (mounted) setState(() => saving = false);
+                  }
+                },
+          child: const Text('Salvar acessos'),
+        ),
+      ],
+    );
+  }
 }
+
+List<SeletoPermission> _grantablePermissions(WidgetRef ref) {
+  final session = ref.read(authControllerProvider).session;
+  if (session?.isSuperAdmin == true) return seletoPermissions;
+  return seletoPermissions
+      .where((permission) => !_globalPermissionKeys.contains(permission.key))
+      .toList(growable: false);
+}
+
+const _globalPermissionKeys = {'tenant.view_all', 'tenants.create'};
 
 class _ResetPasswordDialog extends StatefulWidget {
   const _ResetPasswordDialog({required this.ref, required this.user});

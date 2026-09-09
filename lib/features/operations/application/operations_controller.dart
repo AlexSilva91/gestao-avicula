@@ -8,6 +8,7 @@ import '../../../core/database/operations_repository.dart';
 import '../../../core/platform/alert_scheduler.dart';
 import '../../../core/platform/notification_service.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../auth/domain/entities/auth_session.dart';
 
 String? _tenantScope(Ref ref) {
   final session = ref.watch(authControllerProvider).session;
@@ -183,10 +184,26 @@ class OperationsController {
   final Ref ref;
 
   AppDatabase get _db => ref.read(databaseProvider);
-  String _actor(String permission) {
+  AuthSession _session() {
     final session = ref.read(authControllerProvider).session;
-    if (session == null || !session.allows(permission)) {
+    if (session == null) {
+      throw StateError('Entre no sistema para realizar esta operação.');
+    }
+    return session;
+  }
+
+  String _actor(String permission) {
+    final session = _session();
+    if (!session.allows(permission)) {
       throw StateError('Você não tem permissão para realizar esta operação.');
+    }
+    return session.userId;
+  }
+
+  String _superAdminActor() {
+    final session = _session();
+    if (!session.isSuperAdmin) {
+      throw StateError('Apenas o Super Admin pode alterar dados globais.');
     }
     return session.userId;
   }
@@ -657,16 +674,23 @@ class OperationsController {
         actorId: _actor('lighting.manage'),
       );
   Future<void> saveSetting(String key, String value) =>
-      _db.saveAppSetting(key, value, _actor('settings.update'));
+      _db.saveAppSetting(key, value, _superAdminActor());
+  Future<String> exportBackupJson() {
+    final session = _session();
+    return _db.exportJson(
+      tenantId: session.allows('tenant.view_all') ? null : session.tenantId,
+    );
+  }
+
   Future<void> restoreBackup(String content) =>
-      _db.restoreJson(content, actorId: _actor('settings.update'));
+      _db.restoreJson(content, actorId: _superAdminActor());
   Future<OperationalImportResult> importOperationalData(
     String filename,
     List<int> bytes,
   ) => _db.importOperationalData(
     filename: filename,
     bytes: Uint8List.fromList(bytes),
-    actorId: _actor('settings.update'),
+    actorId: _superAdminActor(),
   );
   Future<FeedRecommendationImportResult> importFeedRecommendations(
     String filename,
@@ -674,9 +698,9 @@ class OperationsController {
   ) => _db.importFeedConsumptionRecommendations(
     filename: filename,
     bytes: Uint8List.fromList(bytes),
-    actorId: _actor('feed_formulas.manage'),
+    actorId: _superAdminActor(),
   );
-  Future<void> seedDemo() => _db.seedDemoData(_actor('settings.update'));
+  Future<void> seedDemo() => _db.seedDemoData(_superAdminActor());
   Future<void> updateNotification(
     NotificationSetting setting,
     bool enabled,
@@ -692,7 +716,7 @@ class OperationsController {
       time: time,
       message: message,
       recurrence: recurrence,
-      actorId: _actor('settings.update'),
+      actorId: _superAdminActor(),
     );
     await schedulePersistedAlerts(_db, tenantId: _tenantScope(ref));
   }

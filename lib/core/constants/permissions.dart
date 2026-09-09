@@ -60,12 +60,6 @@ const seletoPermissions = <SeletoPermission>[
     'Alterar configurações e cópias de segurança',
     'Sistema',
   ),
-  SeletoPermission(
-    'tenant.view_all',
-    'Visualizar todas as parcerias',
-    'Sistema',
-  ),
-  SeletoPermission('tenants.create', 'Criar parcerias/tenants', 'Sistema'),
   SeletoPermission('audit.view', 'Visualizar auditoria', 'Sistema'),
   SeletoPermission('users.view', 'Visualizar usuários', 'Sistema'),
   SeletoPermission('users.create', 'Criar usuários', 'Sistema'),

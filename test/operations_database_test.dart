@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:seleto/core/database/app_database.dart';
 import 'package:seleto/core/database/operational_data_import.dart';
 import 'package:seleto/core/database/operations_repository.dart';
+import 'package:seleto/features/auth/domain/entities/auth_session.dart';
 
 void main() {
   late AppDatabase db;
@@ -991,6 +992,164 @@ void main() {
         actorId: partner.id,
       ),
       throwsStateError,
+    );
+  });
+
+  test('tenant admin wildcard does not grant global partnership access', () {
+    const session = AuthSession(
+      userId: 'tenant-admin',
+      tenantId: defaultTenantId,
+      tenantName: defaultTenantName,
+      displayName: 'Admin da granja',
+      isSuperuser: true,
+      permissions: {'*'},
+    );
+
+    expect(session.allows('dashboard.view'), isTrue);
+    expect(session.allows('settings.update'), isTrue);
+    expect(session.allows('tenant.view_all'), isFalse);
+    expect(session.allows('tenants.create'), isFalse);
+    expect(session.isSuperAdmin, isFalse);
+  });
+
+  test('only super admin can manage partnerships and global grants', () async {
+    final superAdmin = await db.createFirstAdminAccount(
+      username: 'admin',
+      displayName: 'Super Admin',
+      password: 'Seleto@2026',
+    );
+    await db.createTenant(name: 'Granja Parceira', actorId: superAdmin.id);
+    final partnerTenant = (await db.watchTenants().first).firstWhere(
+      (tenant) => tenant.name == 'Granja Parceira',
+    );
+    await db.createUser(
+      username: 'admin-parceiro',
+      displayName: 'Admin Parceiro',
+      password: 'Seleto@2026',
+      isSuperuser: true,
+      permissions: const ['*'],
+      actorId: superAdmin.id,
+      tenantId: partnerTenant.id,
+    );
+    final tenantAdmin = await db.userByUsername('admin-parceiro');
+
+    await expectLater(
+      db.createTenant(name: 'Outra Granja', actorId: tenantAdmin!.id),
+      throwsStateError,
+    );
+    await expectLater(
+      db.createUser(
+        username: 'usuario-fora',
+        displayName: 'Usuário Fora',
+        password: 'Seleto@2026',
+        isSuperuser: false,
+        permissions: const ['dashboard.view'],
+        actorId: tenantAdmin.id,
+        tenantId: superAdmin.tenantId,
+      ),
+      throwsStateError,
+    );
+    await expectLater(
+      db.replaceUserPermissions(
+        userId: tenantAdmin.id,
+        permissions: const ['dashboard.view', 'tenant.view_all'],
+        actorId: tenantAdmin.id,
+      ),
+      throwsStateError,
+    );
+    await expectLater(
+      db.updateUserProfile(
+        userId: superAdmin.id,
+        username: 'admin',
+        displayName: 'Super Admin',
+        isActive: true,
+        actorId: tenantAdmin.id,
+      ),
+      throwsStateError,
+    );
+    await expectLater(
+      db.saveAppSetting(
+        'production_feed_grams_per_bird',
+        '130',
+        tenantAdmin.id,
+      ),
+      throwsStateError,
+    );
+    final notification = (await db.watchNotificationSettings().first).first;
+    await expectLater(
+      db.updateNotificationSetting(
+        notification,
+        enabled: true,
+        daysBefore: 1,
+        time: '07:30',
+        actorId: tenantAdmin.id,
+      ),
+      throwsStateError,
+    );
+    await expectLater(
+      db.importFeedConsumptionRecommendations(
+        filename: 'consumo.csv',
+        bytes: Uint8List.fromList(
+          utf8.encode('semana,gramasPorAveDia\n1,18\n'),
+        ),
+        actorId: tenantAdmin.id,
+      ),
+      throwsStateError,
+    );
+    final backup = await db.exportJson();
+    await expectLater(
+      db.restoreJson(backup, actorId: tenantAdmin.id),
+      throwsStateError,
+    );
+  });
+
+  test('tenant scoped export excludes data from other partnerships', () async {
+    final superAdmin = await db.createFirstAdminAccount(
+      username: 'admin',
+      displayName: 'Super Admin',
+      password: 'Seleto@2026',
+    );
+    await db.createTenant(name: 'Granja Parceira', actorId: superAdmin.id);
+    final partnerTenant = (await db.watchTenants().first).firstWhere(
+      (tenant) => tenant.name == 'Granja Parceira',
+    );
+    await db.createUser(
+      username: 'parceiro-export',
+      displayName: 'Parceiro Export',
+      password: 'Seleto@2026',
+      isSuperuser: true,
+      permissions: const ['*'],
+      actorId: superAdmin.id,
+      tenantId: partnerTenant.id,
+    );
+    final partner = await db.userByUsername('parceiro-export');
+    await db.registerLotPurchase(
+      name: 'Lote matriz',
+      quantity: 20,
+      receivedAt: DateTime(2026, 8, 1),
+      arrivalAgeDays: 30,
+      unitValueCents: 100,
+      actorId: superAdmin.id,
+    );
+    await db.registerLotPurchase(
+      name: 'Lote parceiro',
+      quantity: 10,
+      receivedAt: DateTime(2026, 8, 2),
+      arrivalAgeDays: 30,
+      unitValueCents: 100,
+      actorId: partner!.id,
+    );
+
+    final payload =
+        jsonDecode(await db.exportJson(tenantId: partnerTenant.id))
+            as Map<String, dynamic>;
+    final lots = (payload['lots'] as List).cast<Map<String, dynamic>>();
+    final finance = (payload['finance'] as List).cast<Map<String, dynamic>>();
+
+    expect(lots.map((row) => row['name']).toList(), ['LOTE PARCEIRO']);
+    expect(
+      finance.map((row) => row['description']).join(' '),
+      isNot(contains('LOTE MATRIZ')),
     );
   });
 }

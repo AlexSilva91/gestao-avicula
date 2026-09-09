@@ -13,8 +13,14 @@ class AuthSession {
   final String displayName;
   final bool isSuperuser;
   final Set<String> permissions;
-  bool allows(String permission) =>
-      isSuperuser ||
-      permissions.contains('*') ||
-      permissions.contains(permission);
+  bool get isSuperAdmin => permissions.contains('system.super_admin');
+
+  bool allows(String permission) {
+    if (_globalPermissions.contains(permission)) return isSuperAdmin;
+    return permissions.contains(permission) ||
+        isSuperuser ||
+        permissions.contains('*');
+  }
 }
+
+const _globalPermissions = {'tenant.view_all', 'tenants.create'};

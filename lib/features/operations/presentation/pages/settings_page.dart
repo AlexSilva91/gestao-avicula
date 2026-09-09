@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../../../core/database/app_database.dart';
-import '../../../../core/database/operations_repository.dart';
 import '../../../../core/platform/file_export_service.dart';
 import '../../../../core/platform/notification_service.dart';
 import '../../../../core/sync/firebase_backup_service.dart';
@@ -188,7 +187,9 @@ class _BackupCard extends StatelessWidget {
           FilledButton.icon(
             onPressed: () async {
               try {
-                final json = await ref.read(databaseProvider).exportJson();
+                final json = await ref
+                    .read(operationsControllerProvider)
+                    .exportBackupJson();
                 final name =
                     'seleto-copia-seguranca-${DateTime.now().toIso8601String().substring(0, 10)}.json';
                 final path = await FileExportService().saveText(name, json);
@@ -215,7 +216,9 @@ class _BackupCard extends StatelessWidget {
           FilledButton.tonalIcon(
             onPressed: () async {
               try {
-                final json = await ref.read(databaseProvider).exportJson();
+                final json = await ref
+                    .read(operationsControllerProvider)
+                    .exportBackupJson();
                 final name =
                     'seleto-copia-seguranca-${DateTime.now().toIso8601String().substring(0, 10)}.json';
                 final path = await FileExportService().shareText(name, json);

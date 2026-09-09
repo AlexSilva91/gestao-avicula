@@ -265,6 +265,15 @@ extension OperationsRepository on AppDatabase {
 
   Future<String> _actorTenantId(String actorId) => tenantIdForUser(actorId);
 
+  Future<void> _assertGlobalWriteAllowed(String actorId) async {
+    final actor = await userById(actorId);
+    if (actor == null) return;
+    final permissions = await permissionsOf(actorId);
+    if (!permissions.contains('system.super_admin')) {
+      throw StateError('Apenas o Super Admin pode alterar dados globais.');
+    }
+  }
+
   Future<void> _assertActorCanUseRecord({
     required String tableName,
     required String recordId,
@@ -305,6 +314,7 @@ extension OperationsRepository on AppDatabase {
     required Uint8List bytes,
     required String actorId,
   }) async {
+    await _assertGlobalWriteAllowed(actorId);
     final parsed = parseOperationalImport(filename: filename, bytes: bytes);
     final raw = jsonDecode(parsed.backupJson);
     if (raw is! Map<String, dynamic>) {
@@ -3152,6 +3162,7 @@ extension OperationsRepository on AppDatabase {
   Stream<List<AppSetting>> watchAppSettings() => select(appSettings).watch();
 
   Future<void> saveAppSetting(String key, String value, String actorId) async {
+    await _assertGlobalWriteAllowed(actorId);
     await into(appSettings).insertOnConflictUpdate(
       AppSettingsCompanion.insert(
         key: key,
@@ -3178,6 +3189,7 @@ extension OperationsRepository on AppDatabase {
     String recurrence = 'ONCE',
     required String actorId,
   }) async {
+    await _assertGlobalWriteAllowed(actorId);
     if (daysBefore < 0 ||
         !RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(time)) {
       throw ArgumentError('Use dias não negativos e horário no formato HH:mm.');
@@ -3489,97 +3501,222 @@ extension OperationsRepository on AppDatabase {
     );
   }
 
-  Future<String> exportJson() async {
+  Future<String> exportJson({String? tenantId}) async {
+    final lotsQuery = select(lots);
+    final birdMovementsQuery = select(birdMovements);
+    final eggCollectionsQuery = select(eggCollections);
+    final eggStockMovementsQuery = select(eggStockMovements);
+    final ingredientsQuery = select(ingredients);
+    final pricesQuery = select(ingredientPriceHistory);
+    final ingredientLotsQuery = select(ingredientLots);
+    final ingredientStockMovementsQuery = select(ingredientStockMovements);
+    final formulasQuery = select(feedFormulas);
+    final feedBatchesQuery = select(feedBatches);
+    final feedStockQuery = select(feedStockMovements);
+    final feedingsQuery = select(dailyFeedings);
+    final customersQuery = select(customers);
+    final ordersQuery = select(orders);
+    final packagingItemsQuery = select(packagingItems);
+    final packagingLotsQuery = select(packagingLots);
+    final packagingStockMovementsQuery = select(packagingStockMovements);
+    final eggTrayBatchesQuery = select(eggTrayBatches);
+    final eggTrayStockMovementsQuery = select(eggTrayStockMovements);
+    final salesQuery = select(sales);
+    final financeQuery = select(financeTransactions);
+    final investmentsQuery = select(investments);
+    final lightingProgramsQuery = select(lightingPrograms);
+    final lotLightingQuery = select(lotLightingPrograms);
+    final calendarEventsQuery = select(calendarEvents);
+    if (tenantId != null) {
+      lotsQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
+      birdMovementsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      eggCollectionsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      eggStockMovementsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      ingredientsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      pricesQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
+      ingredientLotsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      ingredientStockMovementsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      formulasQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
+      feedBatchesQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      feedStockQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
+      feedingsQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
+      customersQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
+      ordersQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
+      packagingItemsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      packagingLotsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      packagingStockMovementsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      eggTrayBatchesQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      eggTrayStockMovementsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      salesQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
+      financeQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
+      investmentsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      lightingProgramsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      lotLightingQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      calendarEventsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+    }
+    final lotRows = await lotsQuery.get();
+    final ingredientRows = await ingredientsQuery.get();
+    final ingredientLotRows = await ingredientLotsQuery.get();
+    final formulaRows = await formulasQuery.get();
+    final feedBatchRows = await feedBatchesQuery.get();
+    final customerRows = await customersQuery.get();
+    final orderRows = await ordersQuery.get();
+    final packagingItemRows = await packagingItemsQuery.get();
+    final packagingLotRows = await packagingLotsQuery.get();
+    final eggTrayBatchRows = await eggTrayBatchesQuery.get();
+    final lightingProgramRows = await lightingProgramsQuery.get();
+    final lotIds = lotRows.map((row) => row.id).toSet();
+    final ingredientIds = ingredientRows.map((row) => row.id).toSet();
+    final ingredientLotIds = ingredientLotRows.map((row) => row.id).toSet();
+    final formulaIds = formulaRows.map((row) => row.id).toSet();
+    final feedBatchIds = feedBatchRows.map((row) => row.id).toSet();
+    final orderIds = orderRows.map((row) => row.id).toSet();
+    final packagingItemIds = packagingItemRows.map((row) => row.id).toSet();
+    final packagingLotIds = packagingLotRows.map((row) => row.id).toSet();
+    final eggTrayBatchIds = eggTrayBatchRows.map((row) => row.id).toSet();
+    final lightingProgramIds = lightingProgramRows.map((row) => row.id).toSet();
+    final formulaItemRows = formulaIds.isEmpty
+        ? const <FeedFormulaItem>[]
+        : await (select(
+            feedFormulaItems,
+          )..where((row) => row.formulaId.isIn(formulaIds))).get();
+    final feedBatchItemRows = feedBatchIds.isEmpty
+        ? const <FeedBatchItem>[]
+        : await (select(
+            feedBatchItems,
+          )..where((row) => row.batchId.isIn(feedBatchIds))).get();
+    final orderItemRows = orderIds.isEmpty
+        ? const <OrderItem>[]
+        : await (select(
+            orderItems,
+          )..where((row) => row.orderId.isIn(orderIds))).get();
+    final orderStatusRows = orderIds.isEmpty
+        ? const <OrderStatusHistoryData>[]
+        : await (select(
+            orderStatusHistory,
+          )..where((row) => row.orderId.isIn(orderIds))).get();
+    final lightingStepRows = lightingProgramIds.isEmpty
+        ? const <LightingProgramStep>[]
+        : await (select(
+            lightingProgramSteps,
+          )..where((row) => row.programId.isIn(lightingProgramIds))).get();
+    final lotLightingRows = (tenantId == null || lotIds.isEmpty)
+        ? await lotLightingQuery.get()
+        : await (lotLightingQuery
+                ..where((row) => row.lotId.isIn(lotIds))
+                ..where((row) => row.programId.isIn(lightingProgramIds)))
+              .get();
+    final prices = ingredientIds.isEmpty
+        ? const <IngredientPriceHistoryData>[]
+        : await (pricesQuery
+                ..where((row) => row.ingredientId.isIn(ingredientIds)))
+              .get();
+    final ingredientStockRows = ingredientLotIds.isEmpty
+        ? const <IngredientStockMovement>[]
+        : await (ingredientStockMovementsQuery
+                ..where((row) => row.ingredientLotId.isIn(ingredientLotIds)))
+              .get();
+    final feedStockRows = feedBatchIds.isEmpty
+        ? const <FeedStockMovement>[]
+        : await (feedStockQuery..where((row) => row.batchId.isIn(feedBatchIds)))
+              .get();
+    final packagingStockRows = packagingLotIds.isEmpty
+        ? const <PackagingStockMovement>[]
+        : await (packagingStockMovementsQuery
+                ..where((row) => row.lotId.isIn(packagingLotIds))
+                ..where((row) => row.itemId.isIn(packagingItemIds)))
+              .get();
+    final eggTrayStockRows = eggTrayBatchIds.isEmpty
+        ? const <EggTrayStockMovement>[]
+        : await (eggTrayStockMovementsQuery
+                ..where((row) => row.batchId.isIn(eggTrayBatchIds)))
+              .get();
+    final birdMovementRows = lotIds.isEmpty
+        ? const <BirdMovement>[]
+        : await (birdMovementsQuery..where((row) => row.lotId.isIn(lotIds)))
+              .get();
+    final eggCollectionRows = lotIds.isEmpty
+        ? const <EggCollection>[]
+        : await (eggCollectionsQuery..where((row) => row.lotId.isIn(lotIds)))
+              .get();
     final payload = <String, dynamic>{
       'format': 'SELETO_BACKUP_V1',
       'exportedAt': DateTime.now().toIso8601String(),
-      'lots': (await select(lots).get()).map((e) => e.toJson()).toList(),
-      'birdMovements': (await select(
-        birdMovements,
-      ).get()).map((e) => e.toJson()).toList(),
-      'eggCollections': (await select(
-        eggCollections,
-      ).get()).map((e) => e.toJson()).toList(),
-      'eggStockMovements': (await select(
-        eggStockMovements,
-      ).get()).map((e) => e.toJson()).toList(),
-      'ingredients': (await select(
-        ingredients,
-      ).get()).map((e) => e.toJson()).toList(),
-      'prices': (await select(
-        ingredientPriceHistory,
-      ).get()).map((e) => e.toJson()).toList(),
-      'ingredientLots': (await select(
-        ingredientLots,
-      ).get()).map((e) => e.toJson()).toList(),
-      'ingredientStockMovements': (await select(
-        ingredientStockMovements,
-      ).get()).map((e) => e.toJson()).toList(),
-      'formulas': (await select(
-        feedFormulas,
-      ).get()).map((e) => e.toJson()).toList(),
-      'formulaItems': (await select(
-        feedFormulaItems,
-      ).get()).map((e) => e.toJson()).toList(),
-      'feedBatches': (await select(
-        feedBatches,
-      ).get()).map((e) => e.toJson()).toList(),
-      'feedBatchItems': (await select(
-        feedBatchItems,
-      ).get()).map((e) => e.toJson()).toList(),
-      'feedStock': (await select(
-        feedStockMovements,
-      ).get()).map((e) => e.toJson()).toList(),
-      'feedings': (await select(
-        dailyFeedings,
-      ).get()).map((e) => e.toJson()).toList(),
+      'lots': lotRows.map((e) => e.toJson()).toList(),
+      'birdMovements': birdMovementRows.map((e) => e.toJson()).toList(),
+      'eggCollections': eggCollectionRows.map((e) => e.toJson()).toList(),
+      'eggStockMovements': (await eggStockMovementsQuery.get())
+          .map((e) => e.toJson())
+          .toList(),
+      'ingredients': ingredientRows.map((e) => e.toJson()).toList(),
+      'prices': prices.map((e) => e.toJson()).toList(),
+      'ingredientLots': ingredientLotRows.map((e) => e.toJson()).toList(),
+      'ingredientStockMovements': ingredientStockRows
+          .map((e) => e.toJson())
+          .toList(),
+      'formulas': formulaRows.map((e) => e.toJson()).toList(),
+      'formulaItems': formulaItemRows.map((e) => e.toJson()).toList(),
+      'feedBatches': feedBatchRows.map((e) => e.toJson()).toList(),
+      'feedBatchItems': feedBatchItemRows.map((e) => e.toJson()).toList(),
+      'feedStock': feedStockRows.map((e) => e.toJson()).toList(),
+      'feedings': (await feedingsQuery.get()).map((e) => e.toJson()).toList(),
       'feedRecommendations': (await select(
         feedConsumptionRecommendations,
       ).get()).map((e) => e.toJson()).toList(),
-      'customers': (await select(
-        customers,
-      ).get()).map((e) => e.toJson()).toList(),
-      'orders': (await select(orders).get()).map((e) => e.toJson()).toList(),
-      'orderItems': (await select(
-        orderItems,
-      ).get()).map((e) => e.toJson()).toList(),
-      'orderStatusHistory': (await select(
-        orderStatusHistory,
-      ).get()).map((e) => e.toJson()).toList(),
-      'packagingItems': (await select(
-        packagingItems,
-      ).get()).map((e) => e.toJson()).toList(),
-      'packagingLots': (await select(
-        packagingLots,
-      ).get()).map((e) => e.toJson()).toList(),
-      'packagingStockMovements': (await select(
-        packagingStockMovements,
-      ).get()).map((e) => e.toJson()).toList(),
-      'eggTrayBatches': (await select(
-        eggTrayBatches,
-      ).get()).map((e) => e.toJson()).toList(),
-      'eggTrayStockMovements': (await select(
-        eggTrayStockMovements,
-      ).get()).map((e) => e.toJson()).toList(),
-      'sales': (await select(sales).get()).map((e) => e.toJson()).toList(),
-      'finance': (await select(
-        financeTransactions,
-      ).get()).map((e) => e.toJson()).toList(),
-      'investments': (await select(
-        investments,
-      ).get()).map((e) => e.toJson()).toList(),
-      'lightingPrograms': (await select(
-        lightingPrograms,
-      ).get()).map((e) => e.toJson()).toList(),
-      'lightingSteps': (await select(
-        lightingProgramSteps,
-      ).get()).map((e) => e.toJson()).toList(),
-      'lotLighting': (await select(
-        lotLightingPrograms,
-      ).get()).map((e) => e.toJson()).toList(),
-      'calendarEvents': (await select(
-        calendarEvents,
-      ).get()).map((e) => e.toJson()).toList(),
+      'customers': customerRows.map((e) => e.toJson()).toList(),
+      'orders': orderRows.map((e) => e.toJson()).toList(),
+      'orderItems': orderItemRows.map((e) => e.toJson()).toList(),
+      'orderStatusHistory': orderStatusRows.map((e) => e.toJson()).toList(),
+      'packagingItems': packagingItemRows.map((e) => e.toJson()).toList(),
+      'packagingLots': packagingLotRows.map((e) => e.toJson()).toList(),
+      'packagingStockMovements': packagingStockRows
+          .map((e) => e.toJson())
+          .toList(),
+      'eggTrayBatches': eggTrayBatchRows.map((e) => e.toJson()).toList(),
+      'eggTrayStockMovements': eggTrayStockRows.map((e) => e.toJson()).toList(),
+      'sales': (await salesQuery.get()).map((e) => e.toJson()).toList(),
+      'finance': (await financeQuery.get()).map((e) => e.toJson()).toList(),
+      'investments': (await investmentsQuery.get())
+          .map((e) => e.toJson())
+          .toList(),
+      'lightingPrograms': lightingProgramRows.map((e) => e.toJson()).toList(),
+      'lightingSteps': lightingStepRows.map((e) => e.toJson()).toList(),
+      'lotLighting': lotLightingRows.map((e) => e.toJson()).toList(),
+      'calendarEvents': (await calendarEventsQuery.get())
+          .map((e) => e.toJson())
+          .toList(),
       'notificationSettings': (await select(
         notificationSettings,
       ).get()).map((e) => e.toJson()).toList(),
@@ -3595,6 +3732,7 @@ extension OperationsRepository on AppDatabase {
     required String actorId,
     bool writeAudit = true,
   }) async {
+    await _assertGlobalWriteAllowed(actorId);
     final raw = jsonDecode(content);
     if (raw is! Map<String, dynamic> || raw['format'] != 'SELETO_BACKUP_V1') {
       throw const FormatException(
