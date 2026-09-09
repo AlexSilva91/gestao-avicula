@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' hide Order;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
@@ -51,6 +51,7 @@ class FirebaseBackupService extends ChangeNotifier {
   final firebase_auth.FirebaseAuth? _authOverride;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   Future<SyncResult>? _activeSync;
+  _SyncScope? _scope;
   DateTime? _lastAttemptAt;
   bool _started = false;
   bool _disposed = false;
@@ -75,20 +76,52 @@ class FirebaseBackupService extends ChangeNotifier {
   SyncResult get lastResult => _lastResult;
   bool get isSynced => _hasSuccessfulSync;
 
+  void setUserScope({
+    required String userId,
+    required String tenantId,
+    required bool isSuperAdmin,
+  }) {
+    final next = _SyncScope(
+      userId: userId,
+      tenantId: tenantId,
+      isSuperAdmin: isSuperAdmin,
+    );
+    if (_scope?.key != next.key) {
+      _lastAttemptAt = null;
+      _hasSuccessfulSync = false;
+    }
+    _scope = next;
+  }
+
+  void clearUserScope() {
+    _scope = null;
+    _lastAttemptAt = null;
+    _hasSuccessfulSync = false;
+  }
+
   Future<void> start() async {
     if (_started) return;
     _started = true;
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
       results,
     ) {
-      if (results.any((result) => result != ConnectivityResult.none)) {
+      if (_scope != null &&
+          results.any((result) => result != ConnectivityResult.none)) {
         unawaited(syncNow(reason: 'connectivity'));
       }
     });
-    await syncNow(reason: 'startup', force: true);
   }
 
   Future<SyncResult> syncNow({String reason = 'manual', bool force = false}) {
+    final scope = _scope;
+    if (scope == null) {
+      return Future.value(
+        const SyncResult(
+          SyncStatus.skipped,
+          message: 'Sincronização aguardando usuário logado.',
+        ),
+      );
+    }
     final activeSync = _activeSync;
     if (activeSync != null) return activeSync;
     final now = DateTime.now();
@@ -99,7 +132,7 @@ class FirebaseBackupService extends ChangeNotifier {
     }
     _lastAttemptAt = now;
     _setResult(const SyncResult(SyncStatus.syncing));
-    final sync = _sync(reason)
+    final sync = _sync(reason, scope)
         .then((result) {
           _setResult(result);
           return result;
@@ -107,6 +140,60 @@ class FirebaseBackupService extends ChangeNotifier {
         .whenComplete(() => _activeSync = null);
     _activeSync = sync;
     return sync;
+  }
+
+  Future<SyncResult> syncForLoginUsername(String username) async {
+    final normalizedUsername = username.trim().toLowerCase();
+    if (normalizedUsername.isEmpty) {
+      return const SyncResult(SyncStatus.skipped);
+    }
+    try {
+      if (!_canUseFirebase()) {
+        return const SyncResult(SyncStatus.skipped);
+      }
+      if (!await _hasConnection()) {
+        return const SyncResult(SyncStatus.offline);
+      }
+      await _ensureAuthenticated();
+      final usersSnapshot = await _firestore
+          .collection('users')
+          .where('username', isEqualTo: normalizedUsername)
+          .limit(1)
+          .get()
+          .timeout(_networkTimeout);
+      if (usersSnapshot.docs.isEmpty) {
+        return const SyncResult(SyncStatus.idle);
+      }
+      final user = _toLocalRow(usersSnapshot.docs.first.data());
+      final userId = user['id']?.toString();
+      final tenantId = user['tenantId']?.toString() ?? defaultTenantId;
+      if (userId == null || userId.isEmpty) {
+        return const SyncResult(SyncStatus.idle);
+      }
+      final permissionsSnapshot = await _firestore
+          .collection('user_permissions')
+          .where('user_id', isEqualTo: userId)
+          .get()
+          .timeout(_networkTimeout);
+      final isSuperAdmin = permissionsSnapshot.docs
+          .map((doc) => _toLocalRow(doc.data())['permission'])
+          .contains('system.super_admin');
+      final scope = _SyncScope(
+        userId: userId,
+        tenantId: tenantId,
+        isSuperAdmin: isSuperAdmin,
+      );
+      final result = await _sync('login_missing_user', scope);
+      _setResult(result);
+      return result;
+    } on FirebaseException catch (error) {
+      return SyncResult(
+        SyncStatus.failed,
+        message: '${error.code}: ${error.message ?? 'erro do Firebase'}',
+      );
+    } catch (error) {
+      return SyncResult(SyncStatus.failed, message: error.toString());
+    }
   }
 
   @override
@@ -131,7 +218,7 @@ class FirebaseBackupService extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  Future<SyncResult> _sync(String reason) async {
+  Future<SyncResult> _sync(String reason, _SyncScope scope) async {
     try {
       if (!_canUseFirebase()) {
         return const SyncResult(SyncStatus.skipped);
@@ -142,50 +229,54 @@ class FirebaseBackupService extends ChangeNotifier {
       await _ensureAuthenticated();
 
       final preferences = await SharedPreferences.getInstance();
-      final localPayload = await _localPayload();
+      final localPayload = await _localPayload(scope);
       final localHash = _hashPayload(localPayload);
-      final remotePayload = await _remotePayload();
+      final remotePayload = await _remotePayload(scope);
       final remoteHash = remotePayload == null
           ? null
           : _hashPayload(remotePayload);
-      final lastLocalHash = preferences.getString(_lastLocalHashKey);
-      final lastRemoteHash = preferences.getString(_lastRemoteHashKey);
+      final lastLocalHash = preferences.getString(
+        _scopedPreferenceKey(_lastLocalHashKey, scope),
+      );
+      final lastRemoteHash = preferences.getString(
+        _scopedPreferenceKey(_lastRemoteHashKey, scope),
+      );
 
       if (remotePayload == null) {
         if (!_hasRows(localPayload)) return const SyncResult(SyncStatus.idle);
-        await _upload(localPayload);
-        await _rememberHashes(preferences, localHash, localHash);
+        await _upload(localPayload, scope);
+        await _rememberHashes(preferences, scope, localHash, localHash);
         return const SyncResult(SyncStatus.uploaded);
       }
 
       if (localHash == remoteHash) {
-        await _rememberHashes(preferences, localHash, remoteHash!);
+        await _rememberHashes(preferences, scope, localHash, remoteHash!);
         return const SyncResult(SyncStatus.idle);
       }
 
       if (!_hasLocalUsers(localPayload) && _hasLocalUsers(remotePayload)) {
-        await _restoreLocalPayload(remotePayload);
-        await _rememberHashes(preferences, remoteHash!, remoteHash);
+        await _restoreLocalPayload(remotePayload, scope);
+        await _rememberHashes(preferences, scope, remoteHash!, remoteHash);
         return const SyncResult(SyncStatus.downloaded);
       }
 
       if (lastLocalHash == localHash && lastRemoteHash != remoteHash) {
-        await _restoreLocalPayload(remotePayload);
-        await _rememberHashes(preferences, remoteHash!, remoteHash);
+        await _restoreLocalPayload(remotePayload, scope);
+        await _rememberHashes(preferences, scope, remoteHash!, remoteHash);
         return const SyncResult(SyncStatus.downloaded);
       }
 
       if (lastRemoteHash == remoteHash && lastLocalHash != localHash) {
-        await _upload(localPayload);
-        await _rememberHashes(preferences, localHash, localHash);
+        await _upload(localPayload, scope);
+        await _rememberHashes(preferences, scope, localHash, localHash);
         return const SyncResult(SyncStatus.uploaded);
       }
 
       final mergedPayload = _mergePayloads(localPayload, remotePayload);
       final mergedHash = _hashPayload(mergedPayload);
-      await _restoreLocalPayload(mergedPayload);
-      await _upload(mergedPayload);
-      await _rememberHashes(preferences, mergedHash, mergedHash);
+      await _restoreLocalPayload(mergedPayload, scope);
+      await _upload(mergedPayload, scope);
+      await _rememberHashes(preferences, scope, mergedHash, mergedHash);
       return const SyncResult(SyncStatus.merged);
     } on FirebaseException catch (error) {
       return SyncResult(
@@ -214,8 +305,11 @@ class FirebaseBackupService extends ChangeNotifier {
     return connectivity.any((result) => result != ConnectivityResult.none);
   }
 
-  Future<Map<String, dynamic>?> _remotePayload() async {
+  Future<Map<String, dynamic>?> _remotePayload(_SyncScope scope) async {
     final payload = <String, dynamic>{'format': 'SELETO_SYNC_V1'};
+    if (!scope.isSuperAdmin) {
+      return _remoteTenantPayload(scope);
+    }
     for (final spec in _syncTables) {
       final snapshot = await _firestore
           .collection(spec.remoteTable)
@@ -228,10 +322,120 @@ class FirebaseBackupService extends ChangeNotifier {
     return _hasRows(payload) ? _normalizePayload(payload) : null;
   }
 
-  Future<void> _upload(Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>?> _remoteTenantPayload(_SyncScope scope) async {
+    final payload = <String, dynamic>{'format': 'SELETO_SYNC_V1'};
+    final tenantSnapshot = await _firestore
+        .collection('tenants')
+        .where('id', isEqualTo: scope.tenantId)
+        .get()
+        .timeout(_networkTimeout);
+    payload['tenants'] = tenantSnapshot.docs
+        .map((doc) => _toLocalRow(doc.data()))
+        .toList();
+
+    final userSnapshot = await _firestore
+        .collection('users')
+        .where('tenant_id', isEqualTo: scope.tenantId)
+        .get()
+        .timeout(_networkTimeout);
+    final userRows = userSnapshot.docs
+        .map((doc) => _toLocalRow(doc.data()))
+        .toList();
+    payload['users'] = userRows;
+    final userIds = userRows
+        .map((row) => row['id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    payload['userPermissions'] = await _queryRowsWhereIn(
+      remoteTable: 'user_permissions',
+      field: 'user_id',
+      values: userIds,
+    );
+    payload['auditLogs'] = await _queryRowsWhereIn(
+      remoteTable: 'audit_logs',
+      field: 'user_id',
+      values: userIds,
+    );
+
+    for (final key in _createdByCollectionKeys) {
+      payload[key] = await _queryTenantScopedRows(
+        remoteTable: _specFor(key).remoteTable,
+        tenantId: scope.tenantId,
+        createdByUserIds: userIds,
+      );
+    }
+
+    for (final entry in _childCollectionParents.entries) {
+      final parentIds = _rows(payload, entry.value.parentCollectionKey)
+          .map((row) => row[entry.value.parentJsonKey]?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      payload[entry.key] = await _queryRowsWhereIn(
+        remoteTable: _specFor(entry.key).remoteTable,
+        field: entry.value.remoteField,
+        values: parentIds,
+      );
+    }
+
+    return _hasRows(payload) ? _normalizePayload(payload) : null;
+  }
+
+  Future<List<Map<String, dynamic>>> _queryRowsWhereIn({
+    required String remoteTable,
+    required String field,
+    required Set<String> values,
+  }) async {
+    if (values.isEmpty) return const [];
+    final rows = <Map<String, dynamic>>[];
+    for (final chunk in _chunks(values.toList()..sort(), 30)) {
+      final snapshot = await _firestore
+          .collection(remoteTable)
+          .where(field, whereIn: chunk)
+          .get()
+          .timeout(_networkTimeout);
+      rows.addAll(snapshot.docs.map((doc) => _toLocalRow(doc.data())));
+    }
+    return rows;
+  }
+
+  Future<List<Map<String, dynamic>>> _queryTenantScopedRows({
+    required String remoteTable,
+    required String tenantId,
+    required Set<String> createdByUserIds,
+  }) async {
+    final byId = <String, Map<String, dynamic>>{};
+    final scopedSnapshot = await _firestore
+        .collection(remoteTable)
+        .where('tenant_scope', isEqualTo: tenantId)
+        .get()
+        .timeout(_networkTimeout);
+    for (final doc in scopedSnapshot.docs) {
+      final row = _toLocalRow(doc.data());
+      byId[(row['id'] ?? doc.id).toString()] = row;
+    }
+    for (final row in await _queryRowsWhereIn(
+      remoteTable: remoteTable,
+      field: 'created_by',
+      values: createdByUserIds,
+    )) {
+      byId[(row['id'] ?? _hashPayload(row)).toString()] = row;
+    }
+    return byId.values.toList();
+  }
+
+  Future<void> _upload(Map<String, dynamic> payload, _SyncScope scope) async {
     await _ensureAuthenticated();
     final normalized = _normalizePayload(payload);
-    await _deleteLegacyBackup();
+    if (scope.isSuperAdmin) await _deleteLegacyBackup();
+    final tenantByUserId = {
+      for (final user in _rows(normalized, 'users'))
+        if (user['id'] != null)
+          user['id'].toString():
+              user['tenantId']?.toString() ?? defaultTenantId,
+    };
 
     var batch = _firestore.batch();
     var pendingWrites = 0;
@@ -251,7 +455,12 @@ class FirebaseBackupService extends ChangeNotifier {
 
     for (final spec in _syncTables) {
       final collection = _firestore.collection(spec.remoteTable);
-      final rows = _rows(normalized, spec.collectionKey).map(_toRemoteRow);
+      final rows = _rows(normalized, spec.collectionKey).map((row) {
+        final rowTenantScope =
+            _tenantScopeForRow(spec.collectionKey, row, tenantByUserId) ??
+            (scope.isSuperAdmin ? 'global' : scope.tenantId);
+        return _toRemoteRow({...row, 'tenantScope': rowTenantScope});
+      });
       final localIds = <String>{};
       for (final row in rows) {
         final id = _documentIdFor(row, spec);
@@ -261,7 +470,12 @@ class FirebaseBackupService extends ChangeNotifier {
         });
       }
 
-      final existing = await collection.get().timeout(_networkTimeout);
+      final existing = scope.isSuperAdmin
+          ? await collection.get().timeout(_networkTimeout)
+          : await collection
+                .where('tenant_scope', isEqualTo: scope.tenantId)
+                .get()
+                .timeout(_networkTimeout);
       for (final document in existing.docs) {
         if (!localIds.contains(document.id)) {
           await queue((batch) => batch.delete(document.reference));
@@ -356,52 +570,106 @@ class FirebaseBackupService extends ChangeNotifier {
     return created;
   }
 
-  Future<Map<String, dynamic>> _localPayload() async {
-    final backup = jsonDecode(await _database.exportJson());
+  Future<Map<String, dynamic>> _localPayload(_SyncScope scope) async {
+    final backup = jsonDecode(
+      await _database.exportJson(
+        tenantId: scope.isSuperAdmin ? null : scope.tenantId,
+      ),
+    );
     final payload = (backup as Map).cast<String, dynamic>()
       ..remove('exportedAt')
       ..['format'] = 'SELETO_SYNC_V1';
-    payload['tenants'] = (await _database.select(_database.tenants).get())
+    final tenantsQuery = _database.select(_database.tenants);
+    final usersQuery = _database.select(_database.users);
+    if (!scope.isSuperAdmin) {
+      tenantsQuery.where((row) => row.id.equals(scope.tenantId));
+      usersQuery.where((row) => row.tenantId.equals(scope.tenantId));
+      for (final key in _globalOnlyCollectionKeys) {
+        payload[key] = const <Map<String, dynamic>>[];
+      }
+    }
+    final userRows = await usersQuery.get();
+    final userIds = userRows.map((row) => row.id).toSet();
+    payload['tenants'] = (await tenantsQuery.get())
         .map((row) => row.toJson())
         .toList();
-    payload['users'] = (await _database.select(_database.users).get())
-        .map((row) => row.toJson())
-        .toList();
-    payload['userPermissions'] =
-        (await _database.select(_database.userPermissions).get())
-            .map((row) => row.toJson())
-            .toList();
-    payload['auditLogs'] = (await _database.select(_database.auditLogs).get())
-        .map((row) => row.toJson())
-        .toList();
+    payload['users'] = userRows.map((row) => row.toJson()).toList();
+    payload['userPermissions'] = userIds.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : (await (_database.select(_database.userPermissions)
+                ..where((row) => row.userId.isIn(userIds)))
+              .map((row) => row.toJson())
+              .get());
+    payload['auditLogs'] = userIds.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : (await (_database.select(_database.auditLogs)
+                ..where((row) => row.userId.isIn(userIds)))
+              .map((row) => row.toJson())
+              .get());
     return _normalizePayload(payload);
   }
 
-  Future<void> _restoreLocalPayload(Map<String, dynamic> payload) async {
-    await _restoreAuthPayload(payload);
+  Future<void> _restoreLocalPayload(
+    Map<String, dynamic> payload,
+    _SyncScope scope,
+  ) async {
+    await _restoreAuthPayload(payload, scope);
     final backupPayload = Map<String, dynamic>.from(payload)
       ..['format'] = 'SELETO_BACKUP_V1';
-    await _database.restoreJson(
-      jsonEncode(backupPayload),
-      actorId: 'sync',
-      writeAudit: false,
-    );
+    if (scope.isSuperAdmin) {
+      await _database.restoreJson(
+        jsonEncode(backupPayload),
+        actorId: 'sync',
+        writeAudit: false,
+      );
+      return;
+    }
+    await _restoreTenantOperationalPayload(backupPayload);
   }
 
-  Future<void> _restoreAuthPayload(Map<String, dynamic> payload) async {
+  Future<void> _restoreAuthPayload(
+    Map<String, dynamic> payload,
+    _SyncScope scope,
+  ) async {
     await _database.transaction(() async {
-      for (final row in _rows(payload, 'tenants')) {
+      final tenantRows = scope.isSuperAdmin
+          ? _rows(payload, 'tenants')
+          : _rows(
+              payload,
+              'tenants',
+            ).where((row) => row['id'] == scope.tenantId);
+      for (final row in tenantRows) {
         await _database
             .into(_database.tenants)
             .insertOnConflictUpdate(Tenant.fromJson(row));
       }
-      for (final row in _rows(payload, 'users')) {
+      final userRows = scope.isSuperAdmin
+          ? _rows(payload, 'users')
+          : _rows(payload, 'users').where(
+              (row) => (row['tenantId'] ?? defaultTenantId) == scope.tenantId,
+            );
+      final userIds = <String>{};
+      for (final row in userRows) {
+        final userId = row['id']?.toString();
+        if (userId != null && userId.isNotEmpty) userIds.add(userId);
         await _database
             .into(_database.users)
             .insertOnConflictUpdate(User.fromJson(_userJson(row)));
       }
-      await _database.delete(_database.userPermissions).go();
-      for (final row in _rows(payload, 'userPermissions')) {
+      if (scope.isSuperAdmin) {
+        await _database.delete(_database.userPermissions).go();
+      } else if (userIds.isNotEmpty) {
+        await (_database.delete(
+          _database.userPermissions,
+        )..where((row) => row.userId.isIn(userIds))).go();
+      }
+      final permissionRows = scope.isSuperAdmin
+          ? _rows(payload, 'userPermissions')
+          : _rows(
+              payload,
+              'userPermissions',
+            ).where((row) => userIds.contains(row['userId']));
+      for (final row in permissionRows) {
         await _database
             .into(_database.userPermissions)
             .insert(
@@ -409,7 +677,13 @@ class FirebaseBackupService extends ChangeNotifier {
               mode: InsertMode.insertOrIgnore,
             );
       }
-      for (final row in _rows(payload, 'auditLogs')) {
+      final auditRows = scope.isSuperAdmin
+          ? _rows(payload, 'auditLogs')
+          : _rows(
+              payload,
+              'auditLogs',
+            ).where((row) => userIds.contains(row['userId']));
+      for (final row in auditRows) {
         await _database
             .into(_database.auditLogs)
             .insert(AuditLog.fromJson(row), mode: InsertMode.insertOrIgnore);
@@ -417,14 +691,183 @@ class FirebaseBackupService extends ChangeNotifier {
     });
   }
 
+  Future<void> _restoreTenantOperationalPayload(
+    Map<String, dynamic> payload,
+  ) async {
+    await _database.transaction(() async {
+      for (final row in _rows(payload, 'lots')) {
+        await _database
+            .into(_database.lots)
+            .insertOnConflictUpdate(Lot.fromJson(row));
+      }
+      for (final row in _rows(payload, 'birdMovements')) {
+        await _database
+            .into(_database.birdMovements)
+            .insertOnConflictUpdate(BirdMovement.fromJson(row));
+      }
+      for (final row in _rows(payload, 'eggCollections')) {
+        await _database
+            .into(_database.eggCollections)
+            .insertOnConflictUpdate(
+              EggCollection.fromJson(_eggCollectionJson(row)),
+            );
+      }
+      for (final row in _rows(payload, 'eggStockMovements')) {
+        await _database
+            .into(_database.eggStockMovements)
+            .insertOnConflictUpdate(EggStockMovement.fromJson(row));
+      }
+      for (final row in _rows(payload, 'ingredients')) {
+        await _database
+            .into(_database.ingredients)
+            .insertOnConflictUpdate(Ingredient.fromJson(row));
+      }
+      for (final row in _rows(payload, 'prices')) {
+        await _database
+            .into(_database.ingredientPriceHistory)
+            .insertOnConflictUpdate(IngredientPriceHistoryData.fromJson(row));
+      }
+      for (final row in _rows(payload, 'ingredientLots')) {
+        await _database
+            .into(_database.ingredientLots)
+            .insertOnConflictUpdate(IngredientLot.fromJson(row));
+      }
+      for (final row in _rows(payload, 'ingredientStockMovements')) {
+        await _database
+            .into(_database.ingredientStockMovements)
+            .insertOnConflictUpdate(IngredientStockMovement.fromJson(row));
+      }
+      for (final row in _rows(payload, 'formulas')) {
+        await _database
+            .into(_database.feedFormulas)
+            .insertOnConflictUpdate(FeedFormula.fromJson(row));
+      }
+      for (final row in _rows(payload, 'formulaItems')) {
+        await _database
+            .into(_database.feedFormulaItems)
+            .insertOnConflictUpdate(FeedFormulaItem.fromJson(row));
+      }
+      for (final row in _rows(payload, 'feedBatches')) {
+        await _database
+            .into(_database.feedBatches)
+            .insertOnConflictUpdate(FeedBatche.fromJson(row));
+      }
+      for (final row in _rows(payload, 'feedBatchItems')) {
+        await _database
+            .into(_database.feedBatchItems)
+            .insertOnConflictUpdate(FeedBatchItem.fromJson(row));
+      }
+      for (final row in _rows(payload, 'feedStock')) {
+        await _database
+            .into(_database.feedStockMovements)
+            .insertOnConflictUpdate(FeedStockMovement.fromJson(row));
+      }
+      for (final row in _rows(payload, 'feedings')) {
+        await _database
+            .into(_database.dailyFeedings)
+            .insertOnConflictUpdate(DailyFeeding.fromJson(row));
+      }
+      for (final row in _rows(payload, 'customers')) {
+        await _database
+            .into(_database.customers)
+            .insertOnConflictUpdate(Customer.fromJson(row));
+      }
+      for (final row in _rows(payload, 'orders')) {
+        await _database
+            .into(_database.orders)
+            .insertOnConflictUpdate(Order.fromJson(row));
+      }
+      for (final row in _rows(payload, 'orderItems')) {
+        await _database
+            .into(_database.orderItems)
+            .insertOnConflictUpdate(OrderItem.fromJson(row));
+      }
+      for (final row in _rows(payload, 'orderStatusHistory')) {
+        await _database
+            .into(_database.orderStatusHistory)
+            .insertOnConflictUpdate(OrderStatusHistoryData.fromJson(row));
+      }
+      for (final row in _rows(payload, 'packagingItems')) {
+        await _database
+            .into(_database.packagingItems)
+            .insertOnConflictUpdate(PackagingItem.fromJson(row));
+      }
+      for (final row in _rows(payload, 'packagingLots')) {
+        await _database
+            .into(_database.packagingLots)
+            .insertOnConflictUpdate(PackagingLot.fromJson(row));
+      }
+      for (final row in _rows(payload, 'packagingStockMovements')) {
+        await _database
+            .into(_database.packagingStockMovements)
+            .insertOnConflictUpdate(PackagingStockMovement.fromJson(row));
+      }
+      for (final row in _rows(payload, 'eggTrayBatches')) {
+        await _database
+            .into(_database.eggTrayBatches)
+            .insertOnConflictUpdate(EggTrayBatch.fromJson(_trayJson(row)));
+      }
+      for (final row in _rows(payload, 'eggTrayStockMovements')) {
+        await _database
+            .into(_database.eggTrayStockMovements)
+            .insertOnConflictUpdate(EggTrayStockMovement.fromJson(row));
+      }
+      for (final row in _rows(payload, 'sales')) {
+        await _database
+            .into(_database.sales)
+            .insertOnConflictUpdate(Sale.fromJson(_saleJson(row)));
+      }
+      for (final row in _rows(payload, 'finance')) {
+        await _database
+            .into(_database.financeTransactions)
+            .insertOnConflictUpdate(FinanceTransaction.fromJson(row));
+      }
+      for (final row in _rows(payload, 'investments')) {
+        await _database
+            .into(_database.investments)
+            .insertOnConflictUpdate(Investment.fromJson(row));
+      }
+      for (final row in _rows(payload, 'lightingPrograms')) {
+        await _database
+            .into(_database.lightingPrograms)
+            .insertOnConflictUpdate(LightingProgram.fromJson(row));
+      }
+      for (final row in _rows(payload, 'lightingSteps')) {
+        await _database
+            .into(_database.lightingProgramSteps)
+            .insertOnConflictUpdate(LightingProgramStep.fromJson(row));
+      }
+      for (final row in _rows(payload, 'lotLighting')) {
+        await _database
+            .into(_database.lotLightingPrograms)
+            .insertOnConflictUpdate(LotLightingProgram.fromJson(row));
+      }
+      for (final row in _rows(payload, 'calendarEvents')) {
+        await _database
+            .into(_database.calendarEvents)
+            .insertOnConflictUpdate(CalendarEvent.fromJson(_eventJson(row)));
+      }
+    });
+  }
+
   Future<void> _rememberHashes(
     SharedPreferences preferences,
+    _SyncScope scope,
     String localHash,
     String remoteHash,
   ) async {
-    await preferences.setString(_lastLocalHashKey, localHash);
-    await preferences.setString(_lastRemoteHashKey, remoteHash);
+    await preferences.setString(
+      _scopedPreferenceKey(_lastLocalHashKey, scope),
+      localHash,
+    );
+    await preferences.setString(
+      _scopedPreferenceKey(_lastRemoteHashKey, scope),
+      remoteHash,
+    );
   }
+
+  String _scopedPreferenceKey(String baseKey, _SyncScope scope) =>
+      '$baseKey.${scope.key}';
 
   Map<String, dynamic> _mergePayloads(
     Map<String, dynamic> local,
@@ -641,6 +1084,67 @@ Map<String, dynamic> _userJson(Map<String, dynamic> json) => {
   'tenantId': json['tenantId'] ?? defaultTenantId,
 };
 
+Map<String, dynamic> _eggCollectionJson(Map<String, dynamic> json) {
+  if (json.containsKey('cleanEggs') &&
+      json.containsKey('dirtyEggs') &&
+      json.containsKey('crackedEggs')) {
+    return json;
+  }
+  final quantity = json['quantity'] as int? ?? 0;
+  final broken = json['brokenEggs'] as int? ?? 0;
+  final discarded = json['discardedEggs'] as int? ?? 0;
+  return {
+    ...json,
+    'cleanEggs': (quantity - broken - discarded).clamp(0, quantity),
+    'dirtyEggs': 0,
+    'crackedEggs': discarded,
+  };
+}
+
+Map<String, dynamic> _trayJson(Map<String, dynamic> json) => {
+  ...json,
+  'unitPackagingCostCents': json['unitPackagingCostCents'] ?? 0,
+  'finalUnitPriceCents': json['finalUnitPriceCents'] ?? 0,
+};
+
+Map<String, dynamic> _saleJson(Map<String, dynamic> json) => {
+  ...json,
+  'status': json['status'] ?? 'CONFIRMED',
+};
+
+Map<String, dynamic> _eventJson(Map<String, dynamic> json) => {
+  ...json,
+  'alertEnabled': json['alertEnabled'] ?? true,
+  'alertTime': json['alertTime'] ?? '08:00',
+  'recurrence': json['recurrence'] ?? 'ONCE',
+};
+
+Iterable<List<T>> _chunks<T>(List<T> values, int size) sync* {
+  for (var index = 0; index < values.length; index += size) {
+    final end = index + size > values.length ? values.length : index + size;
+    yield values.sublist(index, end);
+  }
+}
+
+String? _tenantScopeForRow(
+  String collectionKey,
+  Map<String, dynamic> row,
+  Map<String, String> tenantByUserId,
+) {
+  if (collectionKey == 'tenants') return row['id']?.toString();
+  if (collectionKey == 'users') {
+    return row['tenantId']?.toString() ?? defaultTenantId;
+  }
+  final userId = switch (collectionKey) {
+    'userPermissions' => row['userId']?.toString(),
+    'auditLogs' => row['userId']?.toString(),
+    'orderStatusHistory' => row['changedBy']?.toString(),
+    _ => row['createdBy']?.toString(),
+  };
+  if (userId == null || userId.isEmpty || userId == 'system') return null;
+  return tenantByUserId[userId] ?? defaultTenantId;
+}
+
 class _SyncTableSpec {
   const _SyncTableSpec(
     this.collectionKey,
@@ -653,6 +1157,20 @@ class _SyncTableSpec {
   final String primaryKey;
 
   String get jsonPrimaryKey => _snakeToCamelStatic(primaryKey);
+}
+
+class _SyncScope {
+  const _SyncScope({
+    required this.userId,
+    required this.tenantId,
+    required this.isSuperAdmin,
+  });
+
+  final String userId;
+  final String tenantId;
+  final bool isSuperAdmin;
+
+  String get key => isSuperAdmin ? 'super_admin' : 'tenant_$tenantId';
 }
 
 String _snakeToCamelStatic(String value) => value.replaceAllMapped(
@@ -703,6 +1221,80 @@ const _syncTables = [
 final _syncCollectionKeys = _syncTables
     .map((spec) => spec.collectionKey)
     .toList(growable: false);
+
+const _globalOnlyCollectionKeys = {
+  'feedRecommendations',
+  'notificationSettings',
+  'appSettings',
+};
+
+const _createdByCollectionKeys = {
+  'lots',
+  'birdMovements',
+  'eggCollections',
+  'eggStockMovements',
+  'ingredients',
+  'prices',
+  'ingredientLots',
+  'ingredientStockMovements',
+  'formulas',
+  'feedBatches',
+  'feedStock',
+  'feedings',
+  'customers',
+  'orders',
+  'packagingItems',
+  'packagingLots',
+  'packagingStockMovements',
+  'eggTrayBatches',
+  'eggTrayStockMovements',
+  'sales',
+  'finance',
+  'investments',
+  'lightingPrograms',
+  'lotLighting',
+  'calendarEvents',
+};
+
+const _childCollectionParents = {
+  'formulaItems': _ChildCollectionParent(
+    'formulas',
+    parentJsonKey: 'id',
+    remoteField: 'formula_id',
+  ),
+  'feedBatchItems': _ChildCollectionParent(
+    'feedBatches',
+    parentJsonKey: 'id',
+    remoteField: 'batch_id',
+  ),
+  'orderItems': _ChildCollectionParent(
+    'orders',
+    parentJsonKey: 'id',
+    remoteField: 'order_id',
+  ),
+  'orderStatusHistory': _ChildCollectionParent(
+    'orders',
+    parentJsonKey: 'id',
+    remoteField: 'order_id',
+  ),
+  'lightingSteps': _ChildCollectionParent(
+    'lightingPrograms',
+    parentJsonKey: 'id',
+    remoteField: 'program_id',
+  ),
+};
+
+class _ChildCollectionParent {
+  const _ChildCollectionParent(
+    this.parentCollectionKey, {
+    required this.parentJsonKey,
+    required this.remoteField,
+  });
+
+  final String parentCollectionKey;
+  final String parentJsonKey;
+  final String remoteField;
+}
 
 const _timestampKeys = [
   'updatedAt',

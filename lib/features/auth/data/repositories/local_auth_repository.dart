@@ -28,13 +28,23 @@ class LocalAuthRepository implements AuthRepository {
   Future<AuthSession?> restoreRememberedSession() async {
     final preferences = await SharedPreferences.getInstance();
     final userId = preferences.getString(_rememberedUserIdKey);
-    if (userId == null || userId.isEmpty) return null;
+    if (userId == null || userId.isEmpty) {
+      syncService?.clearUserScope();
+      return null;
+    }
     final user = await _database.userById(userId);
     if (user == null || !user.isActive) {
       await _clearRememberedLogin(preferences);
+      syncService?.clearUserScope();
       return null;
     }
-    return _sessionFromUser(user);
+    final session = await _sessionFromUser(user);
+    _setSyncScope(session);
+    final sync = syncService;
+    if (sync != null) {
+      unawaited(sync.syncNow(reason: 'remembered_session', force: true));
+    }
+    return session;
   }
 
   Future<String?> rememberedUsername() async {
@@ -51,7 +61,7 @@ class LocalAuthRepository implements AuthRepository {
     final normalizedUsername = username.trim().toLowerCase();
     var existing = await _database.userByUsername(normalizedUsername);
     if (existing == null) {
-      await syncService?.syncNow(reason: 'login_missing_user', force: true);
+      await syncService?.syncForLoginUsername(normalizedUsername);
       existing = await _database.userByUsername(normalizedUsername);
     }
     if (existing == null) {
@@ -74,6 +84,7 @@ class LocalAuthRepository implements AuthRepository {
       );
     }
     final session = await _sessionFromUser(user);
+    _setSyncScope(session);
     await _setRememberedLogin(user: user, rememberLogin: rememberLogin);
     final sync = syncService;
     if (sync != null) unawaited(sync.syncNow(reason: 'login', force: true));
@@ -103,13 +114,15 @@ class LocalAuthRepository implements AuthRepository {
       );
     }
     await _setRememberedLogin(user: user, rememberLogin: rememberLogin);
+    final session = await _sessionFromUser(user);
+    _setSyncScope(session);
     final sync = syncService;
     if (sync != null) {
       unawaited(sync.syncNow(reason: 'first_admin_created', force: true));
     }
     return AccountCreationResult(
       message: 'Conta administradora criada com sucesso.',
-      session: await _sessionFromUser(user),
+      session: session,
     );
   }
 
@@ -117,6 +130,7 @@ class LocalAuthRepository implements AuthRepository {
   Future<void> signOut() async {
     final preferences = await SharedPreferences.getInstance();
     await _clearRememberedLogin(preferences);
+    syncService?.clearUserScope();
   }
 
   Future<AuthSession> _sessionFromUser(User user) async => AuthSession(
@@ -127,6 +141,14 @@ class LocalAuthRepository implements AuthRepository {
     isSuperuser: user.isSuperuser,
     permissions: (await _database.permissionsOf(user.id)).toSet(),
   );
+
+  void _setSyncScope(AuthSession session) {
+    syncService?.setUserScope(
+      userId: session.userId,
+      tenantId: session.tenantId,
+      isSuperAdmin: session.isSuperAdmin,
+    );
+  }
 
   Future<void> _setRememberedLogin({
     required User user,
