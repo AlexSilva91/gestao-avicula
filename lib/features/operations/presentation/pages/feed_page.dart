@@ -482,9 +482,7 @@ class _FormulasTab extends StatelessWidget {
                                           Expanded(
                                             child: Text(ingredient.name),
                                           ),
-                                          Text(
-                                            '${ingredient.quantityKg.toStringAsFixed(1)} kg',
-                                          ),
+                                          Text(kg(ingredient.quantityKg)),
                                         ],
                                       ),
                                     ),
@@ -1845,6 +1843,9 @@ class _FeedingDialogState extends State<_FeedingDialog> {
     final recommendedKg = selectedLot == null || recommendation == null
         ? null
         : selectedLot.activeBirds * recommendation.gramsPerBirdDay / 1000;
+    final selectedBatch = batches
+        .where((item) => item.batch.id == batch)
+        .firstOrNull;
     void selectBatchForLot(String? lotId) {
       final summary = lots.where((item) => item.lot.id == lotId).firstOrNull;
       if (summary == null) return;
@@ -1935,7 +1936,7 @@ class _FeedingDialogState extends State<_FeedingDialog> {
                 onUseRecommendation: recommendedKg == null || saving
                     ? null
                     : () => setState(
-                        () => qty.text = recommendedKg.toStringAsFixed(2),
+                        () => qty.text = decimal.format(recommendedKg),
                       ),
               ),
               const SizedBox(height: 12),
@@ -1960,6 +1961,8 @@ class _FeedingDialogState extends State<_FeedingDialog> {
                 ],
                 onChanged: saving ? null : (v) => setState(() => batch = v),
               ),
+              const SizedBox(height: 12),
+              _SelectedFeedStockPanel(batch: selectedBatch),
               const SizedBox(height: 12),
               TextField(
                 controller: qty,
@@ -2025,6 +2028,134 @@ class _FeedingDialogState extends State<_FeedingDialog> {
       }
     }
     return null;
+  }
+}
+
+class _SelectedFeedStockPanel extends StatelessWidget {
+  const _SelectedFeedStockPanel({required this.batch});
+
+  final FeedBatchBalance? batch;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final selected = batch;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.primaryContainer.withValues(alpha: .46),
+        border: Border.all(color: colors.primary.withValues(alpha: .22)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: selected == null
+            ? Row(
+                children: [
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    size: 18,
+                    color: colors.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Selecione uma ração para ver o saldo disponível.',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: colors.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.inventory_2_outlined,
+                        size: 18,
+                        color: colors.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          selected.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                color: colors.onPrimaryContainer,
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _FeedStockPill(
+                        label: 'Saldo disponível',
+                        value: kg(selected.balanceKg),
+                      ),
+                      _FeedStockPill(
+                        label: 'Entrada total',
+                        value: kg(selected.batch.producedQuantityKg),
+                      ),
+                      _FeedStockPill(
+                        label: 'Consumido',
+                        value: kg(selected.consumedKg),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _FeedStockPill extends StatelessWidget {
+  const _FeedStockPill({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLowest.withValues(alpha: .78),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colors.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              value,
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

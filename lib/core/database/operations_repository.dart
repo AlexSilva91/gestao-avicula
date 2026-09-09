@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import 'app_database.dart';
 import 'operational_data_import.dart';
+import '../utils/formatters.dart';
 
 const _uuid = Uuid();
 
@@ -535,8 +536,7 @@ extension OperationsRepository on AppDatabase {
         action: 'ingredients.stock_in',
         entityType: 'ingredient_lot',
         entityId: lotId,
-        description:
-            'Entrada de ${quantityKg.toStringAsFixed(2)} kg de insumo registrada.',
+        description: 'Entrada de ${kg(quantityKg)} de insumo registrada.',
       );
     });
   }
@@ -584,8 +584,7 @@ extension OperationsRepository on AppDatabase {
         action: 'ingredients.stock_adjust',
         entityType: 'ingredient_stock_movement',
         entityId: id,
-        description:
-            'Correção de ${quantityKg.toStringAsFixed(2)} kg no lote ${lot.code}.',
+        description: 'Correção de ${kg(quantityKg)} no lote ${lot.code}.',
       );
     });
   }
@@ -911,7 +910,7 @@ extension OperationsRepository on AppDatabase {
         ingredients,
       )..where((i) => i.id.equals(ingredientId))).getSingleOrNull();
       throw StateError(
-        'Estoque insuficiente de ${ingredient?.name ?? 'insumo'}. Faltam ${remaining.toStringAsFixed(2)} kg.',
+        'Estoque insuficiente de ${ingredient?.name ?? 'insumo'}. Faltam ${kg(remaining)}.',
       );
     }
     return usages;
@@ -1022,8 +1021,7 @@ extension OperationsRepository on AppDatabase {
         action: 'feed_batches.create',
         entityType: 'feed_batch',
         entityId: id,
-        description:
-            'Fabricação $code de ${quantityKg.toStringAsFixed(2)} kg registrada.',
+        description: 'Fabricação $code de ${kg(quantityKg)} registrada.',
       );
     });
   }
@@ -1115,8 +1113,7 @@ extension OperationsRepository on AppDatabase {
         action: 'feed_batches.ready_purchase',
         entityType: 'feed_batch',
         entityId: batchId,
-        description:
-            'Compra de ${quantityKg.toStringAsFixed(2)} kg de ração pronta registrada.',
+        description: 'Compra de ${kg(quantityKg)} de ração pronta registrada.',
       );
     });
   }
@@ -1187,9 +1184,7 @@ extension OperationsRepository on AppDatabase {
     }
     final balance = await feedBalanceFor(batchId);
     if (quantityKg > balance + .0001) {
-      throw StateError(
-        'Saldo insuficiente. Disponível: ${balance.toStringAsFixed(2)} kg.',
-      );
+      throw StateError('Saldo insuficiente. Disponível: ${kg(balance)}.');
     }
     final id = _uuid.v4();
     final now = DateTime.now();
@@ -1223,8 +1218,7 @@ extension OperationsRepository on AppDatabase {
         action: 'feeding.register',
         entityType: 'daily_feeding',
         entityId: id,
-        description:
-            'Alimentação de ${quantityKg.toStringAsFixed(2)} kg registrada.',
+        description: 'Alimentação de ${kg(quantityKg)} registrada.',
       );
     });
   }
@@ -1268,8 +1262,7 @@ extension OperationsRepository on AppDatabase {
         action: 'feed_stock.adjust',
         entityType: 'feed_stock_movement',
         entityId: id,
-        description:
-            'Ajuste de ${quantityKg.toStringAsFixed(2)} kg no estoque de ração.',
+        description: 'Ajuste de ${kg(quantityKg)} no estoque de ração.',
       );
     });
   }

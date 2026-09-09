@@ -6,7 +6,7 @@ final shortDate = DateFormat('dd/MM/yyyy', 'pt_BR');
 final shortTime = DateFormat('HH:mm', 'pt_BR');
 
 String money(int cents) => brl.format(cents / 100);
-String kg(double value) => '${NumberFormat('0.##', 'pt_BR').format(value)} kg';
+String kg(double value) => '${NumberFormat('0.###', 'pt_BR').format(value)} kg';
 String percent(double value) =>
     NumberFormat.percentPattern('pt_BR').format(value);
 
