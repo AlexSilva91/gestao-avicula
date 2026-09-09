@@ -55,8 +55,10 @@ class LotLifecycle {
   static String ageLabel(int days) {
     final weeks = days ~/ 7;
     final extraDays = days % 7;
-    return '$days dias · $weeks semanas e $extraDays dias';
+    return '$weeks semanas e $extraDays dias';
   }
+
+  static String ageTotalLabel(int days) => '$days dias no total';
 }
 
 /// Kept framework-free so lifecycle rules can be exercised in unit tests.

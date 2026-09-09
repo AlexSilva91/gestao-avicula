@@ -283,7 +283,7 @@ class _SimulatorTabState extends State<_SimulatorTab> {
       children: [
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(22),
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

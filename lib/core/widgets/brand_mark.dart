@@ -45,12 +45,12 @@ class BrandMark extends StatelessWidget {
           mainAxisSize: hasBoundedWidth ? MainAxisSize.max : MainAxisSize.min,
           children: [
             Container(
-              width: 42,
-              height: 42,
+              width: compact ? 38 : 42,
+              height: compact ? 38 : 42,
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
                 color: light ? Colors.white : color.withValues(alpha: .10),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(7),

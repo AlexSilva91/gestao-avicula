@@ -100,7 +100,7 @@ class _LotsContent extends ConsumerWidget {
                   crossAxisCount: columns,
                   mainAxisSpacing: 10,
                   crossAxisSpacing: 10,
-                  mainAxisExtent: 238,
+                  mainAxisExtent: 236,
                 ),
                 itemCount: lots.length,
                 itemBuilder: (_, index) => _LotCard(summary: lots[index]),
@@ -197,98 +197,184 @@ class _LotCard extends ConsumerWidget {
       currentPhase: phase,
     );
     final isActive = summary.activeBirds > 0;
+    final scheme = Theme.of(context).colorScheme;
+    final nextLabel = next == null
+        ? 'Última fase alimentar'
+        : 'Próxima fase: ${LotLifecycle.nextPhase(phase)!.label}';
+    final nextDate = next == null
+        ? null
+        : DateFormat('dd/MM/yyyy').format(next);
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 18, 12, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 3,
+            child: ColoredBox(
+              color: isActive
+                  ? scheme.primary.withValues(alpha: .86)
+                  : scheme.outline,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    lot.name,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                _PhaseChip(label: phase.label, inactive: !isActive),
-                PopupMenuButton<String>(
-                  tooltip: 'Ações do lote',
-                  onSelected: (value) => value == 'EDIT'
-                      ? showDialog<void>(
-                          context: context,
-                          builder: (_) => _EditLotDialog(ref: ref, lot: lot),
-                        )
-                      : _openOutflow(context, ref, value),
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(
-                      value: 'EDIT',
-                      child: Text('Editar dados do lote'),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: scheme.primaryContainer.withValues(alpha: .72),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.egg_alt_outlined,
+                        color: scheme.primary,
+                        size: 22,
+                      ),
                     ),
-                    PopupMenuItem(
-                      value: 'SALE',
-                      enabled: isActive,
-                      child: Text('Registrar venda de aves'),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            lot.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            lot.strain?.isNotEmpty == true
+                                ? lot.strain!
+                                : 'Linhagem não informada',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
                     ),
-                    PopupMenuItem(
-                      value: 'MORTALITY',
-                      enabled: isActive,
-                      child: Text('Registrar mortalidade'),
-                    ),
-                    PopupMenuItem(
-                      value: 'ADJUSTMENT_OUT',
-                      enabled: isActive,
-                      child: Text('Registrar ajuste de saída'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'ADJUSTMENT_IN',
-                      child: Text('Registrar ajuste de entrada'),
+                    const SizedBox(width: 8),
+                    _PhaseChip(label: phase.label, inactive: !isActive),
+                    PopupMenuButton<String>(
+                      tooltip: 'Ações do lote',
+                      icon: const Icon(Icons.more_vert_rounded),
+                      onSelected: (value) => value == 'EDIT'
+                          ? showDialog<void>(
+                              context: context,
+                              builder: (_) =>
+                                  _EditLotDialog(ref: ref, lot: lot),
+                            )
+                          : _openOutflow(context, ref, value),
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(
+                          value: 'EDIT',
+                          child: Text('Editar dados do lote'),
+                        ),
+                        PopupMenuItem(
+                          value: 'SALE',
+                          enabled: isActive,
+                          child: Text('Registrar venda de aves'),
+                        ),
+                        PopupMenuItem(
+                          value: 'MORTALITY',
+                          enabled: isActive,
+                          child: Text('Registrar mortalidade'),
+                        ),
+                        PopupMenuItem(
+                          value: 'ADJUSTMENT_OUT',
+                          enabled: isActive,
+                          child: Text('Registrar ajuste de saída'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'ADJUSTMENT_IN',
+                          child: Text('Registrar ajuste de entrada'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              lot.strain?.isNotEmpty == true
-                  ? lot.strain!
-                  : 'Linhagem não informada',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const Spacer(),
-            Row(
-              children: [
-                Expanded(
-                  child: _LotMetric(
-                    value: '${summary.activeBirds}',
-                    label: 'aves ativas',
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _LotMetric(
+                        icon: Icons.groups_2_outlined,
+                        value: '${summary.activeBirds}',
+                        label: 'Aves ativas',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: _LotMetric(
+                        icon: Icons.calendar_today_outlined,
+                        value: LotLifecycle.ageLabel(age),
+                        label: 'Idade atual',
+                        footnote: LotLifecycle.ageTotalLabel(age),
+                        maxLines: 2,
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerLow.withValues(alpha: .82),
+                    border: Border.all(
+                      color: scheme.outlineVariant.withValues(alpha: .76),
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          next == null
+                              ? Icons.check_circle_outline
+                              : Icons.event_available_outlined,
+                          size: 18,
+                          color: scheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            nextDate == null
+                                ? nextLabel
+                                : '$nextLabel · $nextDate',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(
+                                  color: scheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _LotMetric(
-                    value: LotLifecycle.ageLabel(age),
-                    label: 'idade atual',
-                  ),
-                ),
               ],
             ),
-            const SizedBox(height: 14),
-            Text(
-              next == null
-                  ? 'Última fase alimentar'
-                  : 'Próxima fase: ${LotLifecycle.nextPhase(phase)!.label} · ${DateFormat('dd/MM/yyyy').format(next)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -301,27 +387,75 @@ class _LotCard extends ConsumerWidget {
 }
 
 class _LotMetric extends StatelessWidget {
-  const _LotMetric({required this.value, required this.label});
+  const _LotMetric({
+    required this.icon,
+    required this.value,
+    required this.label,
+    this.footnote,
+    this.maxLines = 1,
+  });
+  final IconData icon;
   final String value;
   final String label;
+  final String? footnote;
+  final int maxLines;
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        value,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.titleMedium,
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest.withValues(alpha: .72),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .68)),
+        borderRadius: BorderRadius.circular(8),
       ),
-      Text(
-        label,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 17, color: scheme.primary),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    maxLines: maxLines,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (footnote != null) ...[
+                    const SizedBox(height: 1),
+                    Text(
+                      footnote!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-    ],
-  );
+    );
+  }
 }
 
 class _PhaseChip extends StatelessWidget {

@@ -1,0 +1,62 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function seletoTable(table) {
+      return table in [
+        'users',
+        'user_permissions',
+        'audit_logs',
+        'lots',
+        'bird_movements',
+        'egg_collections',
+        'egg_stock_movements',
+        'ingredients',
+        'ingredient_price_history',
+        'ingredient_lots',
+        'ingredient_stock_movements',
+        'feed_formulas',
+        'feed_formula_items',
+        'feed_batches',
+        'feed_batch_items',
+        'feed_stock_movements',
+        'daily_feedings',
+        'feed_consumption_recommendations',
+        'customers',
+        'orders',
+        'order_items',
+        'order_status_history',
+        'packaging_items',
+        'packaging_lots',
+        'packaging_stock_movements',
+        'egg_tray_batches',
+        'egg_tray_stock_movements',
+        'sales',
+        'finance_transactions',
+        'investments',
+        'lighting_programs',
+        'lighting_program_steps',
+        'lot_lighting_programs',
+        'calendar_events',
+        'notification_settings',
+        'app_settings'
+      ];
+    }
+
+    match /{table}/{documentId} {
+      allow read, write: if signedIn() && seletoTable(table);
+    }
+
+    match /seleto_config_tests/{deviceId} {
+      allow read, write: if signedIn();
+    }
+
+    match /seleto_backups/{document=**} {
+      allow read, delete: if signedIn();
+    }
+  }
+}

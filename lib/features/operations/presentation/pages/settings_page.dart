@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/database/operations_repository.dart';
 import '../../../../core/platform/file_export_service.dart';
 import '../../../../core/platform/notification_service.dart';
+import '../../../../core/sync/firebase_backup_service.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
@@ -54,7 +57,7 @@ class _ProductionSettings extends StatelessWidget {
       .when(
         loading: () => const Card(
           child: Padding(
-            padding: EdgeInsets.all(30),
+            padding: EdgeInsets.all(16),
             child: CircularProgressIndicator(),
           ),
         ),
@@ -179,6 +182,8 @@ class _BackupCard extends StatelessWidget {
           const Text(
             'Exporte uma cópia JSON completa do banco operacional ou importe dados iniciais sem alterar usuários e permissões.',
           ),
+          const SizedBox(height: 12),
+          _FirebaseBackupPanel(ref: ref),
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: () async {
@@ -396,6 +401,174 @@ class _BackupCard extends StatelessWidget {
       await showOperationError(context, e);
     }
   }
+}
+
+class _FirebaseBackupPanel extends StatefulWidget {
+  const _FirebaseBackupPanel({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  State<_FirebaseBackupPanel> createState() => _FirebaseBackupPanelState();
+}
+
+class _FirebaseBackupPanelState extends State<_FirebaseBackupPanel> {
+  static const _encoder = JsonEncoder.withIndent('  ');
+  Map<String, dynamic>? _result;
+  bool _testing = false;
+  bool _syncing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final result = _result;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: .72),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .78)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.cloud_sync_outlined, color: scheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Backup Firebase',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Destino remoto: coleções do Firestore com os nomes das tabelas locais.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _testing || _syncing ? null : _test,
+                  icon: _testing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.rule_folder_outlined),
+                  label: Text(_testing ? 'Testando...' : 'Testar config'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: _testing || _syncing ? null : _syncNow,
+                  icon: _syncing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.sync_rounded),
+                  label: Text(_syncing ? 'Sincronizando...' : 'Sincronizar'),
+                ),
+              ],
+            ),
+            if (result != null) ...[
+              const SizedBox(height: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    _encoder.convert(result),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontFamily: 'monospace',
+                      color: result['status'] == 'sucesso'
+                          ? scheme.primary
+                          : scheme.error,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _test() async {
+    setState(() => _testing = true);
+    try {
+      final result = await widget.ref
+          .read(firebaseBackupServiceProvider)
+          .testConfiguration();
+      if (mounted) setState(() => _result = result);
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _result = {
+            'servico': 'Firebase Firestore',
+            'status': 'erro',
+            'erro': {'mensagem': error.toString()},
+          },
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
+  Future<void> _syncNow() async {
+    setState(() => _syncing = true);
+    try {
+      final result = await widget.ref
+          .read(firebaseBackupServiceProvider)
+          .syncNow(reason: 'settings', force: true);
+      if (mounted) {
+        setState(
+          () => _result = {
+            'servico': 'Firebase Firestore',
+            'status': result.changed || result.status == SyncStatus.idle
+                ? 'sucesso'
+                : 'erro',
+            'resultado': _syncStatusLabel(result.status),
+            if (result.message != null) 'mensagem': result.message,
+            'verificadoEm': DateTime.now().toIso8601String(),
+          },
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _result = {
+            'servico': 'Firebase Firestore',
+            'status': 'erro',
+            'erro': {'mensagem': error.toString()},
+          },
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
+  String _syncStatusLabel(SyncStatus status) => switch (status) {
+    SyncStatus.idle => 'Sem alterações',
+    SyncStatus.syncing => 'Sincronizando',
+    SyncStatus.skipped => 'Ignorado',
+    SyncStatus.uploaded => 'Enviado para o Firebase',
+    SyncStatus.downloaded => 'Baixado do Firebase',
+    SyncStatus.merged => 'Mesclado com o Firebase',
+    SyncStatus.offline => 'Sem conexão',
+    SyncStatus.failed => 'Falha',
+  };
 }
 
 Future<void> _showExportPath(

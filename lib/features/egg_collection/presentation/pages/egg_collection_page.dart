@@ -45,7 +45,7 @@ class EggCollectionPage extends ConsumerWidget {
             .when(
               loading: () => const Center(
                 child: Padding(
-                  padding: EdgeInsets.all(24),
+                  padding: EdgeInsets.all(16),
                   child: CircularProgressIndicator(),
                 ),
               ),

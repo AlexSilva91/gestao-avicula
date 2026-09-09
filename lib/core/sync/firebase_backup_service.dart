@@ -1,13 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:uuid/uuid.dart';
 
 import '../database/app_database.dart';
@@ -36,12 +38,17 @@ class SyncResult {
       status == SyncStatus.merged;
 }
 
-class SupabaseSyncService extends ChangeNotifier {
-  SupabaseSyncService(this._database, {SupabaseClient? client})
-    : _clientOverride = client;
+class FirebaseBackupService extends ChangeNotifier {
+  FirebaseBackupService(
+    this._database, {
+    FirebaseFirestore? firestore,
+    firebase_auth.FirebaseAuth? auth,
+  }) : _firestoreOverride = firestore,
+       _authOverride = auth;
 
   final AppDatabase _database;
-  final SupabaseClient? _clientOverride;
+  final FirebaseFirestore? _firestoreOverride;
+  final firebase_auth.FirebaseAuth? _authOverride;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   Future<SyncResult>? _activeSync;
   DateTime? _lastAttemptAt;
@@ -55,8 +62,16 @@ class SupabaseSyncService extends ChangeNotifier {
   static const _lastRemoteHashKey = 'seleto.sync.last_remote_hash';
   static const _minimumSyncInterval = Duration(minutes: 5);
   static const _networkTimeout = Duration(seconds: 10);
+  static const _configTestCollection = 'seleto_config_tests';
+  static const _legacyBackupCollection = 'seleto_backups';
+  static const _legacyBackupDocument = 'operacional';
 
-  SupabaseClient get _client => _clientOverride ?? Supabase.instance.client;
+  FirebaseFirestore get _firestore =>
+      _firestoreOverride ?? FirebaseFirestore.instance;
+  firebase_auth.FirebaseAuth get _auth =>
+      _authOverride ?? firebase_auth.FirebaseAuth.instance;
+  DocumentReference<Map<String, dynamic>> get _legacyDocument =>
+      _firestore.collection(_legacyBackupCollection).doc(_legacyBackupDocument);
   SyncResult get lastResult => _lastResult;
   bool get isSynced => _hasSuccessfulSync;
 
@@ -118,12 +133,13 @@ class SupabaseSyncService extends ChangeNotifier {
 
   Future<SyncResult> _sync(String reason) async {
     try {
-      if (!_canUseSupabase()) {
+      if (!_canUseFirebase()) {
         return const SyncResult(SyncStatus.skipped);
       }
       if (!await _hasConnection()) {
         return const SyncResult(SyncStatus.offline);
       }
+      await _ensureAuthenticated();
 
       final preferences = await SharedPreferences.getInstance();
       final localPayload = await _localPayload();
@@ -171,17 +187,22 @@ class SupabaseSyncService extends ChangeNotifier {
       await _upload(mergedPayload);
       await _rememberHashes(preferences, mergedHash, mergedHash);
       return const SyncResult(SyncStatus.merged);
-    } on PostgrestException catch (error) {
-      return SyncResult(SyncStatus.failed, message: error.message);
+    } on FirebaseException catch (error) {
+      return SyncResult(
+        SyncStatus.failed,
+        message: '${error.code}: ${error.message ?? 'erro do Firebase'}',
+      );
     } catch (error) {
       return SyncResult(SyncStatus.failed, message: error.toString());
     }
   }
 
-  bool _canUseSupabase() {
-    if (_clientOverride != null) return true;
+  bool _canUseFirebase() {
+    if (_firestoreOverride != null && _authOverride != null) return true;
+    if (Firebase.apps.isEmpty) return false;
     try {
-      Supabase.instance.client;
+      FirebaseFirestore.instance;
+      firebase_auth.FirebaseAuth.instance;
       return true;
     } catch (_) {
       return false;
@@ -196,28 +217,134 @@ class SupabaseSyncService extends ChangeNotifier {
   Future<Map<String, dynamic>?> _remotePayload() async {
     final payload = <String, dynamic>{'format': 'SELETO_SYNC_V1'};
     for (final spec in _syncTables) {
-      final rows = await _client
-          .from(spec.remoteTable)
-          .select()
+      final snapshot = await _firestore
+          .collection(spec.remoteTable)
+          .get()
           .timeout(_networkTimeout);
-      payload[spec.collectionKey] = rows
-          .whereType<Map>()
-          .map((row) => _toLocalRow(row.cast<String, dynamic>()))
+      payload[spec.collectionKey] = snapshot.docs
+          .map((doc) => _toLocalRow(doc.data()))
           .toList();
     }
     return _hasRows(payload) ? _normalizePayload(payload) : null;
   }
 
   Future<void> _upload(Map<String, dynamic> payload) async {
-    await _deviceId();
-    for (final spec in _syncTables) {
-      final rows = _rows(payload, spec.collectionKey);
-      if (rows.isEmpty) continue;
-      await _client
-          .from(spec.remoteTable)
-          .upsert(rows.map(_toRemoteRow).toList(), onConflict: spec.primaryKey)
-          .timeout(_networkTimeout);
+    await _ensureAuthenticated();
+    final normalized = _normalizePayload(payload);
+    await _deleteLegacyBackup();
+
+    var batch = _firestore.batch();
+    var pendingWrites = 0;
+
+    Future<void> flush() async {
+      if (pendingWrites == 0) return;
+      await batch.commit().timeout(_networkTimeout);
+      batch = _firestore.batch();
+      pendingWrites = 0;
     }
+
+    Future<void> queue(void Function(WriteBatch batch) write) async {
+      if (pendingWrites >= 450) await flush();
+      write(batch);
+      pendingWrites++;
+    }
+
+    for (final spec in _syncTables) {
+      final collection = _firestore.collection(spec.remoteTable);
+      final rows = _rows(normalized, spec.collectionKey).map(_toRemoteRow);
+      final localIds = <String>{};
+      for (final row in rows) {
+        final id = _documentIdFor(row, spec);
+        localIds.add(id);
+        await queue((batch) {
+          batch.set(collection.doc(id), row);
+        });
+      }
+
+      final existing = await collection.get().timeout(_networkTimeout);
+      for (final document in existing.docs) {
+        if (!localIds.contains(document.id)) {
+          await queue((batch) => batch.delete(document.reference));
+        }
+      }
+    }
+
+    await flush();
+  }
+
+  Future<Map<String, dynamic>> testConfiguration() async {
+    final checkedAt = DateTime.now().toIso8601String();
+    final app = Firebase.apps.isEmpty ? null : Firebase.app();
+    final result = <String, dynamic>{
+      'servico': 'Firebase Firestore',
+      'status': 'erro',
+      'verificadoEm': checkedAt,
+      'firebaseInicializado': app != null,
+      'projeto': app?.options.projectId,
+      'appId': app?.options.appId,
+      'backup': {
+        'modelo': 'colecao_por_tabela',
+        'tabelas': _syncTables.map((spec) => spec.remoteTable).toList(),
+      },
+    };
+    if (!_canUseFirebase()) {
+      result['erro'] = {
+        'codigo': 'firebase-nao-inicializado',
+        'mensagem': 'O Firebase não foi inicializado neste ambiente.',
+      };
+      return result;
+    }
+    try {
+      final uid = await _ensureAuthenticated();
+      final deviceId = await _deviceId();
+      final probe = _firestore.collection(_configTestCollection).doc(deviceId);
+      await probe
+          .set({
+            'format': 'SELETO_FIREBASE_TEST_V1',
+            'deviceId': deviceId,
+            'firebaseUid': uid,
+            'testedAt': FieldValue.serverTimestamp(),
+            'testedAtLocal': checkedAt,
+          })
+          .timeout(_networkTimeout);
+      final snapshot = await probe.get().timeout(_networkTimeout);
+      result
+        ..['status'] = 'sucesso'
+        ..['autenticacao'] = {'tipo': 'anonima', 'uid': uid}
+        ..['firestore'] = {
+          'leitura': snapshot.exists,
+          'escrita': true,
+          'caminhoTeste': probe.path,
+          'tabelas': _syncTables.map((spec) => spec.remoteTable).toList(),
+        };
+      return result;
+    } on FirebaseException catch (error) {
+      result['erro'] = {
+        'codigo': error.code,
+        'mensagem': error.message ?? 'Erro retornado pelo Firebase.',
+      };
+      if (error.code == 'permission-denied') {
+        result['correcaoSugerida'] =
+            'No console do Firebase, libere o Firestore para usuários autenticados ou publique as regras do arquivo docs/firestore.rules.';
+      } else if (error.code == 'operation-not-allowed') {
+        result['correcaoSugerida'] =
+            'Ative o provedor Anônimo em Firebase Authentication > Sign-in method.';
+      }
+      return result;
+    } catch (error) {
+      result['erro'] = {
+        'codigo': 'erro-desconhecido',
+        'mensagem': error.toString(),
+      };
+      return result;
+    }
+  }
+
+  Future<String?> _ensureAuthenticated() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser != null) return currentUser.uid;
+    final credential = await _auth.signInAnonymously().timeout(_networkTimeout);
+    return credential.user?.uid;
   }
 
   Future<String> _deviceId() async {
@@ -400,15 +527,57 @@ class SupabaseSyncService extends ChangeNotifier {
   Map<String, dynamic> _normalizePayload(Map<String, dynamic> payload) {
     final normalized = <String, dynamic>{'format': 'SELETO_SYNC_V1'};
     for (final key in _syncCollectionKeys) {
-      normalized[key] = _rows(payload, key);
+      final primaryKey = _specFor(key).jsonPrimaryKey;
+      final rows = _rows(payload, key);
+      rows.sort((a, b) {
+        final left = (a[primaryKey] ?? '').toString();
+        final right = (b[primaryKey] ?? '').toString();
+        return left.compareTo(right);
+      });
+      normalized[key] = rows;
     }
     return normalized;
+  }
+
+  Future<void> _deleteLegacyBackup() async {
+    try {
+      final chunks = await _legacyDocument
+          .collection('chunks')
+          .get()
+          .timeout(_networkTimeout);
+      var batch = _firestore.batch();
+      var pendingWrites = 0;
+      Future<void> flush() async {
+        if (pendingWrites == 0) return;
+        await batch.commit().timeout(_networkTimeout);
+        batch = _firestore.batch();
+        pendingWrites = 0;
+      }
+
+      for (final chunk in chunks.docs) {
+        if (pendingWrites >= 450) await flush();
+        batch.delete(chunk.reference);
+        pendingWrites++;
+      }
+      if (pendingWrites >= 450) await flush();
+      batch.delete(_legacyDocument);
+      pendingWrites++;
+      await flush();
+    } catch (_) {
+      // Best effort: old chunk-based backup should not block the correct mirror.
+    }
+  }
+
+  String _documentIdFor(Map<String, dynamic> row, _SyncTableSpec spec) {
+    final id = row[spec.primaryKey]?.toString();
+    if (id != null && id.isNotEmpty && !id.contains('/')) return id;
+    return _hashPayload({'row': row});
   }
 
   Map<String, dynamic> _toRemoteRow(Map<String, dynamic> localRow) {
     final remoteRow = <String, dynamic>{};
     for (final entry in localRow.entries) {
-      remoteRow[_camelToSnake(entry.key)] = entry.value;
+      remoteRow[_camelToSnake(entry.key)] = _toFirestoreValue(entry.value);
     }
     return remoteRow;
   }
@@ -416,9 +585,33 @@ class SupabaseSyncService extends ChangeNotifier {
   Map<String, dynamic> _toLocalRow(Map<String, dynamic> remoteRow) {
     final localRow = <String, dynamic>{};
     for (final entry in remoteRow.entries) {
-      localRow[_snakeToCamel(entry.key)] = entry.value;
+      localRow[_snakeToCamel(entry.key)] = _fromFirestoreValue(entry.value);
     }
     return localRow;
+  }
+
+  Object? _toFirestoreValue(Object? value) {
+    if (value is DateTime) return value.toIso8601String();
+    if (value is Map) {
+      return {
+        for (final entry in value.entries)
+          entry.key.toString(): _toFirestoreValue(entry.value),
+      };
+    }
+    if (value is Iterable) return value.map(_toFirestoreValue).toList();
+    return value;
+  }
+
+  Object? _fromFirestoreValue(Object? value) {
+    if (value is Timestamp) return value.toDate().toIso8601String();
+    if (value is Map) {
+      return {
+        for (final entry in value.entries)
+          entry.key.toString(): _fromFirestoreValue(entry.value),
+      };
+    }
+    if (value is Iterable) return value.map(_fromFirestoreValue).toList();
+    return value;
   }
 
   String _camelToSnake(String value) => value.replaceAllMapped(
@@ -518,9 +711,8 @@ const _timestampKeys = [
   'changedAt',
 ];
 
-final supabaseSyncServiceProvider = ChangeNotifierProvider<SupabaseSyncService>(
-  (ref) {
-    final service = SupabaseSyncService(ref.watch(databaseProvider));
-    return service;
-  },
-);
+final firebaseBackupServiceProvider =
+    ChangeNotifierProvider<FirebaseBackupService>((ref) {
+      final service = FirebaseBackupService(ref.watch(databaseProvider));
+      return service;
+    });

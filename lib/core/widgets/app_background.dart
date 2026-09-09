@@ -6,8 +6,8 @@ class SeletoAppBackground extends StatelessWidget {
     required this.imagePath,
     required this.child,
     this.alignment = Alignment.center,
-    this.topOpacity = .72,
-    this.bottomOpacity = .9,
+    this.topOpacity = .88,
+    this.bottomOpacity = .96,
   });
 
   final String imagePath;
@@ -42,8 +42,8 @@ class SeletoAppBackground extends StatelessWidget {
               end: Alignment.centerRight,
               colors: [
                 surface.withValues(alpha: .12),
-                surface.withValues(alpha: .04),
-                surface.withValues(alpha: .16),
+                surface.withValues(alpha: .10),
+                surface.withValues(alpha: .18),
               ],
             ),
           ),

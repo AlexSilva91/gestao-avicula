@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Keep only android/app/google-services.json under version control.
+/google-services.json
+
+# Firebase Admin SDK keys are server credentials and must never ship with the app.
+*firebase-adminsdk*.json

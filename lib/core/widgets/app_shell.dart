@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/application/auth_controller.dart';
 import '../constants/design_tokens.dart';
-import '../sync/supabase_sync_service.dart';
+import '../sync/firebase_backup_service.dart';
 import 'app_background.dart';
 import 'brand_mark.dart';
 
@@ -227,7 +227,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final width = MediaQuery.sizeOf(context).width;
     final path = GoRouterState.of(context).uri.path;
     final session = ref.watch(authControllerProvider).session;
-    final syncService = ref.watch(supabaseSyncServiceProvider);
+    final syncService = ref.watch(firebaseBackupServiceProvider);
     final destinations = seletoDestinations
         .where((d) => session?.allows(d.permission) ?? false)
         .toList();
@@ -318,6 +318,13 @@ class _AppShellState extends ConsumerState<AppShell> {
           ),
           const SizedBox(width: 4),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(
+            height: 1,
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
       ),
       drawer: mobile
           ? Drawer(
@@ -376,10 +383,15 @@ class _SideNavigation extends StatelessWidget {
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
       width: extended ? 252 : 72,
+      decoration: BoxDecoration(
+        border: Border(
+          right: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
+      ),
       child: Material(
-        color: Theme.of(
-          context,
-        ).colorScheme.surfaceContainerLow.withValues(alpha: .94),
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
@@ -432,7 +444,7 @@ class _SideNavigation extends StatelessWidget {
                       selected: path == d.route,
                       selectedTileColor: Theme.of(
                         context,
-                      ).colorScheme.primaryContainer.withValues(alpha: .52),
+                      ).colorScheme.primaryContainer.withValues(alpha: .68),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(6),
                       ),
@@ -447,7 +459,15 @@ class _SideNavigation extends StatelessWidget {
                           ? Theme.of(context).colorScheme.primary
                           : Theme.of(context).colorScheme.onSurfaceVariant,
                       title: extended
-                          ? Text(d.label, overflow: TextOverflow.ellipsis)
+                          ? Text(
+                              d.label,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: path == d.route
+                                    ? FontWeight.w800
+                                    : FontWeight.w500,
+                              ),
+                            )
                           : null,
                       onTap: path == d.route ? null : () => context.go(d.route),
                     ),

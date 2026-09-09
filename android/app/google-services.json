@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "484782450773",
+    "project_id": "seleto-granja",
+    "storage_bucket": "seleto-granja.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:484782450773:android:b5128e237c51d03e360cdc",
+        "android_client_info": {
+          "package_name": "com.seleto.seleto"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB2sqMOLt2iB62xXin_bRPDt1mf1QZNUSo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

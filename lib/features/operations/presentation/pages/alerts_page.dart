@@ -57,7 +57,7 @@ class _ScheduledAlertsCard extends StatelessWidget {
         .when(
           loading: () => const Card(
             child: Padding(
-              padding: EdgeInsets.all(24),
+              padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator()),
             ),
           ),
@@ -488,7 +488,7 @@ class _AlertsCard extends StatelessWidget {
         .when(
           loading: () => const Card(
             child: Padding(
-              padding: EdgeInsets.all(30),
+              padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator()),
             ),
           ),

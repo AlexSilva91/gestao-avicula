@@ -83,7 +83,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           child: Center(
             child: SingleChildScrollView(
               child: Padding(
-                padding: const EdgeInsets.all(SeletoTokens.spacingLg),
+                padding: const EdgeInsets.all(18),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
                     maxWidth: SeletoTokens.formMaxWidth,
@@ -154,8 +154,8 @@ class _LoginFormSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surface.withValues(alpha: .92),
-      borderRadius: BorderRadius.circular(18),
+      color: Theme.of(context).colorScheme.surface.withValues(alpha: .95),
+      borderRadius: BorderRadius.circular(8),
       border: Border.all(
         color: Theme.of(
           context,
@@ -164,15 +164,12 @@ class _LoginFormSurface extends StatelessWidget {
       boxShadow: [
         BoxShadow(
           color: Colors.black.withValues(alpha: .08),
-          blurRadius: 28,
-          offset: const Offset(0, 16),
+          blurRadius: 22,
+          offset: const Offset(0, 12),
         ),
       ],
     ),
-    child: Padding(
-      padding: const EdgeInsets.all(SeletoTokens.spacingLg),
-      child: child,
-    ),
+    child: Padding(padding: const EdgeInsets.all(18), child: child),
   );
 }
 
@@ -221,7 +218,7 @@ class _LoginForm extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const BrandMark(),
-        const SizedBox(height: 38),
+        const SizedBox(height: 22),
         Text(
           creatingFirstAccount ? 'Criar conta' : 'Bem-vindo de volta',
           style: Theme.of(context).textTheme.headlineSmall,
@@ -235,7 +232,7 @@ class _LoginForm extends StatelessWidget {
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
-        const SizedBox(height: 30),
+        const SizedBox(height: 18),
         TextFormField(
           controller: username,
           textInputAction: TextInputAction.next,

@@ -19,7 +19,8 @@ void main() {
       DateTime(2026, 6, 5),
     );
     expect(LotLifecycle.phaseForAge(age), FeedingPhase.recria);
-    expect(LotLifecycle.ageLabel(age), '89 dias · 12 semanas e 5 dias');
+    expect(LotLifecycle.ageLabel(age), '12 semanas e 5 dias');
+    expect(LotLifecycle.ageTotalLabel(age), '89 dias no total');
   });
 
   test('moves through all feeding phases at their specified boundaries', () {

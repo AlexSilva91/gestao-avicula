@@ -1,27 +1,19 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'core/database/app_database.dart';
 import 'core/database/demo_seed.dart';
 import 'core/platform/alert_scheduler.dart';
 import 'core/platform/notification_service.dart';
-import 'core/sync/supabase_sync_service.dart';
+import 'core/sync/firebase_backup_service.dart';
 import 'core/widgets/app_background.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  const supabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: 'https://ldhmpnhyidzpdokjdohv.supabase.co',
-  );
-  const supabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: 'sb_publishable_1Z0UnEnCx7-N0xdACG81Og_UTJsQSOF',
-  );
-  await Supabase.initialize(url: supabaseUrl, publishableKey: supabaseAnonKey);
+  await Firebase.initializeApp();
   const persistDatabase = bool.fromEnvironment(
     'SELETO_PERSIST_DB',
     defaultValue: true,
@@ -66,7 +58,7 @@ class _AppBootstrapState extends ConsumerState<_AppBootstrap> {
           : widget.database.seedInitialData(),
       NotificationService().initialize(),
     ]);
-    await ref.read(supabaseSyncServiceProvider).start();
+    await ref.read(firebaseBackupServiceProvider).start();
     await schedulePersistedAlerts(widget.database);
   }
 
