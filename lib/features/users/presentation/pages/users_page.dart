@@ -25,15 +25,24 @@ class UsersPage extends ConsumerWidget {
           data: (users) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: () => _showCreate(context, ref),
-                  icon: const Icon(Icons.person_add_alt_1),
-                  label: const Text('Novo usuário'),
-                ),
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                alignment: WrapAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${users.length} usuário(s) cadastrado(s)',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => _showCreate(context, ref),
+                    icon: const Icon(Icons.person_add_alt_1),
+                    label: const Text('Novo usuário'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Card(
                 child: ListView.separated(
                   shrinkWrap: true,
@@ -44,8 +53,8 @@ class UsersPage extends ConsumerWidget {
                     final user = users[index];
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 8,
+                        horizontal: 14,
+                        vertical: 6,
                       ),
                       leading: CircleAvatar(
                         child: Text(
@@ -57,16 +66,35 @@ class UsersPage extends ConsumerWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      subtitle: Text(
-                        '@${user.username} · ${user.isActive ? 'Ativo' : 'Inativo'}${user.isSuperuser ? ' · Administrador' : ''}',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      subtitle: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            '@${user.username}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Chip(
+                            visualDensity: VisualDensity.compact,
+                            label: Text(user.isActive ? 'Ativo' : 'Inativo'),
+                          ),
+                          if (user.isSuperuser)
+                            const Chip(
+                              visualDensity: VisualDensity.compact,
+                              label: Text('Administrador'),
+                            ),
+                        ],
                       ),
                       trailing: PopupMenuButton<String>(
                         tooltip: 'Ações do usuário',
                         onSelected: (action) =>
                             _handleUserAction(context, ref, user, action),
                         itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Text('Editar usuário'),
+                          ),
                           if (!user.isSuperuser)
                             const PopupMenuItem(
                               value: 'permissions',
@@ -104,6 +132,13 @@ class UsersPage extends ConsumerWidget {
     User user,
     String action,
   ) async {
+    if (action == 'edit') {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => _EditUserDialog(ref: ref, user: user),
+      );
+      return;
+    }
     if (action == 'permissions') {
       await showDialog<void>(
         context: context,
@@ -258,6 +293,111 @@ class _CreateUserDialogState extends State<_CreateUserDialog> {
       if (mounted) {
         setState(() => _loading = false);
       }
+    }
+  }
+}
+
+class _EditUserDialog extends StatefulWidget {
+  const _EditUserDialog({required this.ref, required this.user});
+  final WidgetRef ref;
+  final User user;
+
+  @override
+  State<_EditUserDialog> createState() => _EditUserDialogState();
+}
+
+class _EditUserDialogState extends State<_EditUserDialog> {
+  final _form = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late final TextEditingController _username;
+  late bool _active;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.user.displayName);
+    _username = TextEditingController(text: widget.user.username);
+    _active = widget.user.isActive;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _username.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text('Editar usuário · ${widget.user.displayName}'),
+    content: SizedBox(
+      width: 420,
+      child: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _name,
+              decoration: const InputDecoration(labelText: 'Nome de exibição'),
+              validator: (value) =>
+                  value!.trim().isEmpty ? 'Informe o nome.' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _username,
+              decoration: const InputDecoration(labelText: 'Usuário'),
+              validator: (value) => (value?.trim().length ?? 0) < 3
+                  ? 'Mínimo de 3 caracteres.'
+                  : null,
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Conta ativa'),
+              subtitle: const Text('Usuários inativos não conseguem entrar'),
+              value: _active,
+              onChanged: (value) => setState(() => _active = value),
+            ),
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: _loading ? null : () => Navigator.pop(context),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton(
+        onPressed: _loading ? null : _save,
+        child: _loading
+            ? const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Text('Salvar'),
+      ),
+    ],
+  );
+
+  Future<void> _save() async {
+    if (!(_form.currentState?.validate() ?? false)) return;
+    setState(() => _loading = true);
+    try {
+      await widget.ref
+          .read(usersControllerProvider)
+          .update(
+            user: widget.user,
+            username: _username.text,
+            displayName: _name.text,
+            isActive: _active,
+          );
+      if (mounted) Navigator.pop(context);
+    } catch (error) {
+      if (mounted) await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 }

@@ -314,12 +314,23 @@ extension OperationsRepository on AppDatabase {
           mortality: r.read<int>('mortality'),
         ),
       );
-  Stream<List<ReportPoint>> watchEggProductionSeries({int days = 30}) {
-    final start = DateTime.now().subtract(Duration(days: days));
+  Stream<List<ReportPoint>> watchEggProductionSeries({
+    int days = 30,
+    DateTime? start,
+    DateTime? end,
+  }) {
+    final now = DateTime.now();
+    final startDate = start ?? now.subtract(Duration(days: days));
+    final endDate = end ?? now.add(const Duration(days: 1));
     return customSelect(
       '''SELECT collected_on, SUM(quantity-broken_eggs-discarded_eggs) total
-         FROM egg_collections WHERE collected_on>=? GROUP BY date(collected_on) ORDER BY collected_on''',
-      variables: [Variable.withDateTime(start)],
+         FROM egg_collections
+         WHERE collected_on>=? AND collected_on<?
+         GROUP BY date(collected_on) ORDER BY collected_on''',
+      variables: [
+        Variable.withDateTime(startDate),
+        Variable.withDateTime(endDate),
+      ],
       readsFrom: {eggCollections},
     ).watch().map(
       (rows) => rows
@@ -333,17 +344,25 @@ extension OperationsRepository on AppDatabase {
     );
   }
 
-  Stream<List<ReportPoint>> watchFinanceSeries({int months = 6}) {
-    final start = DateTime(
-      DateTime.now().year,
-      DateTime.now().month - months + 1,
-    );
+  Stream<List<ReportPoint>> watchFinanceSeries({
+    int months = 6,
+    DateTime? start,
+    DateTime? end,
+  }) {
+    final now = DateTime.now();
+    final startDate = start ?? DateTime(now.year, now.month - months + 1);
+    final endDate = end ?? now.add(const Duration(days: 1));
     return customSelect(
       '''SELECT strftime('%m/%Y', occurred_at, 'unixepoch') period,
          SUM(CASE WHEN type='INCOME' AND status='CONFIRMED' THEN amount_cents ELSE 0 END) income,
          SUM(CASE WHEN type='EXPENSE' AND status='CONFIRMED' THEN amount_cents ELSE 0 END) expense
-         FROM finance_transactions WHERE occurred_at>=? GROUP BY strftime('%Y-%m', occurred_at, 'unixepoch') ORDER BY occurred_at''',
-      variables: [Variable.withDateTime(start)],
+         FROM finance_transactions
+         WHERE occurred_at>=? AND occurred_at<?
+         GROUP BY strftime('%Y-%m', occurred_at, 'unixepoch') ORDER BY occurred_at''',
+      variables: [
+        Variable.withDateTime(startDate),
+        Variable.withDateTime(endDate),
+      ],
       readsFrom: {financeTransactions},
     ).watch().map(
       (rows) => rows
@@ -3226,6 +3245,23 @@ extension OperationsRepository on AppDatabase {
             .cast<Map>()
             .map((e) => e.cast<String, dynamic>())
             .toList();
+    Map<String, dynamic> normalizeEggCollection(Map<String, dynamic> row) {
+      if (row.containsKey('cleanEggs') &&
+          row.containsKey('dirtyEggs') &&
+          row.containsKey('crackedEggs')) {
+        return row;
+      }
+      final quantity = row['quantity'] as int? ?? 0;
+      final broken = row['brokenEggs'] as int? ?? 0;
+      final discarded = row['discardedEggs'] as int? ?? 0;
+      return {
+        ...row,
+        'cleanEggs': (quantity - broken - discarded).clamp(0, quantity),
+        'dirtyEggs': 0,
+        'crackedEggs': discarded,
+      };
+    }
+
     await transaction(() async {
       await delete(notificationSettings).go();
       await delete(appSettings).go();
@@ -3266,7 +3302,9 @@ extension OperationsRepository on AppDatabase {
         await into(birdMovements).insert(BirdMovement.fromJson(e));
       }
       for (final e in rows('eggCollections')) {
-        await into(eggCollections).insert(EggCollection.fromJson(e));
+        await into(
+          eggCollections,
+        ).insert(EggCollection.fromJson(normalizeEggCollection(e)));
       }
       for (final e in rows('eggStockMovements')) {
         await into(eggStockMovements).insert(EggStockMovement.fromJson(e));

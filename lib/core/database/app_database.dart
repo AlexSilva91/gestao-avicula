@@ -91,6 +91,9 @@ class EggCollections extends Table {
   DateTimeColumn get collectedOn => dateTime()();
   TextColumn get lotId => text()();
   IntColumn get quantity => integer()();
+  IntColumn get cleanEggs => integer().withDefault(const Constant(0))();
+  IntColumn get dirtyEggs => integer().withDefault(const Constant(0))();
+  IntColumn get crackedEggs => integer().withDefault(const Constant(0))();
   IntColumn get brokenEggs => integer().withDefault(const Constant(0))();
   IntColumn get discardedEggs => integer().withDefault(const Constant(0))();
   TextColumn get notes => text().nullable()();
@@ -213,7 +216,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -300,6 +303,22 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 11) {
         await m.addColumn(eggTrayBatches, eggTrayBatches.finalUnitPriceCents);
+      }
+      if (from < 12) {
+        await m.addColumn(eggCollections, eggCollections.cleanEggs);
+        await m.addColumn(eggCollections, eggCollections.dirtyEggs);
+        await m.addColumn(eggCollections, eggCollections.crackedEggs);
+        await customStatement('''
+          UPDATE egg_collections
+          SET
+            clean_eggs = CASE
+              WHEN quantity - broken_eggs - discarded_eggs > 0
+              THEN quantity - broken_eggs - discarded_eggs
+              ELSE 0
+            END,
+            dirty_eggs = 0,
+            cracked_eggs = discarded_eggs
+        ''');
       }
     },
   );
@@ -791,6 +810,38 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<void> updateUserProfile({
+    required String userId,
+    required String username,
+    required String displayName,
+    required bool isActive,
+    required String actorId,
+  }) async {
+    final normalizedUsername = username.trim().toLowerCase();
+    if (normalizedUsername.length < 3 || displayName.trim().isEmpty) {
+      throw ArgumentError('Informe nome e usuário com ao menos 3 caracteres.');
+    }
+    final existing = await userByUsername(normalizedUsername);
+    if (existing != null && existing.id != userId) {
+      throw ArgumentError('Esse nome de usuário já está em uso.');
+    }
+    await (update(users)..where((u) => u.id.equals(userId))).write(
+      UsersCompanion(
+        username: Value(normalizedUsername),
+        displayName: Value(displayName.trim()),
+        isActive: Value(isActive),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+    await addAudit(
+      userId: actorId,
+      action: 'users.update',
+      entityType: 'user',
+      entityId: userId,
+      description: 'Dados do usuário $normalizedUsername atualizados.',
+    );
+  }
+
   Future<void> resetUserPassword({
     required String userId,
     required String password,
@@ -1186,9 +1237,12 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<List<LayingRateHistoryEntry>> watchMonthlyLayingRates({
     int months = 12,
+    DateTime? start,
+    DateTime? end,
   }) {
     final today = DateTime.now();
-    final start = DateTime(today.year, today.month - months + 1);
+    final startDate = start ?? DateTime(today.year, today.month - months + 1);
+    final endDate = end ?? today.add(const Duration(days: 1));
     final query = customSelect(
       '''
       WITH daily_rates AS (
@@ -1209,7 +1263,7 @@ class AppDatabase extends _$AppDatabase {
           ), 0) AS active_birds
         FROM egg_collections e
         INNER JOIN lots l ON l.id = e.lot_id
-        WHERE e.collected_on >= ?
+        WHERE e.collected_on >= ? AND e.collected_on < ?
         GROUP BY e.lot_id, date(e.collected_on, 'unixepoch')
       )
       SELECT
@@ -1225,7 +1279,10 @@ class AppDatabase extends _$AppDatabase {
       GROUP BY lot_id, strftime('%Y-%m', collected_day)
       ORDER BY period_start DESC, lot_name
       ''',
-      variables: [Variable.withDateTime(start)],
+      variables: [
+        Variable.withDateTime(startDate),
+        Variable.withDateTime(endDate),
+      ],
       readsFrom: {eggCollections, lots, birdMovements},
     );
     return query.watch().map(_mapLayingRateRows);
@@ -1235,15 +1292,32 @@ class AppDatabase extends _$AppDatabase {
     required DateTime collectedOn,
     required String lotId,
     required int quantity,
+    int? cleanEggs,
+    int? dirtyEggs,
+    int? crackedEggs,
     required int brokenEggs,
     required int discardedEggs,
     String? notes,
     required String actorId,
   }) async {
+    final resolvedCleanEggs =
+        cleanEggs ?? (quantity - brokenEggs - discardedEggs);
+    final resolvedDirtyEggs = dirtyEggs ?? 0;
+    final resolvedCrackedEggs = crackedEggs ?? discardedEggs;
+    final resolvedDiscardedEggs = resolvedCrackedEggs;
+    final calculatedTotal =
+        resolvedCleanEggs +
+        resolvedDirtyEggs +
+        resolvedCrackedEggs +
+        brokenEggs;
     if (quantity <= 0 ||
+        resolvedCleanEggs < 0 ||
+        resolvedDirtyEggs < 0 ||
+        resolvedCrackedEggs < 0 ||
         brokenEggs < 0 ||
         discardedEggs < 0 ||
-        brokenEggs + discardedEggs > quantity) {
+        calculatedTotal != quantity ||
+        brokenEggs + resolvedDiscardedEggs > quantity) {
       throw ArgumentError('Revise as quantidades da coleta.');
     }
     final collectionDay = DateTime(
@@ -1256,7 +1330,7 @@ class AppDatabase extends _$AppDatabase {
     }
     final now = DateTime.now();
     final collectionId = const Uuid().v4();
-    final validEggs = quantity - brokenEggs - discardedEggs;
+    final validEggs = resolvedCleanEggs + resolvedDirtyEggs;
     await transaction(() async {
       await into(eggCollections).insert(
         EggCollectionsCompanion.insert(
@@ -1264,8 +1338,11 @@ class AppDatabase extends _$AppDatabase {
           collectedOn: collectionDay,
           lotId: lotId,
           quantity: quantity,
+          cleanEggs: Value(resolvedCleanEggs),
+          dirtyEggs: Value(resolvedDirtyEggs),
+          crackedEggs: Value(resolvedCrackedEggs),
           brokenEggs: Value(brokenEggs),
-          discardedEggs: Value(discardedEggs),
+          discardedEggs: Value(resolvedDiscardedEggs),
           notes: Value(_clean(notes)),
           createdBy: actorId,
           createdAt: now,

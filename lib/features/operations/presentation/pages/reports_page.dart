@@ -13,10 +13,21 @@ import '../../../../core/widgets/seleto_widgets.dart';
 import '../../../egg_collection/application/egg_collection_controller.dart';
 import '../../application/operations_controller.dart';
 
-class ReportsPage extends ConsumerWidget {
+class ReportsPage extends ConsumerStatefulWidget {
   const ReportsPage({super.key});
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ReportsPage> createState() => _ReportsPageState();
+}
+
+class _ReportsPageState extends ConsumerState<ReportsPage> {
+  _ReportPeriod _period = _ReportPeriod.last30;
+  DateTimeRange? _customRange;
+
+  @override
+  Widget build(BuildContext context) {
+    final range = _range;
+    final rangeKey = (start: range.start, end: range.end);
     final dashboard = ref.watch(dashboardMetricsProvider).asData?.value;
     final eggs = ref.watch(eggMetricsProvider).asData?.value;
     final layingRate = dashboard == null || dashboard.activeBirds == 0
@@ -37,18 +48,11 @@ class ReportsPage extends ConsumerWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final f in [
-                'Hoje',
-                '7 dias',
-                '30 dias',
-                'Este mês',
-                'Este ano',
-                'Personalizado',
-              ])
+              for (final f in _ReportPeriod.values)
                 FilterChip(
-                  label: Text(f),
-                  selected: f == '30 dias',
-                  onSelected: (_) {},
+                  label: Text(f.label),
+                  selected: f == _period,
+                  onSelected: (_) => _selectPeriod(f),
                 ),
             ],
           ),
@@ -85,9 +89,12 @@ class ReportsPage extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: _EggChart(
+                          title: 'Produção de ovos · ${range.label}',
                           points:
                               ref
-                                  .watch(eggProductionSeriesProvider)
+                                  .watch(
+                                    eggProductionSeriesRangeProvider(rangeKey),
+                                  )
                                   .asData
                                   ?.value ??
                               [],
@@ -96,8 +103,12 @@ class ReportsPage extends ConsumerWidget {
                       const SizedBox(width: 16),
                       Expanded(
                         child: _FinanceChart(
+                          title: 'Receitas × despesas · ${range.label}',
                           points:
-                              ref.watch(financeSeriesProvider).asData?.value ??
+                              ref
+                                  .watch(financeSeriesRangeProvider(rangeKey))
+                                  .asData
+                                  ?.value ??
                               [],
                         ),
                       ),
@@ -106,17 +117,24 @@ class ReportsPage extends ConsumerWidget {
                 : Column(
                     children: [
                       _EggChart(
+                        title: 'Produção de ovos · ${range.label}',
                         points:
                             ref
-                                .watch(eggProductionSeriesProvider)
+                                .watch(
+                                  eggProductionSeriesRangeProvider(rangeKey),
+                                )
                                 .asData
                                 ?.value ??
                             [],
                       ),
                       const SizedBox(height: 16),
                       _FinanceChart(
+                        title: 'Receitas × despesas · ${range.label}',
                         points:
-                            ref.watch(financeSeriesProvider).asData?.value ??
+                            ref
+                                .watch(financeSeriesRangeProvider(rangeKey))
+                                .asData
+                                ?.value ??
                             [],
                       ),
                     ],
@@ -124,7 +142,13 @@ class ReportsPage extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           _LayingRateChart(
-            entries: ref.watch(monthlyLayingRatesProvider).asData?.value ?? [],
+            title: 'Taxa de postura por lote · ${range.label}',
+            entries:
+                ref
+                    .watch(monthlyLayingRatesRangeProvider(rangeKey))
+                    .asData
+                    ?.value ??
+                [],
           ),
           const SizedBox(height: 16),
           const SeletoEmptyState(
@@ -137,10 +161,120 @@ class ReportsPage extends ConsumerWidget {
       ),
     );
   }
+
+  _ReportRange get _range {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return switch (_period) {
+      _ReportPeriod.today => _ReportRange(
+        start: today,
+        end: today.add(const Duration(days: 1)),
+        label: 'Hoje',
+      ),
+      _ReportPeriod.last7 => _ReportRange(
+        start: today.subtract(const Duration(days: 6)),
+        end: today.add(const Duration(days: 1)),
+        label: '7 dias',
+      ),
+      _ReportPeriod.last30 => _ReportRange(
+        start: today.subtract(const Duration(days: 29)),
+        end: today.add(const Duration(days: 1)),
+        label: '30 dias',
+      ),
+      _ReportPeriod.month => _ReportRange(
+        start: DateTime(today.year, today.month),
+        end: DateTime(today.year, today.month + 1),
+        label: 'Este mês',
+      ),
+      _ReportPeriod.year => _ReportRange(
+        start: DateTime(today.year),
+        end: DateTime(today.year + 1),
+        label: 'Este ano',
+      ),
+      _ReportPeriod.custom => _customReportRange(today),
+    };
+  }
+
+  _ReportRange _customReportRange(DateTime today) {
+    final selected = _customRange;
+    if (selected == null) {
+      return _ReportRange(
+        start: today.subtract(const Duration(days: 29)),
+        end: today.add(const Duration(days: 1)),
+        label: 'Personalizado',
+      );
+    }
+    return _ReportRange(
+      start: DateTime(
+        selected.start.year,
+        selected.start.month,
+        selected.start.day,
+      ),
+      end: DateTime(
+        selected.end.year,
+        selected.end.month,
+        selected.end.day,
+      ).add(const Duration(days: 1)),
+      label:
+          '${DateFormat('dd/MM', 'pt_BR').format(selected.start)} a ${DateFormat('dd/MM', 'pt_BR').format(selected.end)}',
+    );
+  }
+
+  Future<void> _selectPeriod(_ReportPeriod period) async {
+    if (period != _ReportPeriod.custom) {
+      setState(() => _period = period);
+      return;
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = await showDateRangePicker(
+      context: context,
+      locale: const Locale('pt', 'BR'),
+      firstDate: DateTime(today.year - 10),
+      lastDate: DateTime(today.year + 1, 12, 31),
+      initialDateRange:
+          _customRange ??
+          DateTimeRange(
+            start: today.subtract(const Duration(days: 29)),
+            end: today,
+          ),
+    );
+    if (picked != null) {
+      setState(() {
+        _period = period;
+        _customRange = picked;
+      });
+    }
+  }
+}
+
+enum _ReportPeriod {
+  today('Hoje'),
+  last7('7 dias'),
+  last30('30 dias'),
+  month('Este mês'),
+  year('Este ano'),
+  custom('Personalizado');
+
+  const _ReportPeriod(this.label);
+  final String label;
+}
+
+class _ReportRange {
+  const _ReportRange({
+    required this.start,
+    required this.end,
+    required this.label,
+  });
+
+  final DateTime start;
+  final DateTime end;
+  final String label;
 }
 
 class _EggChart extends StatelessWidget {
-  const _EggChart({required this.points});
+  const _EggChart({required this.title, required this.points});
+  final String title;
   final List<ReportPoint> points;
   @override
   Widget build(BuildContext context) {
@@ -150,7 +284,7 @@ class _EggChart extends StatelessWidget {
       (max, point) => point.value > max ? point.value : max,
     );
     return _ChartCard(
-      title: 'Produção de ovos · 30 dias',
+      title: title,
       child: points.isEmpty
           ? const Center(child: Text('Registre coletas para formar o gráfico.'))
           : LineChart(
@@ -251,7 +385,8 @@ class _EggChart extends StatelessWidget {
 }
 
 class _FinanceChart extends StatelessWidget {
-  const _FinanceChart({required this.points});
+  const _FinanceChart({required this.title, required this.points});
+  final String title;
   final List<ReportPoint> points;
   @override
   Widget build(BuildContext context) {
@@ -264,7 +399,7 @@ class _FinanceChart extends StatelessWidget {
           [max, point.value, point.secondary].reduce((a, b) => a > b ? a : b),
     );
     return _ChartCard(
-      title: 'Receitas × despesas',
+      title: title,
       child: points.isEmpty
           ? const Center(
               child: Text('Os lançamentos formarão o gráfico financeiro.'),
@@ -363,7 +498,8 @@ class _FinanceChart extends StatelessWidget {
 }
 
 class _LayingRateChart extends StatelessWidget {
-  const _LayingRateChart({required this.entries});
+  const _LayingRateChart({required this.title, required this.entries});
+  final String title;
   final List<LayingRateHistoryEntry> entries;
 
   @override
@@ -407,7 +543,7 @@ class _LayingRateChart extends StatelessWidget {
       (max, entry) => math.max(max, entry.layingRate * 100),
     );
     return _ChartCard(
-      title: 'Taxa de postura por lote',
+      title: title,
       child: visible.isEmpty
           ? const Center(
               child: Text('Registre coletas para comparar a postura.'),

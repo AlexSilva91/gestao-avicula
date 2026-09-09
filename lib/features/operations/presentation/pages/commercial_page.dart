@@ -290,30 +290,42 @@ class _TrayAssemblyTab extends StatelessWidget {
           error: (_, _) => const SeletoAsyncError(),
           data: (batches) => SeletoTabList(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                alignment: WrapAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Ovos disponíveis para montagem: $eggStock',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: 220),
+                    child: Text(
+                      'Ovos disponíveis para montagem: $eggStock',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   ),
-                  FilledButton.icon(
-                    onPressed:
-                        trayLots.any((lot) => lot.balance > 0) &&
-                            labelLots.any((lot) => lot.balance > 0) &&
-                            eggStock >= 12
-                        ? () => showDialog<void>(
-                            context: context,
-                            builder: (_) => _TrayAssemblyDialog(
-                              ref: ref,
-                              trayLots: trayLots,
-                              labelLots: labelLots,
-                              estimatedEggUnitCostCents: estimatedEggUnitCost,
-                            ),
-                          )
-                        : null,
-                    icon: const Icon(Icons.add_task_outlined),
-                    label: const Text('Montar bandeja'),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 260),
+                    child: FilledButton.icon(
+                      onPressed:
+                          trayLots.any((lot) => lot.balance > 0) &&
+                              labelLots.any((lot) => lot.balance > 0) &&
+                              eggStock >= 12
+                          ? () => showDialog<void>(
+                              context: context,
+                              builder: (_) => _TrayAssemblyDialog(
+                                ref: ref,
+                                trayLots: trayLots,
+                                labelLots: labelLots,
+                                estimatedEggUnitCostCents: estimatedEggUnitCost,
+                              ),
+                            )
+                          : null,
+                      icon: const Icon(Icons.add_task_outlined),
+                      label: const Text(
+                        'Montar bandeja',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -980,7 +992,7 @@ class _TrayAssemblyDialogState extends State<_TrayAssemblyDialog> {
     return AlertDialog(
       title: const Text('Montar bandeja'),
       content: SizedBox(
-        width: 520,
+        width: MediaQuery.sizeOf(context).width.clamp(280.0, 520.0),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

@@ -324,7 +324,8 @@ class _CollectionList extends ConsumerWidget {
         separatorBuilder: (_, _) => const Divider(height: 1),
         itemBuilder: (_, index) {
           final item = collections[index];
-          final usable = item.quantity - item.brokenEggs - item.discardedEggs;
+          final usable = item.cleanEggs + item.dirtyEggs;
+          final losses = item.crackedEggs + item.brokenEggs;
           return ListTile(
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 18,
@@ -333,10 +334,11 @@ class _CollectionList extends ConsumerWidget {
             leading: CircleAvatar(child: Text('${item.quantity}')),
             title: Text(names[item.lotId] ?? 'Lote removido'),
             subtitle: Text(
-              '${DateFormat('dd/MM/yyyy').format(item.collectedOn)} · $usable ovos no estoque',
+              '${DateFormat('dd/MM/yyyy').format(item.collectedOn)} · '
+              '$usable no estoque · ${item.cleanEggs} limpos · ${item.dirtyEggs} sujos',
             ),
-            trailing: item.brokenEggs + item.discardedEggs > 0
-                ? Text('${item.brokenEggs + item.discardedEggs} perda')
+            trailing: losses > 0
+                ? Text('$losses perda(s)')
                 : const Icon(Icons.check_circle_outline),
           );
         },
@@ -354,18 +356,20 @@ class _CollectionDialog extends ConsumerStatefulWidget {
 
 class _CollectionDialogState extends ConsumerState<_CollectionDialog> {
   final _form = GlobalKey<FormState>();
-  final _quantity = TextEditingController();
+  final _clean = TextEditingController(text: '0');
+  final _dirty = TextEditingController(text: '0');
+  final _cracked = TextEditingController(text: '0');
   final _broken = TextEditingController(text: '0');
-  final _discarded = TextEditingController(text: '0');
   final _notes = TextEditingController();
   DateTime _date = DateTime.now();
   String? _lotId;
   bool _saving = false;
   @override
   void dispose() {
-    _quantity.dispose();
+    _clean.dispose();
+    _dirty.dispose();
+    _cracked.dispose();
     _broken.dispose();
-    _discarded.dispose();
     _notes.dispose();
     super.dispose();
   }
@@ -375,6 +379,13 @@ class _CollectionDialogState extends ConsumerState<_CollectionDialog> {
     final lots = (ref.watch(lotSummariesProvider).asData?.value ?? const [])
         .where((lot) => lot.activeBirds > 0)
         .toList();
+    final clean = _readEggCount(_clean);
+    final dirty = _readEggCount(_dirty);
+    final cracked = _readEggCount(_cracked);
+    final broken = _readEggCount(_broken);
+    final total = clean + dirty + cracked + broken;
+    final stock = clean + dirty;
+    final losses = cracked + broken;
     return AlertDialog(
       title: const Text('Registrar coleta'),
       content: SizedBox(
@@ -406,47 +417,107 @@ class _CollectionDialogState extends ConsumerState<_CollectionDialog> {
                   onChanged: (value) => setState(() => _date = value),
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _quantity,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Ovos coletados *',
-                  ),
-                  validator: _positive,
-                ),
-                const SizedBox(height: 12),
                 LayoutBuilder(
                   builder: (context, box) {
-                    final broken = TextFormField(
-                      controller: _broken,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Quebrados'),
-                      validator: _nonNegative,
-                    );
-                    final discarded = TextFormField(
-                      controller: _discarded,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Descartados',
+                    final fields = [
+                      TextFormField(
+                        controller: _clean,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Limpos'),
+                        validator: _nonNegative,
+                        onChanged: (_) => setState(() {}),
                       ),
-                      validator: _nonNegative,
-                    );
-                    return box.maxWidth > 400
-                        ? Row(
+                      TextFormField(
+                        controller: _dirty,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Sujos'),
+                        validator: _nonNegative,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      TextFormField(
+                        controller: _cracked,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Trincados',
+                        ),
+                        validator: _nonNegative,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      TextFormField(
+                        controller: _broken,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Quebrados',
+                        ),
+                        validator: _nonNegative,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ];
+                    if (box.maxWidth > 460) {
+                      return Column(
+                        children: [
+                          Row(
                             children: [
-                              Expanded(child: broken),
+                              Expanded(child: fields[0]),
                               const SizedBox(width: 12),
-                              Expanded(child: discarded),
+                              Expanded(child: fields[1]),
                             ],
-                          )
-                        : Column(
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
                             children: [
-                              broken,
-                              const SizedBox(height: 12),
-                              discarded,
+                              Expanded(child: fields[2]),
+                              const SizedBox(width: 12),
+                              Expanded(child: fields[3]),
                             ],
-                          );
+                          ),
+                        ],
+                      );
+                    }
+                    return Column(
+                      children: [
+                        for (var i = 0; i < fields.length; i++) ...[
+                          fields[i],
+                          if (i < fields.length - 1) const SizedBox(height: 12),
+                        ],
+                      ],
+                    );
                   },
+                ),
+                const SizedBox(height: 12),
+                Material(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest.withValues(alpha: .56),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _CollectionTotal(
+                            label: 'Total coletado',
+                            value: total,
+                          ),
+                        ),
+                        Expanded(
+                          child: _CollectionTotal(
+                            label: 'Vai ao estoque',
+                            value: stock,
+                          ),
+                        ),
+                        Expanded(
+                          child: _CollectionTotal(
+                            label: 'Perdas',
+                            value: losses,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -474,11 +545,14 @@ class _CollectionDialogState extends ConsumerState<_CollectionDialog> {
 
   Future<void> _save() async {
     if (!(_form.currentState?.validate() ?? false)) return;
-    final total = int.parse(_quantity.text);
-    final losses = int.parse(_broken.text) + int.parse(_discarded.text);
-    if (losses > total) {
+    final clean = _readEggCount(_clean);
+    final dirty = _readEggCount(_dirty);
+    final cracked = _readEggCount(_cracked);
+    final broken = _readEggCount(_broken);
+    final total = clean + dirty + cracked + broken;
+    if (total <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Perdas não podem superar a coleta.')),
+        const SnackBar(content: Text('Informe ao menos um ovo coletado.')),
       );
       return;
     }
@@ -490,8 +564,11 @@ class _CollectionDialogState extends ConsumerState<_CollectionDialog> {
             date: _date,
             lotId: _lotId!,
             quantity: total,
-            brokenEggs: int.parse(_broken.text),
-            discardedEggs: int.parse(_discarded.text),
+            cleanEggs: clean,
+            dirtyEggs: dirty,
+            crackedEggs: cracked,
+            brokenEggs: broken,
+            discardedEggs: cracked,
             notes: _notes.text,
           );
       if (mounted) {
@@ -516,6 +593,38 @@ class _CollectionDialogState extends ConsumerState<_CollectionDialog> {
       if (mounted) setState(() => _saving = false);
     }
   }
+
+  int _readEggCount(TextEditingController controller) =>
+      int.tryParse(controller.text.trim()) ?? 0;
+}
+
+class _CollectionTotal extends StatelessWidget {
+  const _CollectionTotal({required this.label, required this.value});
+  final String label;
+  final int value;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+      const SizedBox(height: 2),
+      Text(
+        '$value',
+        style: Theme.of(
+          context,
+        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+      ),
+    ],
+  );
 }
 
 class _DateSelector extends StatelessWidget {
@@ -544,8 +653,5 @@ class _DateSelector extends StatelessWidget {
   );
 }
 
-String? _positive(String? value) => (int.tryParse(value ?? '') ?? 0) <= 0
-    ? 'Informe um valor maior que zero.'
-    : null;
 String? _nonNegative(String? value) =>
     (int.tryParse(value ?? '') ?? -1) < 0 ? 'Informe um número válido.' : null;

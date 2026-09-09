@@ -86,9 +86,21 @@ final dashboardMetricsProvider = StreamProvider(
 final eggProductionSeriesProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchEggProductionSeries(),
 );
+final eggProductionSeriesRangeProvider =
+    StreamProvider.family<List<ReportPoint>, ({DateTime start, DateTime end})>(
+      (ref, range) => ref
+          .watch(databaseProvider)
+          .watchEggProductionSeries(start: range.start, end: range.end),
+    );
 final financeSeriesProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchFinanceSeries(),
 );
+final financeSeriesRangeProvider =
+    StreamProvider.family<List<ReportPoint>, ({DateTime start, DateTime end})>(
+      (ref, range) => ref
+          .watch(databaseProvider)
+          .watchFinanceSeries(start: range.start, end: range.end),
+    );
 final calendarEventsProvider =
     StreamProvider.family<
       List<CalendarEvent>,

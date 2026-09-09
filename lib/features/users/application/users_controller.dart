@@ -49,6 +49,30 @@ class UsersController {
         );
   }
 
+  Future<void> update({
+    required User user,
+    required String username,
+    required String displayName,
+    required bool isActive,
+  }) async {
+    final session = ref.read(authControllerProvider).session;
+    if (session == null || !session.allows('users.update')) {
+      throw StateError('Você não tem permissão para alterar usuários.');
+    }
+    if (user.id == session.userId && !isActive) {
+      throw StateError('Não é possível desativar sua própria conta.');
+    }
+    await ref
+        .read(databaseProvider)
+        .updateUserProfile(
+          userId: user.id,
+          username: username,
+          displayName: displayName,
+          isActive: isActive,
+          actorId: session.userId,
+        );
+  }
+
   Future<List<String>> permissions(User user) =>
       ref.read(databaseProvider).permissionsOf(user.id);
   Future<void> savePermissions(User user, List<String> permissions) async {

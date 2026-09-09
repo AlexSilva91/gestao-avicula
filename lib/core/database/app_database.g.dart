@@ -2905,6 +2905,42 @@ class $EggCollectionsTable extends EggCollections
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _cleanEggsMeta = const VerificationMeta(
+    'cleanEggs',
+  );
+  @override
+  late final GeneratedColumn<int> cleanEggs = GeneratedColumn<int>(
+    'clean_eggs',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _dirtyEggsMeta = const VerificationMeta(
+    'dirtyEggs',
+  );
+  @override
+  late final GeneratedColumn<int> dirtyEggs = GeneratedColumn<int>(
+    'dirty_eggs',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _crackedEggsMeta = const VerificationMeta(
+    'crackedEggs',
+  );
+  @override
+  late final GeneratedColumn<int> crackedEggs = GeneratedColumn<int>(
+    'cracked_eggs',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _brokenEggsMeta = const VerificationMeta(
     'brokenEggs',
   );
@@ -2966,6 +3002,9 @@ class $EggCollectionsTable extends EggCollections
     collectedOn,
     lotId,
     quantity,
+    cleanEggs,
+    dirtyEggs,
+    crackedEggs,
     brokenEggs,
     discardedEggs,
     notes,
@@ -3015,6 +3054,27 @@ class $EggCollectionsTable extends EggCollections
       );
     } else if (isInserting) {
       context.missing(_quantityMeta);
+    }
+    if (data.containsKey('clean_eggs')) {
+      context.handle(
+        _cleanEggsMeta,
+        cleanEggs.isAcceptableOrUnknown(data['clean_eggs']!, _cleanEggsMeta),
+      );
+    }
+    if (data.containsKey('dirty_eggs')) {
+      context.handle(
+        _dirtyEggsMeta,
+        dirtyEggs.isAcceptableOrUnknown(data['dirty_eggs']!, _dirtyEggsMeta),
+      );
+    }
+    if (data.containsKey('cracked_eggs')) {
+      context.handle(
+        _crackedEggsMeta,
+        crackedEggs.isAcceptableOrUnknown(
+          data['cracked_eggs']!,
+          _crackedEggsMeta,
+        ),
+      );
     }
     if (data.containsKey('broken_eggs')) {
       context.handle(
@@ -3078,6 +3138,18 @@ class $EggCollectionsTable extends EggCollections
         DriftSqlType.int,
         data['${effectivePrefix}quantity'],
       )!,
+      cleanEggs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}clean_eggs'],
+      )!,
+      dirtyEggs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}dirty_eggs'],
+      )!,
+      crackedEggs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cracked_eggs'],
+      )!,
       brokenEggs: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}broken_eggs'],
@@ -3112,6 +3184,9 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
   final DateTime collectedOn;
   final String lotId;
   final int quantity;
+  final int cleanEggs;
+  final int dirtyEggs;
+  final int crackedEggs;
   final int brokenEggs;
   final int discardedEggs;
   final String? notes;
@@ -3122,6 +3197,9 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
     required this.collectedOn,
     required this.lotId,
     required this.quantity,
+    required this.cleanEggs,
+    required this.dirtyEggs,
+    required this.crackedEggs,
     required this.brokenEggs,
     required this.discardedEggs,
     this.notes,
@@ -3135,6 +3213,9 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
     map['collected_on'] = Variable<DateTime>(collectedOn);
     map['lot_id'] = Variable<String>(lotId);
     map['quantity'] = Variable<int>(quantity);
+    map['clean_eggs'] = Variable<int>(cleanEggs);
+    map['dirty_eggs'] = Variable<int>(dirtyEggs);
+    map['cracked_eggs'] = Variable<int>(crackedEggs);
     map['broken_eggs'] = Variable<int>(brokenEggs);
     map['discarded_eggs'] = Variable<int>(discardedEggs);
     if (!nullToAbsent || notes != null) {
@@ -3151,6 +3232,9 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
       collectedOn: Value(collectedOn),
       lotId: Value(lotId),
       quantity: Value(quantity),
+      cleanEggs: Value(cleanEggs),
+      dirtyEggs: Value(dirtyEggs),
+      crackedEggs: Value(crackedEggs),
       brokenEggs: Value(brokenEggs),
       discardedEggs: Value(discardedEggs),
       notes: notes == null && nullToAbsent
@@ -3171,6 +3255,9 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
       collectedOn: serializer.fromJson<DateTime>(json['collectedOn']),
       lotId: serializer.fromJson<String>(json['lotId']),
       quantity: serializer.fromJson<int>(json['quantity']),
+      cleanEggs: serializer.fromJson<int>(json['cleanEggs']),
+      dirtyEggs: serializer.fromJson<int>(json['dirtyEggs']),
+      crackedEggs: serializer.fromJson<int>(json['crackedEggs']),
       brokenEggs: serializer.fromJson<int>(json['brokenEggs']),
       discardedEggs: serializer.fromJson<int>(json['discardedEggs']),
       notes: serializer.fromJson<String?>(json['notes']),
@@ -3186,6 +3273,9 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
       'collectedOn': serializer.toJson<DateTime>(collectedOn),
       'lotId': serializer.toJson<String>(lotId),
       'quantity': serializer.toJson<int>(quantity),
+      'cleanEggs': serializer.toJson<int>(cleanEggs),
+      'dirtyEggs': serializer.toJson<int>(dirtyEggs),
+      'crackedEggs': serializer.toJson<int>(crackedEggs),
       'brokenEggs': serializer.toJson<int>(brokenEggs),
       'discardedEggs': serializer.toJson<int>(discardedEggs),
       'notes': serializer.toJson<String?>(notes),
@@ -3199,6 +3289,9 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
     DateTime? collectedOn,
     String? lotId,
     int? quantity,
+    int? cleanEggs,
+    int? dirtyEggs,
+    int? crackedEggs,
     int? brokenEggs,
     int? discardedEggs,
     Value<String?> notes = const Value.absent(),
@@ -3209,6 +3302,9 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
     collectedOn: collectedOn ?? this.collectedOn,
     lotId: lotId ?? this.lotId,
     quantity: quantity ?? this.quantity,
+    cleanEggs: cleanEggs ?? this.cleanEggs,
+    dirtyEggs: dirtyEggs ?? this.dirtyEggs,
+    crackedEggs: crackedEggs ?? this.crackedEggs,
     brokenEggs: brokenEggs ?? this.brokenEggs,
     discardedEggs: discardedEggs ?? this.discardedEggs,
     notes: notes.present ? notes.value : this.notes,
@@ -3223,6 +3319,11 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
           : this.collectedOn,
       lotId: data.lotId.present ? data.lotId.value : this.lotId,
       quantity: data.quantity.present ? data.quantity.value : this.quantity,
+      cleanEggs: data.cleanEggs.present ? data.cleanEggs.value : this.cleanEggs,
+      dirtyEggs: data.dirtyEggs.present ? data.dirtyEggs.value : this.dirtyEggs,
+      crackedEggs: data.crackedEggs.present
+          ? data.crackedEggs.value
+          : this.crackedEggs,
       brokenEggs: data.brokenEggs.present
           ? data.brokenEggs.value
           : this.brokenEggs,
@@ -3242,6 +3343,9 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
           ..write('collectedOn: $collectedOn, ')
           ..write('lotId: $lotId, ')
           ..write('quantity: $quantity, ')
+          ..write('cleanEggs: $cleanEggs, ')
+          ..write('dirtyEggs: $dirtyEggs, ')
+          ..write('crackedEggs: $crackedEggs, ')
           ..write('brokenEggs: $brokenEggs, ')
           ..write('discardedEggs: $discardedEggs, ')
           ..write('notes: $notes, ')
@@ -3257,6 +3361,9 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
     collectedOn,
     lotId,
     quantity,
+    cleanEggs,
+    dirtyEggs,
+    crackedEggs,
     brokenEggs,
     discardedEggs,
     notes,
@@ -3271,6 +3378,9 @@ class EggCollection extends DataClass implements Insertable<EggCollection> {
           other.collectedOn == this.collectedOn &&
           other.lotId == this.lotId &&
           other.quantity == this.quantity &&
+          other.cleanEggs == this.cleanEggs &&
+          other.dirtyEggs == this.dirtyEggs &&
+          other.crackedEggs == this.crackedEggs &&
           other.brokenEggs == this.brokenEggs &&
           other.discardedEggs == this.discardedEggs &&
           other.notes == this.notes &&
@@ -3283,6 +3393,9 @@ class EggCollectionsCompanion extends UpdateCompanion<EggCollection> {
   final Value<DateTime> collectedOn;
   final Value<String> lotId;
   final Value<int> quantity;
+  final Value<int> cleanEggs;
+  final Value<int> dirtyEggs;
+  final Value<int> crackedEggs;
   final Value<int> brokenEggs;
   final Value<int> discardedEggs;
   final Value<String?> notes;
@@ -3294,6 +3407,9 @@ class EggCollectionsCompanion extends UpdateCompanion<EggCollection> {
     this.collectedOn = const Value.absent(),
     this.lotId = const Value.absent(),
     this.quantity = const Value.absent(),
+    this.cleanEggs = const Value.absent(),
+    this.dirtyEggs = const Value.absent(),
+    this.crackedEggs = const Value.absent(),
     this.brokenEggs = const Value.absent(),
     this.discardedEggs = const Value.absent(),
     this.notes = const Value.absent(),
@@ -3306,6 +3422,9 @@ class EggCollectionsCompanion extends UpdateCompanion<EggCollection> {
     required DateTime collectedOn,
     required String lotId,
     required int quantity,
+    this.cleanEggs = const Value.absent(),
+    this.dirtyEggs = const Value.absent(),
+    this.crackedEggs = const Value.absent(),
     this.brokenEggs = const Value.absent(),
     this.discardedEggs = const Value.absent(),
     this.notes = const Value.absent(),
@@ -3323,6 +3442,9 @@ class EggCollectionsCompanion extends UpdateCompanion<EggCollection> {
     Expression<DateTime>? collectedOn,
     Expression<String>? lotId,
     Expression<int>? quantity,
+    Expression<int>? cleanEggs,
+    Expression<int>? dirtyEggs,
+    Expression<int>? crackedEggs,
     Expression<int>? brokenEggs,
     Expression<int>? discardedEggs,
     Expression<String>? notes,
@@ -3335,6 +3457,9 @@ class EggCollectionsCompanion extends UpdateCompanion<EggCollection> {
       if (collectedOn != null) 'collected_on': collectedOn,
       if (lotId != null) 'lot_id': lotId,
       if (quantity != null) 'quantity': quantity,
+      if (cleanEggs != null) 'clean_eggs': cleanEggs,
+      if (dirtyEggs != null) 'dirty_eggs': dirtyEggs,
+      if (crackedEggs != null) 'cracked_eggs': crackedEggs,
       if (brokenEggs != null) 'broken_eggs': brokenEggs,
       if (discardedEggs != null) 'discarded_eggs': discardedEggs,
       if (notes != null) 'notes': notes,
@@ -3349,6 +3474,9 @@ class EggCollectionsCompanion extends UpdateCompanion<EggCollection> {
     Value<DateTime>? collectedOn,
     Value<String>? lotId,
     Value<int>? quantity,
+    Value<int>? cleanEggs,
+    Value<int>? dirtyEggs,
+    Value<int>? crackedEggs,
     Value<int>? brokenEggs,
     Value<int>? discardedEggs,
     Value<String?>? notes,
@@ -3361,6 +3489,9 @@ class EggCollectionsCompanion extends UpdateCompanion<EggCollection> {
       collectedOn: collectedOn ?? this.collectedOn,
       lotId: lotId ?? this.lotId,
       quantity: quantity ?? this.quantity,
+      cleanEggs: cleanEggs ?? this.cleanEggs,
+      dirtyEggs: dirtyEggs ?? this.dirtyEggs,
+      crackedEggs: crackedEggs ?? this.crackedEggs,
       brokenEggs: brokenEggs ?? this.brokenEggs,
       discardedEggs: discardedEggs ?? this.discardedEggs,
       notes: notes ?? this.notes,
@@ -3384,6 +3515,15 @@ class EggCollectionsCompanion extends UpdateCompanion<EggCollection> {
     }
     if (quantity.present) {
       map['quantity'] = Variable<int>(quantity.value);
+    }
+    if (cleanEggs.present) {
+      map['clean_eggs'] = Variable<int>(cleanEggs.value);
+    }
+    if (dirtyEggs.present) {
+      map['dirty_eggs'] = Variable<int>(dirtyEggs.value);
+    }
+    if (crackedEggs.present) {
+      map['cracked_eggs'] = Variable<int>(crackedEggs.value);
     }
     if (brokenEggs.present) {
       map['broken_eggs'] = Variable<int>(brokenEggs.value);
@@ -3413,6 +3553,9 @@ class EggCollectionsCompanion extends UpdateCompanion<EggCollection> {
           ..write('collectedOn: $collectedOn, ')
           ..write('lotId: $lotId, ')
           ..write('quantity: $quantity, ')
+          ..write('cleanEggs: $cleanEggs, ')
+          ..write('dirtyEggs: $dirtyEggs, ')
+          ..write('crackedEggs: $crackedEggs, ')
           ..write('brokenEggs: $brokenEggs, ')
           ..write('discardedEggs: $discardedEggs, ')
           ..write('notes: $notes, ')
@@ -22532,6 +22675,9 @@ typedef $$EggCollectionsTableCreateCompanionBuilder =
       required DateTime collectedOn,
       required String lotId,
       required int quantity,
+      Value<int> cleanEggs,
+      Value<int> dirtyEggs,
+      Value<int> crackedEggs,
       Value<int> brokenEggs,
       Value<int> discardedEggs,
       Value<String?> notes,
@@ -22545,6 +22691,9 @@ typedef $$EggCollectionsTableUpdateCompanionBuilder =
       Value<DateTime> collectedOn,
       Value<String> lotId,
       Value<int> quantity,
+      Value<int> cleanEggs,
+      Value<int> dirtyEggs,
+      Value<int> crackedEggs,
       Value<int> brokenEggs,
       Value<int> discardedEggs,
       Value<String?> notes,
@@ -22579,6 +22728,21 @@ class $$EggCollectionsTableFilterComposer
 
   ColumnFilters<int> get quantity => $composableBuilder(
     column: $table.quantity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cleanEggs => $composableBuilder(
+    column: $table.cleanEggs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dirtyEggs => $composableBuilder(
+    column: $table.dirtyEggs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get crackedEggs => $composableBuilder(
+    column: $table.crackedEggs,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -22637,6 +22801,21 @@ class $$EggCollectionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get cleanEggs => $composableBuilder(
+    column: $table.cleanEggs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dirtyEggs => $composableBuilder(
+    column: $table.dirtyEggs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get crackedEggs => $composableBuilder(
+    column: $table.crackedEggs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get brokenEggs => $composableBuilder(
     column: $table.brokenEggs,
     builder: (column) => ColumnOrderings(column),
@@ -22685,6 +22864,17 @@ class $$EggCollectionsTableAnnotationComposer
 
   GeneratedColumn<int> get quantity =>
       $composableBuilder(column: $table.quantity, builder: (column) => column);
+
+  GeneratedColumn<int> get cleanEggs =>
+      $composableBuilder(column: $table.cleanEggs, builder: (column) => column);
+
+  GeneratedColumn<int> get dirtyEggs =>
+      $composableBuilder(column: $table.dirtyEggs, builder: (column) => column);
+
+  GeneratedColumn<int> get crackedEggs => $composableBuilder(
+    column: $table.crackedEggs,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get brokenEggs => $composableBuilder(
     column: $table.brokenEggs,
@@ -22743,6 +22933,9 @@ class $$EggCollectionsTableTableManager
                 Value<DateTime> collectedOn = const Value.absent(),
                 Value<String> lotId = const Value.absent(),
                 Value<int> quantity = const Value.absent(),
+                Value<int> cleanEggs = const Value.absent(),
+                Value<int> dirtyEggs = const Value.absent(),
+                Value<int> crackedEggs = const Value.absent(),
                 Value<int> brokenEggs = const Value.absent(),
                 Value<int> discardedEggs = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
@@ -22754,6 +22947,9 @@ class $$EggCollectionsTableTableManager
                 collectedOn: collectedOn,
                 lotId: lotId,
                 quantity: quantity,
+                cleanEggs: cleanEggs,
+                dirtyEggs: dirtyEggs,
+                crackedEggs: crackedEggs,
                 brokenEggs: brokenEggs,
                 discardedEggs: discardedEggs,
                 notes: notes,
@@ -22767,6 +22963,9 @@ class $$EggCollectionsTableTableManager
                 required DateTime collectedOn,
                 required String lotId,
                 required int quantity,
+                Value<int> cleanEggs = const Value.absent(),
+                Value<int> dirtyEggs = const Value.absent(),
+                Value<int> crackedEggs = const Value.absent(),
                 Value<int> brokenEggs = const Value.absent(),
                 Value<int> discardedEggs = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
@@ -22778,6 +22977,9 @@ class $$EggCollectionsTableTableManager
                 collectedOn: collectedOn,
                 lotId: lotId,
                 quantity: quantity,
+                cleanEggs: cleanEggs,
+                dirtyEggs: dirtyEggs,
+                crackedEggs: crackedEggs,
                 brokenEggs: brokenEggs,
                 discardedEggs: discardedEggs,
                 notes: notes,

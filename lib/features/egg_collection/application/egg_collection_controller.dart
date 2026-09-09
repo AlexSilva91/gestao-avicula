@@ -18,6 +18,15 @@ final dailyLayingRatesProvider = StreamProvider<List<LayingRateHistoryEntry>>(
 final monthlyLayingRatesProvider = StreamProvider<List<LayingRateHistoryEntry>>(
   (ref) => ref.watch(databaseProvider).watchMonthlyLayingRates(),
 );
+final monthlyLayingRatesRangeProvider =
+    StreamProvider.family<
+      List<LayingRateHistoryEntry>,
+      ({DateTime start, DateTime end})
+    >(
+      (ref, range) => ref
+          .watch(databaseProvider)
+          .watchMonthlyLayingRates(start: range.start, end: range.end),
+    );
 
 class EggCollectionController {
   EggCollectionController(this.ref);
@@ -27,6 +36,9 @@ class EggCollectionController {
     required DateTime date,
     required String lotId,
     required int quantity,
+    required int cleanEggs,
+    required int dirtyEggs,
+    required int crackedEggs,
     required int brokenEggs,
     required int discardedEggs,
     String? notes,
@@ -41,6 +53,9 @@ class EggCollectionController {
           collectedOn: date,
           lotId: lotId,
           quantity: quantity,
+          cleanEggs: cleanEggs,
+          dirtyEggs: dirtyEggs,
+          crackedEggs: crackedEggs,
           brokenEggs: brokenEggs,
           discardedEggs: discardedEggs,
           notes: notes,
