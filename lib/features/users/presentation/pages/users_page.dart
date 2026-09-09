@@ -64,6 +64,13 @@ class UsersPage extends ConsumerWidget {
                     separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (_, index) {
                       final user = users[index];
+                      final userPermissions = ref
+                          .watch(userPermissionsProvider(user.id))
+                          .asData
+                          ?.value;
+                      final isSuperAdmin =
+                          userPermissions?.contains('system.super_admin') ??
+                          false;
                       return ListTile(
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14,
@@ -92,10 +99,20 @@ class UsersPage extends ConsumerWidget {
                               visualDensity: VisualDensity.compact,
                               label: Text(user.isActive ? 'Ativo' : 'Inativo'),
                             ),
-                            if (user.isSuperuser)
+                            if (isSuperAdmin)
                               const Chip(
                                 visualDensity: VisualDensity.compact,
-                                label: Text('Administrador'),
+                                avatar: Icon(Icons.verified_user, size: 16),
+                                label: Text('Super Admin'),
+                              )
+                            else if (user.isSuperuser)
+                              const Chip(
+                                visualDensity: VisualDensity.compact,
+                                avatar: Icon(
+                                  Icons.admin_panel_settings,
+                                  size: 16,
+                                ),
+                                label: Text('Admin da granja'),
                               ),
                             Chip(
                               visualDensity: VisualDensity.compact,
@@ -282,7 +299,7 @@ class _CreateUserDialogState extends State<_CreateUserDialog> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Administrador'),
-                  subtitle: const Text('Acesso integral ao sistema'),
+                  subtitle: const Text('Gerencia somente a própria granja'),
                   value: _admin,
                   onChanged: (value) => setState(() => _admin = value),
                 ),

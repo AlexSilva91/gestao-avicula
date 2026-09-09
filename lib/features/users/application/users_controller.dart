@@ -22,6 +22,13 @@ final tenantsProvider = StreamProvider<List<Tenant>>((ref) {
   );
 });
 
+final userPermissionsProvider = FutureProvider.family<List<String>, String>((
+  ref,
+  userId,
+) {
+  return ref.watch(databaseProvider).permissionsOf(userId);
+});
+
 const _globalPermissions = {
   'system.super_admin',
   'tenant.view_all',
@@ -60,6 +67,7 @@ class UsersController {
           actorId: session.userId,
           tenantId: resolvedTenantId,
         );
+    ref.invalidate(userPermissionsProvider);
   }
 
   Future<void> createTenant(String name) async {
@@ -143,6 +151,7 @@ class UsersController {
           permissions: permissions,
           actorId: session.userId,
         );
+    ref.invalidate(userPermissionsProvider(user.id));
   }
 
   Future<void> resetPassword(User user, String password) async {
