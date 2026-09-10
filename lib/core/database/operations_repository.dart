@@ -447,6 +447,7 @@ extension OperationsRepository on AppDatabase {
 
   Stream<List<IngredientOverview>> watchIngredientOverviews({
     String? tenantId,
+    bool includeInactive = false,
   }) {
     final query = customSelect(
       '''
@@ -460,6 +461,7 @@ extension OperationsRepository on AppDatabase {
         COALESCE((SELECT COUNT(*) FROM ingredient_lots l WHERE l.ingredient_id=i.id AND (SELECT COALESCE(SUM(CASE WHEN m.type IN ('PURCHASE_IN','ADJUSTMENT_IN') THEN m.quantity_kg ELSE -m.quantity_kg END),0) FROM ingredient_stock_movements m WHERE m.ingredient_lot_id=l.id) > 0.0001),0) active_lot_count
       FROM ingredients i
       WHERE ${_tenantSql('i', tenantId)}
+        ${includeInactive ? '' : 'AND i.is_active = 1'}
       ORDER BY is_active DESC, name
     ''',
       variables: _tenantVariables(tenantId, 7),
@@ -513,10 +515,12 @@ extension OperationsRepository on AppDatabase {
   Stream<List<IngredientLotBalance>> watchIngredientLotBalances({
     String? ingredientId,
     String? tenantId,
+    bool includeInactiveIngredients = false,
   }) {
     final filters = [
       if (ingredientId != null) 'l.ingredient_id = ?',
       _tenantSql('l', tenantId),
+      if (!includeInactiveIngredients) 'i.is_active = 1',
     ];
     final where = 'WHERE ${filters.join(' AND ')}';
     final query = customSelect(
@@ -812,13 +816,27 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
-  Stream<List<FormulaOverview>> watchFormulaOverviews({String? tenantId}) {
+  Stream<List<FormulaOverview>> watchFormulaOverviews({
+    String? tenantId,
+    bool includeInactive = false,
+    bool includeInactiveIngredients = false,
+  }) {
     final query = customSelect(
       '''
       SELECT f.*, fi.ingredient_id, i.name ingredient_name, fi.base_quantity_kg
       FROM feed_formulas f JOIN feed_formula_items fi ON fi.formula_id=f.id
       JOIN ingredients i ON i.id=fi.ingredient_id
       WHERE ${_tenantSql('f', tenantId)}
+        ${includeInactive ? '' : 'AND f.is_active = 1'}
+        ${includeInactiveIngredients ? '' : '''
+        AND NOT EXISTS (
+          SELECT 1
+          FROM feed_formula_items hidden_fi
+          JOIN ingredients hidden_i ON hidden_i.id = hidden_fi.ingredient_id
+          WHERE hidden_fi.formula_id = f.id
+            AND hidden_i.is_active = 0
+        )
+        '''}
       ORDER BY f.phase, f.version DESC, i.name
     ''',
       variables: _tenantVariables(tenantId),

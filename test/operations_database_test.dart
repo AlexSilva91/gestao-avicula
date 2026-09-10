@@ -373,6 +373,8 @@ void main() {
 
   test('ingredients and formulas can be edited and deactivated', () async {
     final ingredient = (await db.watchIngredientOverviews().first).first;
+    final formula = (await db.watchFormulaOverviews().first).first;
+
     await db.updateIngredient(
       ingredientId: ingredient.ingredient.id,
       name: 'Insumo editado',
@@ -381,12 +383,21 @@ void main() {
       notes: 'Desativado no teste',
       actorId: actor,
     );
-    final editedIngredient = (await db.watchIngredientOverviews().first)
-        .firstWhere((item) => item.ingredient.id == ingredient.ingredient.id);
+    final activeIngredients = await db.watchIngredientOverviews().first;
+    expect(
+      activeIngredients.where(
+        (item) => item.ingredient.id == ingredient.ingredient.id,
+      ),
+      isEmpty,
+    );
+    final editedIngredient =
+        (await db.watchIngredientOverviews(includeInactive: true).first)
+            .firstWhere(
+              (item) => item.ingredient.id == ingredient.ingredient.id,
+            );
     expect(editedIngredient.ingredient.name, 'Insumo editado');
     expect(editedIngredient.ingredient.isActive, isFalse);
 
-    final formula = (await db.watchFormulaOverviews().first).first;
     await db.updateFormula(
       source: formula,
       name: 'Formula editada',
@@ -398,9 +409,19 @@ void main() {
       notes: 'Desativada no teste',
       actorId: actor,
     );
-    final editedFormula = (await db.watchFormulaOverviews().first).firstWhere(
-      (item) => item.formula.id == formula.formula.id,
+    final activeFormulas = await db.watchFormulaOverviews().first;
+    expect(
+      activeFormulas.where((item) => item.formula.id == formula.formula.id),
+      isEmpty,
     );
+    final editedFormula =
+        (await db
+                .watchFormulaOverviews(
+                  includeInactive: true,
+                  includeInactiveIngredients: true,
+                )
+                .first)
+            .firstWhere((item) => item.formula.id == formula.formula.id);
     expect(editedFormula.formula.name, 'Formula editada');
     expect(editedFormula.formula.phase, 'TESTE');
     expect(editedFormula.formula.isActive, isFalse);

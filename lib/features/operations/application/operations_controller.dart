@@ -15,20 +15,32 @@ String? _tenantScope(Ref ref) {
   return session?.allows('tenant.view_all') == true ? null : session?.tenantId;
 }
 
-final ingredientsProvider = StreamProvider(
-  (ref) => ref
+final ingredientsProvider =
+    StreamProvider.family<List<IngredientOverview>, bool>(
+      (ref, includeInactive) => ref
+          .watch(databaseProvider)
+          .watchIngredientOverviews(
+            tenantId: _tenantScope(ref),
+            includeInactive: includeInactive,
+          ),
+    );
+final ingredientLotsProvider =
+    StreamProvider.family<List<IngredientLotBalance>, bool>(
+      (ref, includeInactive) => ref
+          .watch(databaseProvider)
+          .watchIngredientLotBalances(
+            tenantId: _tenantScope(ref),
+            includeInactiveIngredients: includeInactive,
+          ),
+    );
+final formulasProvider = StreamProvider.family<List<FormulaOverview>, bool>(
+  (ref, includeInactive) => ref
       .watch(databaseProvider)
-      .watchIngredientOverviews(tenantId: _tenantScope(ref)),
-);
-final ingredientLotsProvider = StreamProvider(
-  (ref) => ref
-      .watch(databaseProvider)
-      .watchIngredientLotBalances(tenantId: _tenantScope(ref)),
-);
-final formulasProvider = StreamProvider(
-  (ref) => ref
-      .watch(databaseProvider)
-      .watchFormulaOverviews(tenantId: _tenantScope(ref)),
+      .watchFormulaOverviews(
+        tenantId: _tenantScope(ref),
+        includeInactive: includeInactive,
+        includeInactiveIngredients: includeInactive,
+      ),
 );
 final feedBatchesProvider = StreamProvider(
   (ref) => ref

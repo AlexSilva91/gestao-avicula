@@ -19,7 +19,7 @@ class FeedPage extends ConsumerWidget {
     title: 'Ração e alimentação',
     scrollable: false,
     child: DefaultTabController(
-      length: 5,
+      length: 6,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -27,6 +27,7 @@ class FeedPage extends ConsumerWidget {
             isScrollable: true,
             tabs: [
               Tab(icon: Icon(Icons.grain), text: 'Insumos'),
+              Tab(icon: Icon(Icons.inventory_outlined), text: 'Lotes'),
               Tab(icon: Icon(Icons.science_outlined), text: 'Formulações'),
               Tab(icon: Icon(Icons.factory_outlined), text: 'Fabricações'),
               Tab(icon: Icon(Icons.inventory_2_outlined), text: 'Estoque'),
@@ -38,6 +39,7 @@ class FeedPage extends ConsumerWidget {
             child: TabBarView(
               children: [
                 _IngredientsTab(ref: ref),
+                _IngredientLotsTab(ref: ref),
                 _FormulasTab(ref: ref),
                 _BatchesTab(ref: ref),
                 _FeedStockTab(ref: ref),
@@ -51,55 +53,71 @@ class FeedPage extends ConsumerWidget {
   );
 }
 
-class _IngredientsTab extends StatelessWidget {
+class _IngredientsTab extends StatefulWidget {
   const _IngredientsTab({required this.ref});
   final WidgetRef ref;
+
   @override
-  Widget build(BuildContext context) => ref
-      .watch(ingredientsProvider)
+  State<_IngredientsTab> createState() => _IngredientsTabState();
+}
+
+class _IngredientsTabState extends State<_IngredientsTab> {
+  bool showInactive = false;
+
+  @override
+  Widget build(BuildContext context) => widget.ref
+      .watch(ingredientsProvider(showInactive))
       .when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => const SeletoAsyncError(),
         data: (items) {
-          final lots = ref.watch(ingredientLotsProvider).asData?.value ?? [];
+          final activeItems = items
+              .where((item) => item.ingredient.isActive)
+              .toList();
           return SeletoTabList(
             children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: () => showDialog<void>(
-                        context: context,
-                        builder: (_) => _IngredientDialog(ref: ref),
-                      ),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Novo insumo'),
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilterChip(
+                    selected: showInactive,
+                    onSelected: (value) => setState(() => showInactive = value),
+                    avatar: const Icon(Icons.visibility_outlined, size: 18),
+                    label: const Text('Exibir inativos'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _IngredientDialog(ref: widget.ref),
                     ),
-                    FilledButton.icon(
-                      onPressed: items.isEmpty
-                          ? null
-                          : () => showDialog<void>(
-                              context: context,
-                              builder: (_) => _IngredientEntryDialog(
-                                ref: ref,
-                                ingredients: items,
-                              ),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Novo insumo'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: activeItems.isEmpty
+                        ? null
+                        : () => showDialog<void>(
+                            context: context,
+                            builder: (_) => _IngredientEntryDialog(
+                              ref: widget.ref,
+                              ingredients: activeItems,
                             ),
-                      icon: const Icon(Icons.input),
-                      label: const Text('Entrada de estoque'),
-                    ),
-                  ],
-                ),
+                          ),
+                    icon: const Icon(Icons.input),
+                    label: const Text('Entrada de estoque'),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               if (items.isEmpty)
-                const SeletoEmptyState(
+                SeletoEmptyState(
                   icon: Icons.grain,
-                  title: 'Nenhum insumo',
-                  message: 'Cadastre os ingredientes usados nas formulações.',
+                  title: showInactive ? 'Nenhum insumo' : 'Nenhum insumo ativo',
+                  message: showInactive
+                      ? 'Cadastre os ingredientes usados nas formulações.'
+                      : 'Ative o filtro de inativos ou cadastre um novo insumo.',
                 )
               else
                 LayoutBuilder(
@@ -114,19 +132,78 @@ class _IngredientsTab extends StatelessWidget {
                         for (final item in items)
                           SizedBox(
                             width: width,
-                            child: _IngredientCard(ref: ref, item: item),
+                            child: _IngredientCard(ref: widget.ref, item: item),
                           ),
                       ],
                     );
                   },
                 ),
+            ],
+          );
+        },
+      );
+}
+
+class _IngredientLotsTab extends StatefulWidget {
+  const _IngredientLotsTab({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  State<_IngredientLotsTab> createState() => _IngredientLotsTabState();
+}
+
+class _IngredientLotsTabState extends State<_IngredientLotsTab> {
+  bool showInactive = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final ingredients =
+        widget.ref.watch(ingredientsProvider(false)).asData?.value ?? [];
+    return widget.ref
+        .watch(ingredientLotsProvider(showInactive))
+        .when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => const SeletoAsyncError(),
+          data: (lots) => SeletoTabList(
+            children: [
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilterChip(
+                    selected: showInactive,
+                    onSelected: (value) => setState(() => showInactive = value),
+                    avatar: const Icon(Icons.visibility_outlined, size: 18),
+                    label: const Text('Exibir inativos'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: ingredients.isEmpty
+                        ? null
+                        : () => showDialog<void>(
+                            context: context,
+                            builder: (_) => _IngredientEntryDialog(
+                              ref: widget.ref,
+                              ingredients: ingredients,
+                            ),
+                          ),
+                    icon: const Icon(Icons.input),
+                    label: const Text('Entrada de estoque'),
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
-              if (lots.isNotEmpty) ...[
-                Text(
-                  'Lotes de insumos',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
+              if (lots.isEmpty)
+                SeletoEmptyState(
+                  icon: Icons.inventory_outlined,
+                  title: showInactive
+                      ? 'Nenhum lote de insumo'
+                      : 'Nenhum lote de insumo ativo',
+                  message: showInactive
+                      ? 'Registre uma entrada de estoque para criar o primeiro lote.'
+                      : 'Ative o filtro de inativos ou registre uma entrada de estoque.',
+                )
+              else
                 LayoutBuilder(
                   builder: (context, box) {
                     final width = box.maxWidth >= 850
@@ -139,17 +216,19 @@ class _IngredientsTab extends StatelessWidget {
                         for (final lot in lots)
                           SizedBox(
                             width: width,
-                            child: _IngredientLotCard(ref: ref, lot: lot),
+                            child: _IngredientLotCard(
+                              ref: widget.ref,
+                              lot: lot,
+                            ),
                           ),
                       ],
                     );
                   },
                 ),
-              ],
             ],
-          );
-        },
-      );
+          ),
+        );
+  }
 }
 
 class _IngredientCard extends StatelessWidget {
@@ -224,6 +303,7 @@ class _IngredientCard extends StatelessWidget {
               ),
             ),
             const Divider(),
+            _IngredientInfoRow(label: 'Estoque total', value: kg(item.stockKg)),
             _IngredientInfoRow(label: 'Unidade', value: item.ingredient.unit),
             _IngredientInfoRow(
               label: 'Lotes com saldo',
@@ -354,188 +434,209 @@ class _IngredientInfoRow extends StatelessWidget {
   );
 }
 
-class _FormulasTab extends StatelessWidget {
+class _FormulasTab extends StatefulWidget {
   const _FormulasTab({required this.ref});
   final WidgetRef ref;
+
   @override
-  Widget build(BuildContext context) => ref
-      .watch(formulasProvider)
-      .when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => const SeletoAsyncError(),
-        data: (items) => SeletoTabList(
-          children: [
-            if (items.isEmpty)
-              const SeletoEmptyState(
-                icon: Icons.science,
-                title: 'Sem formulações',
-                message:
-                    'As formulações padrão serão criadas ao iniciar o banco.',
-              )
-            else
-              LayoutBuilder(
-                builder: (context, box) {
-                  final width = box.maxWidth >= 850
-                      ? (box.maxWidth - 12) / 2
-                      : box.maxWidth;
-                  return Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      for (final item in items)
-                        SizedBox(
-                          width: width,
-                          child: Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          feedFormulaNameLabel(
-                                            item.formula.name,
-                                            item.formula.phase,
-                                          ),
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.titleLarge,
-                                        ),
-                                      ),
-                                      Chip(
-                                        label: Text('v${item.formula.version}'),
-                                      ),
-                                      IconButton(
-                                        tooltip: 'Editar formulação',
-                                        onPressed: () => showDialog<void>(
-                                          context: context,
-                                          builder: (_) => _FormulaDialog(
-                                            ref: ref,
-                                            formula: item,
-                                            editCurrent: true,
-                                          ),
-                                        ),
-                                        icon: const Icon(Icons.edit_outlined),
-                                      ),
-                                      IconButton(
-                                        tooltip: item.formula.isActive
-                                            ? 'Desativar formulação'
-                                            : 'Ativar formulação',
-                                        onPressed: () async {
-                                          try {
-                                            await ref
-                                                .read(
-                                                  operationsControllerProvider,
-                                                )
-                                                .updateFormula(
-                                                  source: item,
-                                                  name: item.formula.name,
-                                                  phase: item.formula.phase,
-                                                  isActive:
-                                                      !item.formula.isActive,
-                                                  values: {
-                                                    for (final ingredient
-                                                        in item.items)
-                                                      ingredient.ingredientId:
-                                                          ingredient.quantityKg,
-                                                  },
-                                                  notes: item.formula.notes,
-                                                );
-                                          } catch (e) {
-                                            if (context.mounted) {
-                                              await showOperationError(
-                                                context,
-                                                e,
-                                              );
-                                            }
-                                          }
-                                        },
-                                        icon: Icon(
-                                          item.formula.isActive
-                                              ? Icons.block
-                                              : Icons.check_circle_outline,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  Text(
-                                    item.formula.isActive
-                                        ? 'Formulação vigente'
-                                        : 'Histórico',
-                                    style: TextStyle(
-                                      color: item.formula.isActive
-                                          ? Colors.green
-                                          : Theme.of(
-                                              context,
-                                            ).colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                  const Divider(),
-                                  for (final ingredient in item.items)
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 3,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(ingredient.name),
-                                          ),
-                                          Text(kg(ingredient.quantityKg)),
-                                        ],
-                                      ),
-                                    ),
-                                  const SizedBox(height: 12),
-                                  Wrap(
-                                    spacing: 8,
-                                    children: [
-                                      OutlinedButton.icon(
-                                        onPressed: item.formula.isActive
-                                            ? () => showDialog<void>(
-                                                context: context,
-                                                builder: (_) => _FormulaDialog(
-                                                  ref: ref,
-                                                  formula: item,
-                                                ),
-                                              )
-                                            : null,
-                                        icon: const Icon(
-                                          Icons.fork_right_outlined,
-                                        ),
-                                        label: const Text('Nova versão'),
-                                      ),
-                                      FilledButton.icon(
-                                        onPressed: item.formula.isActive
-                                            ? () => showDialog<void>(
-                                                context: context,
-                                                builder: (_) =>
-                                                    _ManufactureDialog(
-                                                      ref: ref,
-                                                      formula: item,
-                                                    ),
-                                              )
-                                            : null,
-                                        icon: const Icon(
-                                          Icons.factory_outlined,
-                                        ),
-                                        label: const Text('Fabricar'),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+  State<_FormulasTab> createState() => _FormulasTabState();
+}
+
+class _FormulasTabState extends State<_FormulasTab> {
+  bool showInactive = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final availableIngredients =
+        widget.ref.watch(ingredientsProvider(showInactive)).asData?.value ?? [];
+    return widget.ref
+        .watch(formulasProvider(showInactive))
+        .when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => const SeletoAsyncError(),
+          data: (items) => SeletoTabList(
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilterChip(
+                  selected: showInactive,
+                  onSelected: (value) => setState(() => showInactive = value),
+                  avatar: const Icon(Icons.visibility_outlined, size: 18),
+                  label: const Text('Exibir inativas'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (items.isEmpty)
+                SeletoEmptyState(
+                  icon: Icons.science,
+                  title: showInactive
+                      ? 'Sem formulações'
+                      : 'Sem formulações ativas',
+                  message: showInactive
+                      ? 'As formulações padrão serão criadas ao iniciar o banco.'
+                      : 'Ative o filtro de inativas para consultar o histórico.',
+                )
+              else
+                LayoutBuilder(
+                  builder: (context, box) {
+                    final width = box.maxWidth >= 850
+                        ? (box.maxWidth - 12) / 2
+                        : box.maxWidth;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        for (final item in items)
+                          SizedBox(
+                            width: width,
+                            child: _FormulaCard(
+                              ref: widget.ref,
+                              formula: item,
+                              availableIngredients: availableIngredients,
                             ),
                           ),
-                        ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
+            ],
+          ),
+        );
+  }
+}
+
+class _FormulaCard extends StatelessWidget {
+  const _FormulaCard({
+    required this.ref,
+    required this.formula,
+    required this.availableIngredients,
+  });
+
+  final WidgetRef ref;
+  final FormulaOverview formula;
+  final List<IngredientOverview> availableIngredients;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  feedFormulaNameLabel(
+                    formula.formula.name,
+                    formula.formula.phase,
+                  ),
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
               ),
-          ],
-        ),
-      );
+              Chip(label: Text('v${formula.formula.version}')),
+              IconButton(
+                tooltip: 'Editar formulação',
+                onPressed: availableIngredients.isEmpty
+                    ? null
+                    : () => showDialog<void>(
+                        context: context,
+                        builder: (_) => _FormulaDialog(
+                          ref: ref,
+                          formula: formula,
+                          availableIngredients: availableIngredients,
+                          editCurrent: true,
+                        ),
+                      ),
+                icon: const Icon(Icons.edit_outlined),
+              ),
+              IconButton(
+                tooltip: formula.formula.isActive
+                    ? 'Desativar formulação'
+                    : 'Ativar formulação',
+                onPressed: () async {
+                  try {
+                    await ref
+                        .read(operationsControllerProvider)
+                        .updateFormula(
+                          source: formula,
+                          name: formula.formula.name,
+                          phase: formula.formula.phase,
+                          isActive: !formula.formula.isActive,
+                          values: {
+                            for (final ingredient in formula.items)
+                              ingredient.ingredientId: ingredient.quantityKg,
+                          },
+                          notes: formula.formula.notes,
+                        );
+                  } catch (e) {
+                    if (context.mounted) await showOperationError(context, e);
+                  }
+                },
+                icon: Icon(
+                  formula.formula.isActive
+                      ? Icons.block
+                      : Icons.check_circle_outline,
+                ),
+              ),
+            ],
+          ),
+          Text(
+            formula.formula.isActive ? 'Formulação vigente' : 'Histórico',
+            style: TextStyle(
+              color: formula.formula.isActive
+                  ? Colors.green
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const Divider(),
+          for (final ingredient in formula.items)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  Expanded(child: Text(ingredient.name)),
+                  Text(kg(ingredient.quantityKg)),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed:
+                    formula.formula.isActive && availableIngredients.isNotEmpty
+                    ? () => showDialog<void>(
+                        context: context,
+                        builder: (_) => _FormulaDialog(
+                          ref: ref,
+                          formula: formula,
+                          availableIngredients: availableIngredients,
+                        ),
+                      )
+                    : null,
+                icon: const Icon(Icons.fork_right_outlined),
+                label: const Text('Nova versão'),
+              ),
+              FilledButton.icon(
+                onPressed: formula.formula.isActive
+                    ? () => showDialog<void>(
+                        context: context,
+                        builder: (_) =>
+                            _ManufactureDialog(ref: ref, formula: formula),
+                      )
+                    : null,
+                icon: const Icon(Icons.factory_outlined),
+                label: const Text('Fabricar'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _BatchesTab extends StatelessWidget {
@@ -1580,13 +1681,25 @@ class _FormulaDialog extends StatefulWidget {
   const _FormulaDialog({
     required this.ref,
     required this.formula,
+    required this.availableIngredients,
     this.editCurrent = false,
   });
   final WidgetRef ref;
   final FormulaOverview formula;
+  final List<IngredientOverview> availableIngredients;
   final bool editCurrent;
   @override
   State<_FormulaDialog> createState() => _FormulaDialogState();
+}
+
+class _FormulaItemController {
+  _FormulaItemController({required this.ingredientId, required double quantity})
+    : quantity = TextEditingController(text: quantity.toString());
+
+  String? ingredientId;
+  final TextEditingController quantity;
+
+  void dispose() => quantity.dispose();
 }
 
 class _FormulaDialogState extends State<_FormulaDialog> {
@@ -1595,10 +1708,13 @@ class _FormulaDialogState extends State<_FormulaDialog> {
   late final notes = TextEditingController(
     text: widget.formula.formula.notes ?? '',
   );
-  late final Map<String, TextEditingController> values = {
+  late final List<_FormulaItemController> items = [
     for (final i in widget.formula.items)
-      i.ingredientId: TextEditingController(text: i.quantityKg.toString()),
-  };
+      _FormulaItemController(
+        ingredientId: i.ingredientId,
+        quantity: i.quantityKg,
+      ),
+  ];
   late bool isActive = widget.formula.formula.isActive;
   bool saving = false;
   @override
@@ -1606,10 +1722,65 @@ class _FormulaDialogState extends State<_FormulaDialog> {
     name.dispose();
     phase.dispose();
     notes.dispose();
-    for (final c in values.values) {
-      c.dispose();
+    for (final item in items) {
+      item.dispose();
     }
     super.dispose();
+  }
+
+  List<DropdownMenuItem<String>> _ingredientItems(
+    _FormulaItemController current,
+  ) {
+    final currentId = current.ingredientId;
+    final knownCurrent = widget.availableIngredients.any(
+      (ingredient) => ingredient.ingredient.id == currentId,
+    );
+    final selected = items
+        .where((item) => item != current)
+        .map((item) => item.ingredientId)
+        .nonNulls
+        .toSet();
+    return [
+      if (currentId != null && !knownCurrent)
+        DropdownMenuItem(
+          value: currentId,
+          child: Text(_formulaIngredientName(currentId)),
+        ),
+      for (final ingredient in widget.availableIngredients)
+        if (!selected.contains(ingredient.ingredient.id) ||
+            ingredient.ingredient.id == current.ingredientId)
+          DropdownMenuItem(
+            value: ingredient.ingredient.id,
+            child: Text(
+              ingredient.ingredient.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+            ),
+          ),
+    ];
+  }
+
+  String _formulaIngredientName(String ingredientId) =>
+      widget.formula.items
+          .where((item) => item.ingredientId == ingredientId)
+          .firstOrNull
+          ?.name ??
+      ingredientId;
+
+  Map<String, double> _quantities() {
+    final result = <String, double>{};
+    for (final item in items) {
+      final ingredientId = item.ingredientId;
+      if (ingredientId == null) {
+        throw ArgumentError('Selecione todos os insumos da formulação.');
+      }
+      if (result.containsKey(ingredientId)) {
+        throw ArgumentError('Não repita o mesmo insumo na formulação.');
+      }
+      result[ingredientId] = parseDecimal(item.quantity.text);
+    }
+    return result;
   }
 
   @override
@@ -1639,21 +1810,85 @@ class _FormulaDialogState extends State<_FormulaDialog> {
               ),
               const SizedBox(height: 10),
             ],
-            for (final i in widget.formula.items)
+            for (var index = 0; index < items.length; index++)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: TextField(
-                  controller: values[i.ingredientId],
-                  enabled: !saving,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: i.name,
-                    suffixText: 'kg',
-                  ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: DropdownButtonFormField<String>(
+                        key: ValueKey(
+                          'formula-item-$index-${items[index].ingredientId}',
+                        ),
+                        initialValue: items[index].ingredientId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Insumo'),
+                        items: _ingredientItems(items[index]),
+                        onChanged: saving
+                            ? null
+                            : (value) => setState(
+                                () => items[index].ingredientId = value,
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: items[index].quantity,
+                        enabled: !saving,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Kg',
+                          suffixText: 'kg',
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remover insumo',
+                      onPressed: saving || items.length <= 1
+                          ? null
+                          : () => setState(() {
+                              final removed = items.removeAt(index);
+                              removed.dispose();
+                            }),
+                      icon: const Icon(Icons.remove_circle_outline),
+                    ),
+                  ],
                 ),
               ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed:
+                    saving || items.length >= widget.availableIngredients.length
+                    ? null
+                    : () => setState(
+                        () => items.add(
+                          _FormulaItemController(
+                            ingredientId: widget.availableIngredients
+                                .where(
+                                  (ingredient) => !items.any(
+                                    (item) =>
+                                        item.ingredientId ==
+                                        ingredient.ingredient.id,
+                                  ),
+                                )
+                                .firstOrNull
+                                ?.ingredient
+                                .id,
+                            quantity: 0,
+                          ),
+                        ),
+                      ),
+                icon: const Icon(Icons.add),
+                label: const Text('Adicionar insumo'),
+              ),
+            ),
+            const SizedBox(height: 10),
             TextField(
               controller: notes,
               enabled: !saving,
@@ -1691,6 +1926,7 @@ class _FormulaDialogState extends State<_FormulaDialog> {
             : () async {
                 setState(() => saving = true);
                 try {
+                  final quantities = _quantities();
                   if (widget.editCurrent) {
                     await widget.ref
                         .read(operationsControllerProvider)
@@ -1699,19 +1935,13 @@ class _FormulaDialogState extends State<_FormulaDialog> {
                           name: name.text,
                           phase: phase.text,
                           isActive: isActive,
-                          values: {
-                            for (final e in values.entries)
-                              e.key: parseDecimal(e.value.text),
-                          },
+                          values: quantities,
                           notes: notes.text,
                         );
                   } else {
                     await widget.ref
                         .read(operationsControllerProvider)
-                        .saveFormula(widget.formula, {
-                          for (final e in values.entries)
-                            e.key: parseDecimal(e.value.text),
-                        }, notes.text);
+                        .saveFormula(widget.formula, quantities, notes.text);
                   }
                   if (context.mounted) Navigator.pop(context);
                 } catch (e) {
