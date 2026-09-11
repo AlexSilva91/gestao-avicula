@@ -823,7 +823,8 @@ extension OperationsRepository on AppDatabase {
   }) {
     final query = customSelect(
       '''
-      SELECT f.*, fi.ingredient_id, i.name ingredient_name, fi.base_quantity_kg
+      SELECT f.*, fi.ingredient_id, i.name ingredient_name,
+        SUM(fi.base_quantity_kg) base_quantity_kg
       FROM feed_formulas f JOIN feed_formula_items fi ON fi.formula_id=f.id
       JOIN ingredients i ON i.id=fi.ingredient_id
       WHERE ${_tenantSql('f', tenantId)}
@@ -837,6 +838,7 @@ extension OperationsRepository on AppDatabase {
             AND hidden_i.is_active = 0
         )
         '''}
+      GROUP BY f.id, fi.ingredient_id
       ORDER BY f.phase, f.version DESC, i.name
     ''',
       variables: _tenantVariables(tenantId),

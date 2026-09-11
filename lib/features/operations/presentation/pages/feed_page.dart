@@ -341,12 +341,69 @@ class _IngredientCard extends StatelessWidget {
                   icon: const Icon(Icons.price_change_outlined),
                   label: const Text('Preço'),
                 ),
+                if (item.ingredient.isActive)
+                  OutlinedButton.icon(
+                    onPressed: () => _confirmDeactivateIngredient(
+                      context: context,
+                      ref: ref,
+                      item: item,
+                    ),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Apagar'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
               ],
             ),
           ],
         ),
       ),
     );
+  }
+}
+
+Future<void> _confirmDeactivateIngredient({
+  required BuildContext context,
+  required WidgetRef ref,
+  required IngredientOverview item,
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text('Apagar ${item.ingredient.name}?'),
+      content: const Text(
+        'O insumo ficará inativo e o histórico de lotes, preços e formulações será preservado.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(dialogContext).colorScheme.error,
+            foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+          ),
+          child: const Text('Apagar'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+  try {
+    await ref
+        .read(operationsControllerProvider)
+        .updateIngredient(
+          ingredientId: item.ingredient.id,
+          name: item.ingredient.name,
+          unit: item.ingredient.unit,
+          isActive: false,
+          notes: item.ingredient.notes,
+        );
+  } catch (e) {
+    if (context.mounted) await showOperationError(context, e);
   }
 }
 
@@ -1694,7 +1751,7 @@ class _FormulaDialog extends StatefulWidget {
 
 class _FormulaItemController {
   _FormulaItemController({required this.ingredientId, required double quantity})
-    : quantity = TextEditingController(text: quantity.toString());
+    : quantity = TextEditingController(text: decimal.format(quantity));
 
   String? ingredientId;
   final TextEditingController quantity;
@@ -1732,33 +1789,39 @@ class _FormulaDialogState extends State<_FormulaDialog> {
     _FormulaItemController current,
   ) {
     final currentId = current.ingredientId;
-    final knownCurrent = widget.availableIngredients.any(
-      (ingredient) => ingredient.ingredient.id == currentId,
-    );
-    final selected = items
-        .where((item) => item != current)
-        .map((item) => item.ingredientId)
-        .nonNulls
-        .toSet();
-    return [
-      if (currentId != null && !knownCurrent)
+    final selected = _selectedIngredientKeys(except: current);
+    final result = <DropdownMenuItem<String>>[];
+    final visibleKeys = <String>{};
+    if (currentId != null) {
+      result.add(
         DropdownMenuItem(
           value: currentId,
           child: Text(_formulaIngredientName(currentId)),
         ),
-      for (final ingredient in widget.availableIngredients)
-        if (!selected.contains(ingredient.ingredient.id) ||
-            ingredient.ingredient.id == current.ingredientId)
-          DropdownMenuItem(
-            value: ingredient.ingredient.id,
-            child: Text(
-              ingredient.ingredient.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              softWrap: false,
-            ),
+      );
+      visibleKeys.add(_ingredientKey(currentId));
+    }
+    for (final ingredient in widget.availableIngredients) {
+      final ingredientId = ingredient.ingredient.id;
+      if (ingredientId == currentId) continue;
+      final key = _ingredientKey(ingredientId);
+      if (selected.contains(key) || visibleKeys.contains(key)) {
+        continue;
+      }
+      result.add(
+        DropdownMenuItem(
+          value: ingredientId,
+          child: Text(
+            ingredient.ingredient.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
           ),
-    ];
+        ),
+      );
+      visibleKeys.add(key);
+    }
+    return result;
   }
 
   String _formulaIngredientName(String ingredientId) =>
@@ -1766,19 +1829,98 @@ class _FormulaDialogState extends State<_FormulaDialog> {
           .where((item) => item.ingredientId == ingredientId)
           .firstOrNull
           ?.name ??
+      widget.availableIngredients
+          .where((item) => item.ingredient.id == ingredientId)
+          .firstOrNull
+          ?.ingredient
+          .name ??
       ingredientId;
+
+  String _ingredientKey(String ingredientId) =>
+      _formulaIngredientName(ingredientId).trim().toUpperCase();
+
+  bool _isIngredientSelectedInAnotherRow(String ingredientId, int index) {
+    final key = _ingredientKey(ingredientId);
+    for (var i = 0; i < items.length; i++) {
+      final otherId = items[i].ingredientId;
+      if (i == index || otherId == null) continue;
+      if (_ingredientKey(otherId) == key &&
+          parseDecimal(items[i].quantity.text) > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _changeIngredient(BuildContext context, int index, String? value) {
+    if (value != null && _isIngredientSelectedInAnotherRow(value, index)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Este insumo já está na formulação.')),
+      );
+      return;
+    }
+    setState(() => items[index].ingredientId = value);
+  }
+
+  Set<String> _selectedIngredientKeys({_FormulaItemController? except}) => items
+      .where((item) => item != except && parseDecimal(item.quantity.text) > 0)
+      .map((item) => item.ingredientId)
+      .nonNulls
+      .map(_ingredientKey)
+      .toSet();
+
+  String? _nextAvailableIngredientId() {
+    final selected = _selectedIngredientKeys();
+    return widget.availableIngredients
+        .where(
+          (ingredient) =>
+              !selected.contains(_ingredientKey(ingredient.ingredient.id)),
+        )
+        .firstOrNull
+        ?.ingredient
+        .id;
+  }
+
+  bool _isExplicitZero(String value) {
+    final cleaned = value.trim().replaceAll(',', '.');
+    return RegExp(r'^0+([.]0+)?$').hasMatch(cleaned);
+  }
+
+  void _handleQuantityChanged(int index, String value) {
+    if (_isExplicitZero(value) && items.length > 1) {
+      setState(() {
+        final removed = items.removeAt(index);
+        removed.dispose();
+      });
+      return;
+    }
+    setState(() {});
+  }
 
   Map<String, double> _quantities() {
     final result = <String, double>{};
+    final usedKeys = <String>{};
     for (final item in items) {
       final ingredientId = item.ingredientId;
+      final quantity = parseDecimal(item.quantity.text);
+      if (quantity < 0) {
+        throw ArgumentError('Informe apenas quantidades positivas.');
+      }
+      if (quantity == 0) {
+        continue;
+      }
       if (ingredientId == null) {
         throw ArgumentError('Selecione todos os insumos da formulação.');
       }
-      if (result.containsKey(ingredientId)) {
+      final key = _ingredientKey(ingredientId);
+      if (result.containsKey(ingredientId) || usedKeys.contains(key)) {
         throw ArgumentError('Não repita o mesmo insumo na formulação.');
       }
-      result[ingredientId] = parseDecimal(item.quantity.text);
+      usedKeys.add(key);
+      result[ingredientId] = quantity;
+    }
+    if (result.isEmpty) {
+      throw ArgumentError('Mantenha pelo menos um insumo na formulação.');
     }
     return result;
   }
@@ -1828,9 +1970,8 @@ class _FormulaDialogState extends State<_FormulaDialog> {
                         items: _ingredientItems(items[index]),
                         onChanged: saving
                             ? null
-                            : (value) => setState(
-                                () => items[index].ingredientId = value,
-                              ),
+                            : (value) =>
+                                  _changeIngredient(context, index, value),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -1838,6 +1979,8 @@ class _FormulaDialogState extends State<_FormulaDialog> {
                       child: TextField(
                         controller: items[index].quantity,
                         enabled: !saving,
+                        onChanged: (value) =>
+                            _handleQuantityChanged(index, value),
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -1847,39 +1990,18 @@ class _FormulaDialogState extends State<_FormulaDialog> {
                         ),
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Remover insumo',
-                      onPressed: saving || items.length <= 1
-                          ? null
-                          : () => setState(() {
-                              final removed = items.removeAt(index);
-                              removed.dispose();
-                            }),
-                      icon: const Icon(Icons.remove_circle_outline),
-                    ),
                   ],
                 ),
               ),
             Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
-                onPressed:
-                    saving || items.length >= widget.availableIngredients.length
+                onPressed: saving || _nextAvailableIngredientId() == null
                     ? null
                     : () => setState(
                         () => items.add(
                           _FormulaItemController(
-                            ingredientId: widget.availableIngredients
-                                .where(
-                                  (ingredient) => !items.any(
-                                    (item) =>
-                                        item.ingredientId ==
-                                        ingredient.ingredient.id,
-                                  ),
-                                )
-                                .firstOrNull
-                                ?.ingredient
-                                .id,
+                            ingredientId: _nextAvailableIngredientId(),
                             quantity: 0,
                           ),
                         ),

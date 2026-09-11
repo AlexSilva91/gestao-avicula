@@ -116,12 +116,14 @@ Future<void> _seedLots(AppDatabase db, String actorId, DateTime today) async {
 Future<void> _seedFeed(AppDatabase db, String actorId, DateTime today) async {
   final ingredients = await db.watchIngredientOverviews().first;
   const prices = {
-    'Milho': 185,
-    'Farelo de soja': 310,
-    'Farelo de trigo': 155,
+    'Xerem grosso': 185,
+    'Xerem fino': 190,
+    'Trigo': 155,
+    'Farelo de soja fino': 315,
+    'Farelo de soja grosso': 310,
     'Calcário calcítico': 95,
-    'Núcleo': 720,
     'Cúrcuma': 1680,
+    'Urucum': 1450,
   };
   for (final item in ingredients) {
     final price = prices[item.ingredient.name] ?? 200;
@@ -135,12 +137,10 @@ Future<void> _seedFeed(AppDatabase db, String actorId, DateTime today) async {
     await db.registerIngredientStockEntry(
       ingredientId: item.ingredient.id,
       entryDate: today.subtract(const Duration(days: 16)),
-      packageUnit: item.ingredient.name == 'Núcleo' ? 'KG' : 'SACO',
-      packageQuantity: item.ingredient.name == 'Núcleo' ? 30 : 5,
-      packageWeightKg: item.ingredient.name == 'Núcleo' ? 1 : 50,
-      totalCostCents: item.ingredient.name == 'Núcleo'
-          ? price * 30
-          : price * 250,
+      packageUnit: 'SACO',
+      packageQuantity: 5,
+      packageWeightKg: 50,
+      totalCostCents: price * 250,
       supplier: 'Estoque demo',
       notes: 'Entrada demo por movimentação.',
       actorId: actorId,
@@ -155,7 +155,7 @@ Future<void> _seedFeed(AppDatabase db, String actorId, DateTime today) async {
     formula: productionFormula,
     quantityKg: 180,
     date: today.subtract(const Duration(days: 12)),
-    notes: 'Lote de ração com milho selecionado e cúrcuma.',
+    notes: 'Lote de ração com xerem selecionado e cúrcuma.',
     actorId: actorId,
   );
 

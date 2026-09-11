@@ -186,7 +186,7 @@ void main() {
 
   test('feed manufacture consumes oldest ingredient lots first', () async {
     final ingredient = (await db.watchIngredientOverviews().first).firstWhere(
-      (item) => item.ingredient.name == 'Milho',
+      (item) => item.ingredient.name == 'Xerem grosso',
     );
     await db.registerIngredientStockEntry(
       ingredientId: ingredient.ingredient.id,

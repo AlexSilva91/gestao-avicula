@@ -479,20 +479,22 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> _seedOperationalDefaults(String actorId) async {
     const ingredientSeeds = {
-      'milho': 'Milho',
-      'soja': 'Farelo de soja',
-      'trigo': 'Farelo de trigo',
-      'calcario': 'Calcário calcítico',
-      'nucleo': 'Núcleo',
+      'xerem-grosso': 'Xerem grosso',
+      'xerem-fino': 'Xerem fino',
+      'trigo': 'Trigo',
+      'farelo-soja-fino': 'Farelo de soja fino',
+      'farelo-soja-grosso': 'Farelo de soja grosso',
       'curcuma': 'Cúrcuma',
+      'urucum': 'Urucum',
+      'calcario-calcitico': 'Calcário calcítico',
     };
     const recipes = <String, List<double>>{
-      'CRIA': [63, 33, 0, 0, 4, 0],
-      'RECRIA': [62, 20, 14, 0, 4, 0],
-      'PRE_POSTURA': [62, 22, 7.5, 4, 4, .5],
-      'PRODUCAO_I': [59.5, 23, 5, 8, 4, .5],
-      'PRODUCAO_II': [60, 22.5, 5, 8, 4, .5],
-      'PRODUCAO_III': [60.5, 22, 5, 8, 4, .5],
+      'CRIA': [63, 0, 0, 0, 33, 0, 0, 4],
+      'RECRIA': [62, 0, 14, 0, 20, 0, 0, 4],
+      'PRE_POSTURA': [62, 0, 7.5, 22, 0, .25, .25, 8],
+      'PRODUCAO_I': [59.5, 0, 5, 23, 0, .25, .25, 12],
+      'PRODUCAO_II': [60, 0, 5, 22.5, 0, .25, .25, 12],
+      'PRODUCAO_III': [60.5, 0, 5, 22, 0, .25, .25, 12],
     };
     final now = DateTime.now();
     await transaction(() async {
