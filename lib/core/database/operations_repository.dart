@@ -1123,10 +1123,7 @@ extension OperationsRepository on AppDatabase {
               AND tenant_user.tenant_id = ?
           )
         ''',
-        [
-          Variable.withString(source.formula.phase),
-          Variable.withString(actorTenantId),
-        ],
+        [source.formula.phase, actorTenantId],
       );
       await into(feedFormulas).insert(
         FeedFormulasCompanion.insert(

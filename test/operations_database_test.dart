@@ -859,6 +859,75 @@ void main() {
   );
 
   test(
+    'requested formulas repair existing formula versions with wrong amounts',
+    () async {
+      final ingredients = await db.watchIngredientOverviews().first;
+      for (final name in [
+        'Xerem fino',
+        'Farelo de soja fino',
+        'Farelo de trigo',
+        'Calcário calcítico',
+        'Meganúcleo Postura 4%',
+        'Urucum',
+        'Cúrcuma',
+      ]) {
+        final ingredient = ingredients.firstWhere(
+          (item) => item.ingredient.name == name,
+        );
+        await db.registerIngredientStockEntry(
+          ingredientId: ingredient.ingredient.id,
+          entryDate: DateTime(2026, 1, 1),
+          packageUnit: 'KG',
+          packageQuantity: 100,
+          packageWeightKg: 1,
+          totalCostCents: 10000,
+          actorId: actor,
+        );
+      }
+      final source = (await db.watchFormulaOverviews().first).firstWhere(
+        (formula) => formula.formula.phase == 'PRE_POSTURA',
+      );
+      final badQuantities = {
+        for (final item in source.items) item.ingredientId: item.quantityKg,
+      };
+      final limestoneId = ingredients
+          .firstWhere((item) => item.ingredient.name == 'Calcário calcítico')
+          .ingredient
+          .id;
+      badQuantities[limestoneId] = 192.784;
+
+      await db.createFormulaVersion(
+        source: source,
+        quantities: badQuantities,
+        notes: 'Versão com proporção incorreta',
+        actorId: actor,
+      );
+      await db.ensureRequestedManufactureProposalFormulas(
+        actorId: actor,
+        force: true,
+      );
+
+      final formulas = await db
+          .watchFormulaOverviews(
+            includeInactive: true,
+            includeInactiveIngredients: true,
+          )
+          .first;
+      final prePostureFormulas = formulas.where(
+        (formula) => formula.formula.phase == 'PRE_POSTURA',
+      );
+      expect(prePostureFormulas, isNotEmpty);
+      for (final formula in prePostureFormulas) {
+        final quantities = {
+          for (final item in formula.items) item.name: item.quantityKg,
+        };
+        expect(quantities['Calcário calcítico'], closeTo(8, .001));
+        expect(quantities.values, everyElement(lessThanOrEqualTo(100)));
+      }
+    },
+  );
+
+  test(
     'formula items only keep allowed ingredients with positive quantities',
     () async {
       const allowedNames = {

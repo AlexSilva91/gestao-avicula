@@ -19,7 +19,82 @@ const _defaultFormulaStockRebuildSettingKey =
     'default_formula_stock_rebuild_2026_09_11';
 const _operationalDefaultsSeedSettingKey = 'operational_defaults_seeded_v2';
 const _requestedManufactureProposalFormulasSettingKey =
-    'requested_manufacture_proposal_formulas_2026_09_12_v4';
+    'requested_manufacture_proposal_formulas_2026_09_12_v5';
+const _requestedFeedFormulaRecipes =
+    <({String phase, String name, Map<String, double> quantities})>[
+      (
+        phase: 'CRIA',
+        name: 'Cria',
+        quantities: {
+          'xerem': 64.73,
+          'soja': 20.36,
+          'trigo': 10.91,
+          'nucleo_crescimento': 4,
+        },
+      ),
+      (
+        phase: 'RECRIA',
+        name: 'Recria',
+        quantities: {
+          'xerem': 68.73,
+          'soja': 16.36,
+          'trigo': 10.91,
+          'nucleo_crescimento': 4,
+        },
+      ),
+      (
+        phase: 'PRE_POSTURA',
+        name: 'Pré-postura',
+        quantities: {
+          'xerem': 61.32,
+          'soja': 20,
+          'trigo': 6,
+          'calcario': 8,
+          'nucleo_postura': 3.6,
+          'urucum': .54,
+          'curcuma': .54,
+        },
+      ),
+      (
+        phase: 'PRODUCAO_I',
+        name: 'Produção I',
+        quantities: {
+          'xerem': 62.32,
+          'soja': 19,
+          'trigo': 6,
+          'calcario': 8,
+          'nucleo_postura': 3.6,
+          'urucum': .54,
+          'curcuma': .56,
+        },
+      ),
+      (
+        phase: 'PRODUCAO_II',
+        name: 'Produção II',
+        quantities: {
+          'xerem': 63.32,
+          'soja': 18,
+          'trigo': 6,
+          'calcario': 8,
+          'nucleo_postura': 3.6,
+          'urucum': .54,
+          'curcuma': .56,
+        },
+      ),
+      (
+        phase: 'PRODUCAO_III',
+        name: 'Produção III',
+        quantities: {
+          'xerem': 64.32,
+          'soja': 17,
+          'trigo': 6,
+          'calcario': 8,
+          'nucleo_postura': 3.6,
+          'urucum': .54,
+          'curcuma': .56,
+        },
+      ),
+    ];
 const _recipeIngredientAliases = <String, List<String>>{
   'xerem': ['xerem fino', 'xerém fino', 'xerem', 'xerém', 'xerem grosso'],
   'soja': ['farelo de soja fino', 'farelo de soja', 'soja'],
@@ -578,99 +653,40 @@ class AppDatabase extends _$AppDatabase {
     final recipeIds = _recipeIngredientIds(
       await _activeIngredientRefs(requireStock: true),
     );
-    final requestedRecipes =
-        <({String phase, String name, Map<String, double> quantities})>[
-          (
-            phase: 'CRIA',
-            name: 'Cria',
-            quantities: {
-              'xerem': 64.73,
-              'soja': 20.36,
-              'trigo': 10.91,
-              'nucleo_crescimento': 4,
-            },
-          ),
-          (
-            phase: 'RECRIA',
-            name: 'Recria',
-            quantities: {
-              'xerem': 68.73,
-              'soja': 16.36,
-              'trigo': 10.91,
-              'nucleo_crescimento': 4,
-            },
-          ),
-          (
-            phase: 'PRE_POSTURA',
-            name: 'Pré-postura',
-            quantities: {
-              'xerem': 61.32,
-              'soja': 20,
-              'trigo': 6,
-              'calcario': 8,
-              'nucleo_postura': 3.6,
-              'urucum': .54,
-              'curcuma': .54,
-            },
-          ),
-          (
-            phase: 'PRODUCAO_I',
-            name: 'Produção I',
-            quantities: {
-              'xerem': 62.32,
-              'soja': 19,
-              'trigo': 6,
-              'calcario': 8,
-              'nucleo_postura': 3.6,
-              'urucum': .54,
-              'curcuma': .56,
-            },
-          ),
-          (
-            phase: 'PRODUCAO_II',
-            name: 'Produção II',
-            quantities: {
-              'xerem': 63.32,
-              'soja': 18,
-              'trigo': 6,
-              'calcario': 8,
-              'nucleo_postura': 3.6,
-              'urucum': .54,
-              'curcuma': .56,
-            },
-          ),
-          (
-            phase: 'PRODUCAO_III',
-            name: 'Produção III',
-            quantities: {
-              'xerem': 64.32,
-              'soja': 17,
-              'trigo': 6,
-              'calcario': 8,
-              'nucleo_postura': 3.6,
-              'urucum': .54,
-              'curcuma': .56,
-            },
-          ),
-        ];
     final resolvedRecipes =
         <
           ({FeedFormula formula, String name, Map<String, double> quantities})
         >[];
-    for (final recipe in requestedRecipes) {
+    var resolvedAllRecipes = true;
+    for (final recipe in _requestedFeedFormulaRecipes) {
       final quantities = _recipeQuantities(recipeIds, recipe.quantities);
-      if (quantities == null) return;
-      resolvedRecipes.add((
-        formula: await _ensureSystemFormula(
-          phase: recipe.phase,
+      if (quantities == null) {
+        resolvedAllRecipes = false;
+        continue;
+      }
+      final formulas = await _formulasByPhase(recipe.phase);
+      if (formulas.isEmpty) {
+        resolvedRecipes.add((
+          formula: await _ensureSystemFormula(
+            phase: recipe.phase,
+            name: recipe.name,
+            actorId: actorId,
+            now: now,
+          ),
           name: recipe.name,
-          actorId: actorId,
-          now: now,
-        ),
-        name: recipe.name,
-        quantities: quantities,
-      ));
+          quantities: quantities,
+        ));
+      } else {
+        for (final formula in formulas) {
+          resolvedRecipes.add((
+            formula: formula,
+            name: recipe.name,
+            quantities: quantities,
+          ));
+        }
+      }
     }
+    if (resolvedRecipes.isEmpty) return;
     await transaction(() async {
       for (final recipe in resolvedRecipes) {
         await _replaceFormulaItems(
@@ -687,14 +703,16 @@ class AppDatabase extends _$AppDatabase {
               'Formulação ${recipe.name} ajustada para base de 100 kg.',
         );
       }
-      await into(appSettings).insertOnConflictUpdate(
-        AppSettingsCompanion.insert(
-          key: _requestedManufactureProposalFormulasSettingKey,
-          value: now.toIso8601String(),
-          updatedAt: now,
-          updatedBy: Value(actorId),
-        ),
-      );
+      if (resolvedAllRecipes) {
+        await into(appSettings).insertOnConflictUpdate(
+          AppSettingsCompanion.insert(
+            key: _requestedManufactureProposalFormulasSettingKey,
+            value: now.toIso8601String(),
+            updatedAt: now,
+            updatedBy: Value(actorId),
+          ),
+        );
+      }
     });
   }
 
@@ -704,6 +722,12 @@ class AppDatabase extends _$AppDatabase {
           ..where((row) => row.phase.equals(phase))
           ..limit(1))
         .getSingleOrNull();
+  }
+
+  Future<List<FeedFormula>> _formulasByPhase(String phase) {
+    return (select(
+      feedFormulas,
+    )..where((row) => row.phase.equals(phase))).get();
   }
 
   Future<FeedFormula> _ensureSystemFormula({
