@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import 'app_database.dart';
+import 'feed_formula_import.dart';
 import 'operational_data_import.dart';
 import '../utils/formatters.dart';
 
@@ -77,6 +78,20 @@ class FormulaIngredient {
   final String ingredientId;
   final String name;
   final double quantityKg;
+}
+
+class FeedFormulaImportResult {
+  const FeedFormulaImportResult({
+    required this.formulaCount,
+    required this.createdCount,
+    required this.updatedCount,
+    required this.itemCount,
+  });
+
+  final int formulaCount;
+  final int createdCount;
+  final int updatedCount;
+  final int itemCount;
 }
 
 class FeedBatchBalance {
@@ -310,6 +325,126 @@ extension OperationsRepository on AppDatabase {
           'Importação operacional concluída: ${parsed.rowCount} linha(s) em ${parsed.sectionCount} seção(ões).',
     );
     return parsed;
+  }
+
+  Future<FeedFormulaImportResult> importFeedFormulas({
+    required String filename,
+    required Uint8List bytes,
+    required String actorId,
+  }) async {
+    final imported = parseFeedFormulaImport(filename: filename, bytes: bytes);
+    final activeIngredients = await (select(
+      ingredients,
+    )..where((row) => row.isActive.equals(true))).get();
+    final ingredientByKey = <String, Ingredient>{};
+    for (final ingredient in activeIngredients) {
+      ingredientByKey[_formulaImportKey(ingredient.name)] = ingredient;
+    }
+    final formulasByName = <String, List<FeedFormula>>{};
+    for (final formula in await select(feedFormulas).get()) {
+      formulasByName
+          .putIfAbsent(_formulaImportKey(formula.name), () => <FeedFormula>[])
+          .add(formula);
+    }
+    var created = 0;
+    var updated = 0;
+    var itemCount = 0;
+    final now = DateTime.now();
+    await transaction(() async {
+      for (final formula in imported) {
+        final quantities = <String, double>{};
+        for (final item in formula.items) {
+          if (item.quantityKg < 0) {
+            throw ArgumentError(
+              'Quantidade negativa em ${formula.name}: ${item.ingredientName}.',
+            );
+          }
+          if (item.quantityKg <= .0001) continue;
+          final ingredient = _resolveFormulaImportIngredient(
+            item.ingredientName,
+            activeIngredients,
+            ingredientByKey,
+          );
+          quantities[ingredient.id] =
+              (quantities[ingredient.id] ?? 0) + item.quantityKg;
+        }
+        if (quantities.isEmpty) {
+          throw ArgumentError(
+            'A formulação ${formula.name} precisa ter ao menos um item.',
+          );
+        }
+        final key = _formulaImportKey(formula.name);
+        final existing = formulasByName[key] ?? const <FeedFormula>[];
+        if (existing.isEmpty) {
+          final id = _uuid.v4();
+          await into(feedFormulas).insert(
+            FeedFormulasCompanion.insert(
+              id: id,
+              name: formula.name.trim(),
+              phase: (formula.phase ?? formula.name).trim().toUpperCase(),
+              validFrom: now,
+              notes: Value(_cleanValue(formula.notes)),
+              createdBy: actorId,
+              createdAt: now,
+            ),
+          );
+          for (final entry in quantities.entries) {
+            await into(feedFormulaItems).insert(
+              FeedFormulaItemsCompanion.insert(
+                id: _uuid.v4(),
+                formulaId: id,
+                ingredientId: entry.key,
+                baseQuantityKg: entry.value,
+              ),
+            );
+            itemCount++;
+          }
+          created++;
+        } else {
+          for (final current in existing) {
+            await (update(
+              feedFormulas,
+            )..where((row) => row.id.equals(current.id))).write(
+              FeedFormulasCompanion(
+                name: Value(formula.name.trim()),
+                phase: Value(
+                  (formula.phase ?? current.phase).trim().toUpperCase(),
+                ),
+                notes: Value(_cleanValue(formula.notes ?? current.notes)),
+              ),
+            );
+            await (delete(
+              feedFormulaItems,
+            )..where((row) => row.formulaId.equals(current.id))).go();
+            for (final entry in quantities.entries) {
+              await into(feedFormulaItems).insert(
+                FeedFormulaItemsCompanion.insert(
+                  id: _uuid.v4(),
+                  formulaId: current.id,
+                  ingredientId: entry.key,
+                  baseQuantityKg: entry.value,
+                ),
+              );
+              itemCount++;
+            }
+            updated++;
+          }
+        }
+      }
+      await addAudit(
+        userId: actorId,
+        action: 'feed_formulas.import',
+        entityType: 'feed_formula',
+        description:
+            'Importação de ${imported.length} formulação(ões) por arquivo.',
+      );
+    });
+    return FeedFormulaImportResult(
+      formulaCount: imported.length,
+      createdCount: created,
+      updatedCount: updated,
+      itemCount: itemCount,
+    );
   }
 
   Future<FeedRecommendationImportResult> importFeedConsumptionRecommendations({
@@ -4354,6 +4489,96 @@ String _normalImportKey(String value) {
   }
   return buffer.toString().replaceAll(RegExp(r'[^a-z0-9]'), '');
 }
+
+Ingredient _resolveFormulaImportIngredient(
+  String name,
+  List<Ingredient> ingredients,
+  Map<String, Ingredient> ingredientByKey,
+) {
+  final key = _formulaImportKey(name);
+  final exact = ingredientByKey[key];
+  if (exact != null) return exact;
+  final aliases = _formulaIngredientImportAliases[key] ?? const <String>[];
+  for (final alias in aliases) {
+    final match = ingredientByKey[_formulaImportKey(alias)];
+    if (match != null) return match;
+  }
+  final containsMatches = ingredients
+      .where((ingredient) => _formulaImportKey(ingredient.name).contains(key))
+      .toList();
+  if (containsMatches.length == 1) return containsMatches.single;
+  if (containsMatches.length > 1) {
+    throw StateError(
+      'Insumo "$name" é ambíguo. Use o nome exato cadastrado no sistema.',
+    );
+  }
+  throw StateError(
+    'Insumo "$name" não encontrado entre os insumos ativos. '
+    'A importação não cria insumos automaticamente.',
+  );
+}
+
+const _formulaIngredientImportAliases = {
+  'xerem': ['xerem fino', 'xerém fino'],
+  'xeremfino': ['xerem fino', 'xerém fino'],
+  'soja': ['farelo de soja fino', 'farelo de soja'],
+  'trigo': ['farelo de trigo'],
+  'farelodetrigo': ['farelo de trigo'],
+  'calcario': ['calcário calcítico', 'calcario calcitico'],
+  'calcariocalcitico': ['calcário calcítico', 'calcario calcitico'],
+  'nucleocrescimento': [
+    'núcleo de crescimento',
+    'nucleo de crescimento',
+    'núcleo crescimento',
+    'nucleo crescimento',
+    'meganúcleo frango c 4%',
+    'meganucleo frango c 4%',
+  ],
+  'nucleodecrescimento': [
+    'núcleo de crescimento',
+    'nucleo de crescimento',
+    'núcleo crescimento',
+    'nucleo crescimento',
+    'meganúcleo frango c 4%',
+    'meganucleo frango c 4%',
+  ],
+  'nucleopostura': [
+    'núcleo de postura',
+    'nucleo de postura',
+    'núcleo postura',
+    'nucleo postura',
+    'meganúcleo postura 4%',
+    'meganucleo postura 4%',
+  ],
+  'nucleodepostura': [
+    'núcleo de postura',
+    'nucleo de postura',
+    'núcleo postura',
+    'nucleo postura',
+    'meganúcleo postura 4%',
+    'meganucleo postura 4%',
+  ],
+  'curcuma': ['cúrcuma', 'curcuma', 'açafrão', 'acafrao'],
+  'acafrao': ['cúrcuma', 'curcuma', 'açafrão', 'acafrao'],
+};
+
+String _formulaImportKey(String value) => value
+    .trim()
+    .toLowerCase()
+    .replaceAll('á', 'a')
+    .replaceAll('à', 'a')
+    .replaceAll('â', 'a')
+    .replaceAll('ã', 'a')
+    .replaceAll('é', 'e')
+    .replaceAll('ê', 'e')
+    .replaceAll('í', 'i')
+    .replaceAll('ó', 'o')
+    .replaceAll('ô', 'o')
+    .replaceAll('õ', 'o')
+    .replaceAll('ú', 'u')
+    .replaceAll('ü', 'u')
+    .replaceAll('ç', 'c')
+    .replaceAll(RegExp(r'[^a-z0-9]+'), '');
 
 void _validateAlertRecurrence({
   required String alertTime,

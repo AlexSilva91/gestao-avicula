@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show Variable;
 import 'package:drift/native.dart';
+import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:seleto/core/database/app_database.dart';
 import 'package:seleto/core/database/operational_data_import.dart';
@@ -924,6 +925,106 @@ void main() {
         expect(quantities['Calcário calcítico'], closeTo(8, .001));
         expect(quantities.values, everyElement(lessThanOrEqualTo(100)));
       }
+    },
+  );
+
+  test(
+    'feed formulas can be imported from json xml and xlsx by name',
+    () async {
+      final initialIngredientCount =
+          (await db.watchIngredientOverviews(includeInactive: true).first)
+              .length;
+
+      final jsonResult = await db.importFeedFormulas(
+        filename: 'formulas.json',
+        bytes: Uint8List.fromList(
+          utf8.encode(
+            jsonEncode({
+              'formulas': [
+                {
+                  'nome': 'Cria',
+                  'fase': 'CRIA',
+                  'itens': [
+                    {'insumo': 'Xerém', 'quantidade': 60},
+                    {'insumo': 'Soja', 'quantidade': 25},
+                    {'insumo': 'Farelo de trigo', 'quantidade': 11},
+                    {'insumo': 'Núcleo de crescimento', 'quantidade': 4},
+                  ],
+                },
+              ],
+            }),
+          ),
+        ),
+        actorId: actor,
+      );
+      expect(jsonResult.updatedCount, greaterThanOrEqualTo(1));
+      var cria = (await db.watchFormulaOverviews().first).firstWhere(
+        (formula) => formula.formula.name == 'Cria',
+      );
+      expect(
+        {
+          for (final item in cria.items) item.name: item.quantityKg,
+        }['Xerem fino'],
+        closeTo(60, .001),
+      );
+
+      final xmlResult = await db.importFeedFormulas(
+        filename: 'formulas.xml',
+        bytes: Uint8List.fromList(
+          utf8.encode('''
+<formulas>
+  <formula nome="Teste XML" fase="TESTE_XML">
+    <item insumo="Xerém" quantidade="70"/>
+    <item insumo="Soja" quantidade="20"/>
+    <item insumo="Farelo de trigo" quantidade="10"/>
+  </formula>
+</formulas>
+'''),
+        ),
+        actorId: actor,
+      );
+      expect(xmlResult.createdCount, 1);
+
+      final excel = Excel.createExcel();
+      final sheet = excel['Formulações'];
+      final headers = ['Formula', 'Fase', 'Insumo', 'Quantidade'];
+      for (var column = 0; column < headers.length; column++) {
+        sheet.updateCell(
+          CellIndex.indexByColumnRow(columnIndex: column, rowIndex: 0),
+          TextCellValue(headers[column]),
+        );
+      }
+      final rows = [
+        ['Teste XLSX', 'TESTE_XLSX', 'Xerém', 80],
+        ['Teste XLSX', 'TESTE_XLSX', 'Soja', 20],
+      ];
+      for (var row = 0; row < rows.length; row++) {
+        for (var column = 0; column < rows[row].length; column++) {
+          final value = rows[row][column];
+          sheet.updateCell(
+            CellIndex.indexByColumnRow(columnIndex: column, rowIndex: row + 1),
+            value is num
+                ? DoubleCellValue(value.toDouble())
+                : TextCellValue(value.toString()),
+          );
+        }
+      }
+      final xlsxResult = await db.importFeedFormulas(
+        filename: 'formulas.xlsx',
+        bytes: Uint8List.fromList(excel.encode()!),
+        actorId: actor,
+      );
+      expect(xlsxResult.createdCount, 1);
+
+      final formulas = await db.watchFormulaOverviews().first;
+      expect(
+        formulas.map((formula) => formula.formula.name),
+        containsAll(['Teste XML', 'Teste XLSX']),
+      );
+      final finalIngredientCount =
+          (await db.watchIngredientOverviews(includeInactive: true).first)
+              .length;
+      expect(finalIngredientCount, initialIngredientCount);
     },
   );
 

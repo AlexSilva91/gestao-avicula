@@ -261,9 +261,12 @@ class FirebaseBackupService extends ChangeNotifier {
       }
 
       if (lastLocalHash == localHash && lastRemoteHash != remoteHash) {
-        await _restoreLocalPayload(remotePayload, scope);
-        await _rememberHashes(preferences, scope, remoteHash!, remoteHash);
-        return const SyncResult(SyncStatus.downloaded);
+        final mergedPayload = _mergePayloads(localPayload, remotePayload);
+        final mergedHash = _hashPayload(mergedPayload);
+        await _restoreLocalPayload(mergedPayload, scope);
+        await _upload(mergedPayload, scope);
+        await _rememberHashes(preferences, scope, mergedHash, mergedHash);
+        return const SyncResult(SyncStatus.merged);
       }
 
       if (lastRemoteHash == remoteHash && lastLocalHash != localHash) {
@@ -624,7 +627,7 @@ class FirebaseBackupService extends ChangeNotifier {
       );
       return;
     }
-    await _restoreTenantOperationalPayload(backupPayload);
+    await _restoreTenantOperationalPayload(backupPayload, scope);
   }
 
   Future<void> _restoreAuthPayload(
@@ -693,6 +696,7 @@ class FirebaseBackupService extends ChangeNotifier {
 
   Future<void> _restoreTenantOperationalPayload(
     Map<String, dynamic> payload,
+    _SyncScope scope,
   ) async {
     await _database.transaction(() async {
       for (final row in _rows(payload, 'lots')) {
@@ -717,35 +721,50 @@ class FirebaseBackupService extends ChangeNotifier {
             .into(_database.eggStockMovements)
             .insertOnConflictUpdate(EggStockMovement.fromJson(row));
       }
+      // Insumos e formulações são localmente autoritativos (_localAuthoritativeOnMerge).
+      // Usar insertOrIgnore para que dados apagados localmente NÃO sejam reinseridos
+      // pela sincronização. O próximo upload removerá os itens do Firestore também.
       for (final row in _rows(payload, 'ingredients')) {
         await _database
             .into(_database.ingredients)
-            .insertOnConflictUpdate(Ingredient.fromJson(row));
+            .insert(Ingredient.fromJson(row), mode: InsertMode.insertOrIgnore);
       }
       for (final row in _rows(payload, 'prices')) {
         await _database
             .into(_database.ingredientPriceHistory)
-            .insertOnConflictUpdate(IngredientPriceHistoryData.fromJson(row));
+            .insert(
+              IngredientPriceHistoryData.fromJson(row),
+              mode: InsertMode.insertOrIgnore,
+            );
       }
       for (final row in _rows(payload, 'ingredientLots')) {
         await _database
             .into(_database.ingredientLots)
-            .insertOnConflictUpdate(IngredientLot.fromJson(row));
+            .insert(
+              IngredientLot.fromJson(row),
+              mode: InsertMode.insertOrIgnore,
+            );
       }
       for (final row in _rows(payload, 'ingredientStockMovements')) {
         await _database
             .into(_database.ingredientStockMovements)
-            .insertOnConflictUpdate(IngredientStockMovement.fromJson(row));
+            .insert(
+              IngredientStockMovement.fromJson(row),
+              mode: InsertMode.insertOrIgnore,
+            );
       }
       for (final row in _rows(payload, 'formulas')) {
         await _database
             .into(_database.feedFormulas)
-            .insertOnConflictUpdate(FeedFormula.fromJson(row));
+            .insert(FeedFormula.fromJson(row), mode: InsertMode.insertOrIgnore);
       }
       for (final row in _rows(payload, 'formulaItems')) {
         await _database
             .into(_database.feedFormulaItems)
-            .insertOnConflictUpdate(FeedFormulaItem.fromJson(row));
+            .insert(
+              FeedFormulaItem.fromJson(row),
+              mode: InsertMode.insertOrIgnore,
+            );
       }
       for (final row in _rows(payload, 'feedBatches')) {
         await _database
@@ -875,7 +894,9 @@ class FirebaseBackupService extends ChangeNotifier {
   ) {
     final merged = <String, dynamic>{'format': 'SELETO_SYNC_V1'};
     for (final key in _syncCollectionKeys) {
-      merged[key] = _mergeRows(_rows(local, key), _rows(remote, key), key);
+      merged[key] = _localAuthoritativeOnMerge.contains(key)
+          ? _rows(local, key)
+          : _mergeRows(_rows(local, key), _rows(remote, key), key);
     }
     return _normalizePayload(merged);
   }
@@ -1226,6 +1247,15 @@ const _globalOnlyCollectionKeys = {
   'feedRecommendations',
   'notificationSettings',
   'appSettings',
+};
+
+const _localAuthoritativeOnMerge = {
+  'ingredients',
+  'prices',
+  'ingredientLots',
+  'ingredientStockMovements',
+  'formulas',
+  'formulaItems',
 };
 
 const _createdByCollectionKeys = {

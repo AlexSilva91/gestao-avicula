@@ -513,6 +513,32 @@ class _FormulasTab extends StatefulWidget {
 class _FormulasTabState extends State<_FormulasTab> {
   bool showInactive = false;
 
+  Future<void> _importFormulas(BuildContext context) async {
+    final picked = await FilePicker.pickFile(
+      dialogTitle: 'Importar formulações',
+      type: FileType.custom,
+      allowedExtensions: ['json', 'xml', 'xlsx', 'xls'],
+    );
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    try {
+      final result = await widget.ref
+          .read(operationsControllerProvider)
+          .importFeedFormulas(filename: picked.name, bytes: bytes);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Importadas ${result.formulaCount} formulação(ões): '
+            '${result.createdCount} criada(s), ${result.updatedCount} atualizada(s).',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (context.mounted) await showOperationError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final availableIngredients =
@@ -528,14 +554,23 @@ class _FormulasTabState extends State<_FormulasTab> {
           error: (_, _) => const SeletoAsyncError(),
           data: (items) => SeletoTabList(
             children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilterChip(
-                  selected: showInactive,
-                  onSelected: (value) => setState(() => showInactive = value),
-                  avatar: const Icon(Icons.visibility_outlined, size: 18),
-                  label: const Text('Exibir inativas'),
-                ),
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilterChip(
+                    selected: showInactive,
+                    onSelected: (value) => setState(() => showInactive = value),
+                    avatar: const Icon(Icons.visibility_outlined, size: 18),
+                    label: const Text('Exibir inativas'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _importFormulas(context),
+                    icon: const Icon(Icons.upload_file_outlined),
+                    label: const Text('Importar'),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               if (items.isEmpty)

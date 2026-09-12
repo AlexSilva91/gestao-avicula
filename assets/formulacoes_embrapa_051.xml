@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<formulacoes>
+
+  <formula>
+    <nome>Cria — Embrapa 051</nome>
+    <fase>CRIA</fase>
+    <observacao>Formulação para 100 kg. Fase: 0 a 6 semanas. Fonte: Guia de Manejo Embrapa 051.</observacao>
+    <insumo><ingrediente>Xerém</ingrediente>               <quantidadeKg>64.73</quantidadeKg></insumo>
+    <insumo><ingrediente>Soja</ingrediente>                <quantidadeKg>20.36</quantidadeKg></insumo>
+    <insumo><ingrediente>Farelo de trigo</ingrediente>     <quantidadeKg>10.91</quantidadeKg></insumo>
+    <insumo><ingrediente>Núcleo de crescimento</ingrediente><quantidadeKg>4.00</quantidadeKg></insumo>
+  </formula>
+
+  <formula>
+    <nome>Recria — Embrapa 051</nome>
+    <fase>RECRIA</fase>
+    <observacao>Formulação para 100 kg. Fase: 7 a 15 semanas. Fonte: Guia de Manejo Embrapa 051.</observacao>
+    <insumo><ingrediente>Xerém</ingrediente>               <quantidadeKg>68.73</quantidadeKg></insumo>
+    <insumo><ingrediente>Soja</ingrediente>                <quantidadeKg>16.36</quantidadeKg></insumo>
+    <insumo><ingrediente>Farelo de trigo</ingrediente>     <quantidadeKg>10.91</quantidadeKg></insumo>
+    <insumo><ingrediente>Núcleo de crescimento</ingrediente><quantidadeKg>4.00</quantidadeKg></insumo>
+  </formula>
+
+  <formula>
+    <nome>Pré-Postura — Embrapa 051</nome>
+    <fase>PRE_POSTURA</fase>
+    <observacao>Formulação para 100 kg. Fase: 16 a 21 semanas. Fonte: Guia de Manejo Embrapa 051.</observacao>
+    <insumo><ingrediente>Xerém</ingrediente>             <quantidadeKg>61.32</quantidadeKg></insumo>
+    <insumo><ingrediente>Soja</ingrediente>              <quantidadeKg>20.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Farelo de trigo</ingrediente>   <quantidadeKg>6.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Calcário</ingrediente>          <quantidadeKg>8.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Núcleo de postura</ingrediente> <quantidadeKg>3.60</quantidadeKg></insumo>
+    <insumo><ingrediente>Urucum</ingrediente>            <quantidadeKg>0.54</quantidadeKg></insumo>
+    <insumo><ingrediente>Cúrcuma</ingrediente>           <quantidadeKg>0.54</quantidadeKg></insumo>
+  </formula>
+
+  <formula>
+    <nome>Postura I — Embrapa 051</nome>
+    <fase>PRODUCAO_I</fase>
+    <observacao>Formulação para 100 kg. Fase: 22 a 37 semanas. Fonte: Guia de Manejo Embrapa 051.</observacao>
+    <insumo><ingrediente>Xerém</ingrediente>             <quantidadeKg>62.32</quantidadeKg></insumo>
+    <insumo><ingrediente>Soja</ingrediente>              <quantidadeKg>19.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Farelo de trigo</ingrediente>   <quantidadeKg>6.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Calcário</ingrediente>          <quantidadeKg>8.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Núcleo de postura</ingrediente> <quantidadeKg>3.60</quantidadeKg></insumo>
+    <insumo><ingrediente>Urucum</ingrediente>            <quantidadeKg>0.54</quantidadeKg></insumo>
+    <insumo><ingrediente>Cúrcuma</ingrediente>           <quantidadeKg>0.56</quantidadeKg></insumo>
+  </formula>
+
+  <formula>
+    <nome>Postura II — Embrapa 051</nome>
+    <fase>PRODUCAO_II</fase>
+    <observacao>Formulação para 100 kg. Fase: 38 a 65 semanas. Fonte: Guia de Manejo Embrapa 051.</observacao>
+    <insumo><ingrediente>Xerém</ingrediente>             <quantidadeKg>63.32</quantidadeKg></insumo>
+    <insumo><ingrediente>Soja</ingrediente>              <quantidadeKg>18.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Farelo de trigo</ingrediente>   <quantidadeKg>6.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Calcário</ingrediente>          <quantidadeKg>8.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Núcleo de postura</ingrediente> <quantidadeKg>3.60</quantidadeKg></insumo>
+    <insumo><ingrediente>Urucum</ingrediente>            <quantidadeKg>0.54</quantidadeKg></insumo>
+    <insumo><ingrediente>Cúrcuma</ingrediente>           <quantidadeKg>0.56</quantidadeKg></insumo>
+  </formula>
+
+  <formula>
+    <nome>Postura III — Embrapa 051</nome>
+    <fase>PRODUCAO_III</fase>
+    <observacao>Formulação para 100 kg. Fase: acima de 65 semanas. Fonte: Guia de Manejo Embrapa 051.</observacao>
+    <insumo><ingrediente>Xerém</ingrediente>             <quantidadeKg>64.32</quantidadeKg></insumo>
+    <insumo><ingrediente>Soja</ingrediente>              <quantidadeKg>17.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Farelo de trigo</ingrediente>   <quantidadeKg>6.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Calcário</ingrediente>          <quantidadeKg>8.00</quantidadeKg></insumo>
+    <insumo><ingrediente>Núcleo de postura</ingrediente> <quantidadeKg>3.60</quantidadeKg></insumo>
+    <insumo><ingrediente>Urucum</ingrediente>            <quantidadeKg>0.54</quantidadeKg></insumo>
+    <insumo><ingrediente>Cúrcuma</ingrediente>           <quantidadeKg>0.56</quantidadeKg></insumo>
+  </formula>
+
+</formulacoes>

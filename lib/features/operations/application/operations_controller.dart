@@ -360,6 +360,14 @@ class OperationsController {
     notes: notes,
     actorId: _actor('feed_formulas.manage'),
   );
+  Future<FeedFormulaImportResult> importFeedFormulas({
+    required String filename,
+    required Uint8List bytes,
+  }) => _db.importFeedFormulas(
+    filename: filename,
+    bytes: bytes,
+    actorId: _actor('feed_formulas.manage'),
+  );
   Future<void> feed(
     String lotId,
     String batchId,
