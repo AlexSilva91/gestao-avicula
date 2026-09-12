@@ -1933,21 +1933,49 @@ List<double> _manufactureQuantityOptions(double? recommended) {
 }
 
 bool _isAllowedFormulaIngredient(String name) {
-  final normalized = name.trim().toLowerCase();
+  final normalized = _formulaIngredientSearchKey(name);
   return const {
+    'xerem',
     'xerem fino',
+    'xerem grosso',
+    'soja',
+    'farelo de soja',
     'farelo de soja fino',
+    'trigo',
     'farelo de trigo',
-    'calcário calcítico',
     'calcario calcitico',
-    'meganúcleo frango c 4%',
-    'meganucleo frango c 4%',
-    'meganúcleo postura 4%',
-    'meganucleo postura 4%',
+    'calcario',
+    'nucleo crescimento',
+    'meganucleo frango c 4',
+    'meganucleo crescimento',
+    'nucleo postura',
+    'meganucleo postura 4',
     'urucum',
-    'cúrcuma',
     'curcuma',
+    'acafrao',
   }.contains(normalized);
+}
+
+String _formulaIngredientSearchKey(String value) {
+  return value
+      .trim()
+      .toLowerCase()
+      .replaceAll('á', 'a')
+      .replaceAll('à', 'a')
+      .replaceAll('â', 'a')
+      .replaceAll('ã', 'a')
+      .replaceAll('é', 'e')
+      .replaceAll('ê', 'e')
+      .replaceAll('í', 'i')
+      .replaceAll('ó', 'o')
+      .replaceAll('ô', 'o')
+      .replaceAll('õ', 'o')
+      .replaceAll('ú', 'u')
+      .replaceAll('ü', 'u')
+      .replaceAll('ç', 'c')
+      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 }
 
 class _FormulaDialog extends StatefulWidget {
@@ -2053,7 +2081,7 @@ class _FormulaDialogState extends State<_FormulaDialog> {
       ingredientId;
 
   String _ingredientKey(String ingredientId) =>
-      _formulaIngredientName(ingredientId).trim().toUpperCase();
+      _formulaIngredientSearchKey(_formulaIngredientName(ingredientId));
 
   bool _isIngredientSelectedInAnotherRow(String ingredientId, int index) {
     final key = _ingredientKey(ingredientId);

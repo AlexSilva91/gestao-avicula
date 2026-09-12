@@ -636,6 +636,31 @@ void main() {
   );
 
   test('requested manufacture proposal formulas are created', () async {
+    final ingredients = await db.watchIngredientOverviews().first;
+    for (final name in [
+      'Xerem fino',
+      'Farelo de soja fino',
+      'Farelo de trigo',
+      'Calcário calcítico',
+      'Meganúcleo Frango C 4%',
+      'Meganúcleo Postura 4%',
+      'Urucum',
+      'Cúrcuma',
+    ]) {
+      final ingredient = ingredients.firstWhere(
+        (item) => item.ingredient.name == name,
+      );
+      await db.registerIngredientStockEntry(
+        ingredientId: ingredient.ingredient.id,
+        entryDate: DateTime(2026, 1, 1),
+        packageUnit: 'KG',
+        packageQuantity: 100,
+        packageWeightKg: 1,
+        totalCostCents: 10000,
+        actorId: actor,
+      );
+    }
+
     await db.ensureRequestedManufactureProposalFormulas(
       actorId: actor,
       force: true,
@@ -649,16 +674,16 @@ void main() {
       for (final item in growth.items) item.name: item.quantityKg,
     };
     expect(growth.formula.name, 'Crescimento');
-    expect(growthQuantities['Xerem fino'], closeTo(37.8, .001));
-    expect(growthQuantities['Farelo de soja fino'], closeTo(9, .001));
-    expect(growthQuantities['Farelo de trigo'], closeTo(6, .001));
-    expect(growthQuantities['Meganúcleo Frango C 4%'], closeTo(2.2, .001));
+    expect(growthQuantities['Xerem fino'], closeTo(68.73, .001));
+    expect(growthQuantities['Farelo de soja fino'], closeTo(16.36, .001));
+    expect(growthQuantities['Farelo de trigo'], closeTo(10.91, .001));
+    expect(growthQuantities['Meganúcleo Frango C 4%'], closeTo(4, .001));
     expect(
       growthQuantities.values.fold<double>(
         0,
         (sum, quantity) => sum + quantity,
       ),
-      closeTo(55, .001),
+      closeTo(100, .001),
     );
 
     final formula = formulas.firstWhere(
@@ -667,29 +692,17 @@ void main() {
     final quantities = {
       for (final item in formula.items) item.name: item.quantityKg,
     };
-    expect(quantities['Xerem fino'], closeTo(27.594, .001));
-    expect(quantities['Farelo de soja fino'], closeTo(9, .001));
-    expect(quantities['Farelo de trigo'], closeTo(2.7, .001));
-    expect(quantities['Calcário calcítico'], closeTo(3.6, .001));
-    expect(quantities['Meganúcleo Postura 4%'], closeTo(1.62, .001));
-    expect(quantities['Urucum'], closeTo(.243, .001));
-    expect(quantities['Cúrcuma'], closeTo(.243, .001));
+    expect(quantities['Xerem fino'], closeTo(61.32, .001));
+    expect(quantities['Farelo de soja fino'], closeTo(20, .001));
+    expect(quantities['Farelo de trigo'], closeTo(6, .001));
+    expect(quantities['Calcário calcítico'], closeTo(8, .001));
+    expect(quantities['Meganúcleo Postura 4%'], closeTo(3.6, .001));
+    expect(quantities['Urucum'], closeTo(.54, .001));
+    expect(quantities['Cúrcuma'], closeTo(.54, .001));
     expect(
       quantities.values.fold<double>(0, (sum, quantity) => sum + quantity),
-      closeTo(45, .001),
+      closeTo(100, .001),
     );
-
-    for (final item in formula.items) {
-      await db.registerIngredientStockEntry(
-        ingredientId: item.ingredientId,
-        entryDate: DateTime(2026, 1, 1),
-        packageUnit: 'KG',
-        packageQuantity: 100,
-        packageWeightKg: 1,
-        totalCostCents: 10000,
-        actorId: actor,
-      );
-    }
 
     await db.manufactureFeed(
       formula: formula,
@@ -725,6 +738,46 @@ void main() {
     expect(manufacturedQuantities['Urucum'], closeTo(.243, .001));
     expect(manufacturedQuantities['Cúrcuma'], closeTo(.243, .001));
   });
+
+  test(
+    'deleted ingredient is not recreated or linked by requested formulas',
+    () async {
+      final ingredient =
+          (await db.watchIngredientOverviews(includeInactive: true).first)
+              .firstWhere(
+                (item) => item.ingredient.name == 'Meganúcleo Frango C 4%',
+              )
+              .ingredient;
+
+      await db.deleteIngredientPermanently(
+        ingredientId: ingredient.id,
+        actorId: actor,
+      );
+      await db.ensureRequestedManufactureProposalFormulas(
+        actorId: actor,
+        force: true,
+      );
+      await db.seedInitialData();
+
+      final ingredientsAfter = await db
+          .watchIngredientOverviews(includeInactive: true)
+          .first;
+      expect(
+        ingredientsAfter.where(
+          (item) => item.ingredient.name == 'Meganúcleo Frango C 4%',
+        ),
+        isEmpty,
+      );
+      final linkedRows = await db
+          .customSelect(
+            'SELECT COUNT(*) AS count FROM feed_formula_items WHERE ingredient_id = ?',
+            variables: [Variable.withString(ingredient.id)],
+            readsFrom: {db.feedFormulaItems},
+          )
+          .getSingle();
+      expect(linkedRows.read<int>('count'), 0);
+    },
+  );
 
   test(
     'formula items only keep allowed ingredients with positive quantities',
