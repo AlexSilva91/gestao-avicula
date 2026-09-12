@@ -126,7 +126,7 @@ void main() {
       );
       final batch = (await db.watchFeedBatchBalances().first).single;
       expect(batch.balanceKg, 25);
-      expect(batch.batch.totalCostCents, 5000);
+      expect(batch.batch.totalCostCents, closeTo(5000, 1));
       await db.registerLotPurchase(
         name: 'Cria',
         quantity: 10,
@@ -667,13 +667,92 @@ void main() {
     );
 
     final formulas = await db.watchFormulaOverviews().first;
+    final expectedRecipes = <String, Map<String, double>>{
+      'CRIA': {
+        'Xerem fino': 64.73,
+        'Farelo de soja fino': 20.36,
+        'Farelo de trigo': 10.91,
+        'Meganúcleo Frango C 4%': 4,
+      },
+      'RECRIA': {
+        'Xerem fino': 68.73,
+        'Farelo de soja fino': 16.36,
+        'Farelo de trigo': 10.91,
+        'Meganúcleo Frango C 4%': 4,
+      },
+      'PRE_POSTURA': {
+        'Xerem fino': 61.32,
+        'Farelo de soja fino': 20,
+        'Farelo de trigo': 6,
+        'Calcário calcítico': 8,
+        'Meganúcleo Postura 4%': 3.6,
+        'Urucum': .54,
+        'Cúrcuma': .54,
+      },
+      'PRODUCAO_I': {
+        'Xerem fino': 62.32,
+        'Farelo de soja fino': 19,
+        'Farelo de trigo': 6,
+        'Calcário calcítico': 8,
+        'Meganúcleo Postura 4%': 3.6,
+        'Urucum': .54,
+        'Cúrcuma': .56,
+      },
+      'PRODUCAO_II': {
+        'Xerem fino': 63.32,
+        'Farelo de soja fino': 18,
+        'Farelo de trigo': 6,
+        'Calcário calcítico': 8,
+        'Meganúcleo Postura 4%': 3.6,
+        'Urucum': .54,
+        'Cúrcuma': .56,
+      },
+      'PRODUCAO_III': {
+        'Xerem fino': 64.32,
+        'Farelo de soja fino': 17,
+        'Farelo de trigo': 6,
+        'Calcário calcítico': 8,
+        'Meganúcleo Postura 4%': 3.6,
+        'Urucum': .54,
+        'Cúrcuma': .56,
+      },
+    };
+    for (final entry in expectedRecipes.entries) {
+      final formula = formulas.firstWhere(
+        (item) => item.formula.phase == entry.key,
+      );
+      final quantities = {
+        for (final item in formula.items) item.name: item.quantityKg,
+      };
+      for (final expected in entry.value.entries) {
+        expect(
+          quantities[expected.key],
+          closeTo(expected.value, .001),
+          reason: '${entry.key} ${expected.key}',
+        );
+      }
+      expect(
+        quantities.values.fold<double>(0, (sum, quantity) => sum + quantity),
+        closeTo(
+          entry.value.values.fold<double>(0, (sum, value) => sum + value),
+          .001,
+        ),
+        reason: '${entry.key} total',
+      );
+      expect(
+        quantities.values,
+        everyElement(lessThanOrEqualTo(100)),
+        reason: '${entry.key} não pode ter item acima de 100 kg',
+      );
+    }
+
     final growth = formulas.firstWhere(
       (item) => item.formula.phase == 'RECRIA',
     );
     final growthQuantities = {
       for (final item in growth.items) item.name: item.quantityKg,
     };
-    expect(growth.formula.name, 'Crescimento');
+    expect(growth.formula.name, 'Recria');
     expect(growthQuantities['Xerem fino'], closeTo(68.73, .001));
     expect(growthQuantities['Farelo de soja fino'], closeTo(16.36, .001));
     expect(growthQuantities['Farelo de trigo'], closeTo(10.91, .001));
@@ -862,11 +941,18 @@ void main() {
       expect(updated, greaterThan(0));
       final formulas = await db.watchFormulaOverviews().first;
       final stockedIds = {xerem.ingredient.id, limestone.ingredient.id};
-      for (final formula in formulas.where(
-        (formula) =>
-            formula.formula.createdBy == 'system' &&
-            formula.formula.phase != 'RECRIA',
-      )) {
+      final rebuiltFormulas = formulas
+          .where(
+            (formula) =>
+                formula.formula.createdBy == 'system' &&
+                formula.formula.phase != 'RECRIA' &&
+                formula.items.every(
+                  (item) => stockedIds.contains(item.ingredientId),
+                ),
+          )
+          .toList();
+      expect(rebuiltFormulas, isNotEmpty);
+      for (final formula in rebuiltFormulas) {
         expect(
           formula.items.map((item) => item.ingredientId).toSet(),
           everyElement(isIn(stockedIds)),

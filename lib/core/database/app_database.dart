@@ -19,7 +19,7 @@ const _defaultFormulaStockRebuildSettingKey =
     'default_formula_stock_rebuild_2026_09_11';
 const _operationalDefaultsSeedSettingKey = 'operational_defaults_seeded_v2';
 const _requestedManufactureProposalFormulasSettingKey =
-    'requested_manufacture_proposal_formulas_2026_09_12_v3';
+    'requested_manufacture_proposal_formulas_2026_09_12_v4';
 const _recipeIngredientAliases = <String, List<String>>{
   'xerem': ['xerem fino', 'xerém fino', 'xerem', 'xerém', 'xerem grosso'],
   'soja': ['farelo de soja fino', 'farelo de soja', 'soja'],
@@ -578,59 +578,115 @@ class AppDatabase extends _$AppDatabase {
     final recipeIds = _recipeIngredientIds(
       await _activeIngredientRefs(requireStock: true),
     );
-    final growthRecipe = _recipeQuantities(recipeIds, {
-      'xerem': 68.73,
-      'soja': 16.36,
-      'trigo': 10.91,
-      'nucleo_crescimento': 4,
-    });
-    final prePostureRecipe = _recipeQuantities(recipeIds, {
-      'xerem': 61.32,
-      'soja': 20,
-      'trigo': 6,
-      'calcario': 8,
-      'nucleo_postura': 3.6,
-      'urucum': .54,
-      'curcuma': .54,
-    });
-    if (growthRecipe == null || prePostureRecipe == null) return;
-    final growthFormula = await _ensureSystemFormula(
-      phase: 'RECRIA',
-      name: 'Crescimento',
-      actorId: actorId,
-      now: now,
-    );
-    final prePostureFormula = await _ensureSystemFormula(
-      phase: 'PRE_POSTURA',
-      name: 'Pré-postura',
-      actorId: actorId,
-      now: now,
-    );
+    final requestedRecipes =
+        <({String phase, String name, Map<String, double> quantities})>[
+          (
+            phase: 'CRIA',
+            name: 'Cria',
+            quantities: {
+              'xerem': 64.73,
+              'soja': 20.36,
+              'trigo': 10.91,
+              'nucleo_crescimento': 4,
+            },
+          ),
+          (
+            phase: 'RECRIA',
+            name: 'Recria',
+            quantities: {
+              'xerem': 68.73,
+              'soja': 16.36,
+              'trigo': 10.91,
+              'nucleo_crescimento': 4,
+            },
+          ),
+          (
+            phase: 'PRE_POSTURA',
+            name: 'Pré-postura',
+            quantities: {
+              'xerem': 61.32,
+              'soja': 20,
+              'trigo': 6,
+              'calcario': 8,
+              'nucleo_postura': 3.6,
+              'urucum': .54,
+              'curcuma': .54,
+            },
+          ),
+          (
+            phase: 'PRODUCAO_I',
+            name: 'Produção I',
+            quantities: {
+              'xerem': 62.32,
+              'soja': 19,
+              'trigo': 6,
+              'calcario': 8,
+              'nucleo_postura': 3.6,
+              'urucum': .54,
+              'curcuma': .56,
+            },
+          ),
+          (
+            phase: 'PRODUCAO_II',
+            name: 'Produção II',
+            quantities: {
+              'xerem': 63.32,
+              'soja': 18,
+              'trigo': 6,
+              'calcario': 8,
+              'nucleo_postura': 3.6,
+              'urucum': .54,
+              'curcuma': .56,
+            },
+          ),
+          (
+            phase: 'PRODUCAO_III',
+            name: 'Produção III',
+            quantities: {
+              'xerem': 64.32,
+              'soja': 17,
+              'trigo': 6,
+              'calcario': 8,
+              'nucleo_postura': 3.6,
+              'urucum': .54,
+              'curcuma': .56,
+            },
+          ),
+        ];
+    final resolvedRecipes =
+        <
+          ({FeedFormula formula, String name, Map<String, double> quantities})
+        >[];
+    for (final recipe in requestedRecipes) {
+      final quantities = _recipeQuantities(recipeIds, recipe.quantities);
+      if (quantities == null) return;
+      resolvedRecipes.add((
+        formula: await _ensureSystemFormula(
+          phase: recipe.phase,
+          name: recipe.name,
+          actorId: actorId,
+          now: now,
+        ),
+        name: recipe.name,
+        quantities: quantities,
+      ));
+    }
     await transaction(() async {
-      await _replaceFormulaItems(
-        formula: growthFormula,
-        name: 'Crescimento',
-        quantities: growthRecipe,
-      );
-      await addAudit(
-        userId: actorId,
-        action: 'feed_formulas.growth_proposal',
-        entityType: 'feed_formula',
-        entityId: growthFormula.id,
-        description: 'Formulação de Crescimento ajustada para base de 100 kg.',
-      );
-      await _replaceFormulaItems(
-        formula: prePostureFormula,
-        name: 'Pré-postura',
-        quantities: prePostureRecipe,
-      );
-      await addAudit(
-        userId: actorId,
-        action: 'feed_formulas.pre_posture_proposal',
-        entityType: 'feed_formula',
-        entityId: prePostureFormula.id,
-        description: 'Formulação de Pré-postura ajustada para base de 100 kg.',
-      );
+      for (final recipe in resolvedRecipes) {
+        await _replaceFormulaItems(
+          formula: recipe.formula,
+          name: recipe.name,
+          quantities: recipe.quantities,
+        );
+        await addAudit(
+          userId: actorId,
+          action: 'feed_formulas.requested_recipe',
+          entityType: 'feed_formula',
+          entityId: recipe.formula.id,
+          description:
+              'Formulação ${recipe.name} ajustada para base de 100 kg.',
+        );
+      }
       await into(appSettings).insertOnConflictUpdate(
         AppSettingsCompanion.insert(
           key: _requestedManufactureProposalFormulasSettingKey,
@@ -993,12 +1049,12 @@ class AppDatabase extends _$AppDatabase {
       'meganucleo-postura-4': 'Meganúcleo Postura 4%',
     };
     const recipes = <String, List<double>>{
-      'CRIA': [0, 63, 0, 33, 0, 0, 0, 4, 0, 0, 0],
+      'CRIA': [0, 64.73, 0, 20.36, 0, 0, 0, 0, 10.91, 4, 0],
       'RECRIA': [0, 68.73, 0, 16.36, 0, 0, 0, 0, 10.91, 4, 0],
       'PRE_POSTURA': [0, 61.32, 0, 20, 0, .54, .54, 8, 6, 0, 3.6],
-      'PRODUCAO_I': [0, 59.5, 0, 23, 0, .25, .25, 12, 5, 0, 0],
-      'PRODUCAO_II': [0, 60, 0, 22.5, 0, .25, .25, 12, 5, 0, 0],
-      'PRODUCAO_III': [0, 60.5, 0, 22, 0, .25, .25, 12, 5, 0, 0],
+      'PRODUCAO_I': [0, 62.32, 0, 19, 0, .56, .54, 8, 6, 0, 3.6],
+      'PRODUCAO_II': [0, 63.32, 0, 18, 0, .56, .54, 8, 6, 0, 3.6],
+      'PRODUCAO_III': [0, 64.32, 0, 17, 0, .56, .54, 8, 6, 0, 3.6],
     };
     final now = DateTime.now();
     await transaction(() async {
