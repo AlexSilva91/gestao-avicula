@@ -9,6 +9,9 @@ import '../utils/formatters.dart';
 
 const _uuid = Uuid();
 
+double _nonNegativeStock(double value) => value <= .0001 ? 0 : value;
+int _nonNegativeCount(int value) => value < 0 ? 0 : value;
+
 class IngredientOverview {
   const IngredientOverview({
     required this.ingredient,
@@ -485,7 +488,7 @@ extension OperationsRepository on AppDatabase {
                 createdAt: row.read<DateTime>('created_at'),
                 createdBy: row.read<String>('created_by'),
               ),
-              stockKg: row.read<double>('stock_kg'),
+              stockKg: _nonNegativeStock(row.read<double>('stock_kg')),
               activeLotCount: row.read<int>('active_lot_count'),
               currentPriceCents: row.readNullable<int>('current_price'),
               previousPriceCents: row.readNullable<int>('previous_price'),
@@ -561,7 +564,7 @@ extension OperationsRepository on AppDatabase {
                 createdAt: r.read<DateTime>('created_at'),
               ),
               ingredientName: r.read<String>('ingredient_name'),
-              balanceKg: r.read<double>('balance_kg'),
+              balanceKg: _nonNegativeStock(r.read<double>('balance_kg')),
             ),
           )
           .toList(),
@@ -708,23 +711,177 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
+  Future<void> transferIngredientStock({
+    required String fromIngredientId,
+    required String toIngredientId,
+    required double quantityKg,
+    DateTime? occurredAt,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (quantityKg <= 0) throw ArgumentError('Informe uma quantidade válida.');
+    if (fromIngredientId == toIngredientId) {
+      throw ArgumentError('Selecione insumos diferentes.');
+    }
+    await _assertActorCanUseRecord(
+      tableName: 'ingredients',
+      recordId: fromIngredientId,
+      actorId: actorId,
+    );
+    await _assertActorCanUseRecord(
+      tableName: 'ingredients',
+      recordId: toIngredientId,
+      actorId: actorId,
+    );
+    final sourceLots =
+        await (select(ingredientLots)
+              ..where((lot) => lot.ingredientId.equals(fromIngredientId))
+              ..orderBy([
+                (lot) => OrderingTerm.asc(lot.entryDate),
+                (lot) => OrderingTerm.asc(lot.createdAt),
+              ]))
+            .get();
+    var remaining = quantityKg;
+    var totalCostCents = 0;
+    final consumptions =
+        <({IngredientLot lot, double quantityKg, int totalCostCents})>[];
+    for (final lot in sourceLots) {
+      if (remaining <= .0001) break;
+      final balance = await ingredientLotBalanceFor(lot.id);
+      if (balance <= .0001) continue;
+      final used = balance >= remaining ? remaining : balance;
+      final cost = (used * lot.pricePerKgCents).round();
+      consumptions.add((lot: lot, quantityKg: used, totalCostCents: cost));
+      totalCostCents += cost;
+      remaining -= used;
+    }
+    if (remaining > .0001) {
+      throw StateError(
+        'Estoque insuficiente para transferir ${kg(quantityKg)}.',
+      );
+    }
+    final now = DateTime.now();
+    final date = occurredAt ?? now;
+    final lotId = _uuid.v4();
+    final code =
+        'T${date.millisecondsSinceEpoch.toString().substring(5)}-${lotId.substring(0, 4)}';
+    final unitCostCents = (totalCostCents / quantityKg).round();
+    final transferNotes = _cleanValue(notes) ?? 'Transferência de estoque.';
+    await transaction(() async {
+      for (final entry in consumptions) {
+        await into(ingredientStockMovements).insert(
+          IngredientStockMovementsCompanion.insert(
+            id: _uuid.v4(),
+            type: 'ADJUSTMENT_OUT',
+            occurredAt: date,
+            ingredientId: fromIngredientId,
+            ingredientLotId: entry.lot.id,
+            quantityKg: entry.quantityKg,
+            pricePerKgCentsSnapshot: entry.lot.pricePerKgCents,
+            totalCostCents: entry.totalCostCents,
+            referenceType: const Value('INGREDIENT_TRANSFER'),
+            referenceId: Value(lotId),
+            notes: Value(transferNotes),
+            createdBy: actorId,
+            createdAt: now,
+          ),
+        );
+      }
+      await into(ingredientLots).insert(
+        IngredientLotsCompanion.insert(
+          id: lotId,
+          ingredientId: toIngredientId,
+          code: code,
+          entryDate: date,
+          initialQuantityKg: quantityKg,
+          packageUnit: const Value('KG'),
+          packageQuantity: Value(quantityKg),
+          packageWeightKg: const Value(1),
+          totalCostCents: totalCostCents,
+          pricePerKgCents: unitCostCents,
+          notes: Value(transferNotes),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(ingredientStockMovements).insert(
+        IngredientStockMovementsCompanion.insert(
+          id: _uuid.v4(),
+          type: 'ADJUSTMENT_IN',
+          occurredAt: date,
+          ingredientId: toIngredientId,
+          ingredientLotId: lotId,
+          quantityKg: quantityKg,
+          pricePerKgCentsSnapshot: unitCostCents,
+          totalCostCents: totalCostCents,
+          referenceType: const Value('INGREDIENT_TRANSFER'),
+          referenceId: Value(lotId),
+          notes: Value(transferNotes),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'ingredients.stock_transfer',
+        entityType: 'ingredient_lot',
+        entityId: lotId,
+        description: 'Transferência de ${kg(quantityKg)} entre insumos.',
+      );
+    });
+  }
+
   Future<void> addIngredient({
     required String name,
     String unit = 'kg',
     String? notes,
     required String actorId,
   }) async {
-    if (name.trim().isEmpty || unit.trim().isEmpty) {
+    final cleanName = name.trim();
+    final cleanUnit = unit.trim();
+    final cleanNotes = _cleanValue(notes);
+    if (cleanName.isEmpty || cleanUnit.isEmpty) {
       throw ArgumentError('Informe nome e unidade do insumo.');
+    }
+    final existingIngredient = (await select(ingredients).get())
+        .where(
+          (ingredient) =>
+              ingredient.name.trim().toLowerCase() == cleanName.toLowerCase(),
+        )
+        .firstOrNull;
+    if (existingIngredient != null) {
+      if (existingIngredient.isActive) {
+        throw StateError('Já existe um insumo cadastrado com esse nome.');
+      }
+      await transaction(() async {
+        await (update(
+          ingredients,
+        )..where((i) => i.id.equals(existingIngredient.id))).write(
+          IngredientsCompanion(
+            name: Value(cleanName),
+            unit: Value(cleanUnit),
+            isActive: const Value(true),
+            notes: Value(cleanNotes),
+          ),
+        );
+        await addAudit(
+          userId: actorId,
+          action: 'ingredients.update',
+          entityType: 'ingredient',
+          entityId: existingIngredient.id,
+          description: 'Insumo $cleanName reativado.',
+        );
+      });
+      return;
     }
     final id = _uuid.v4();
     await transaction(() async {
       await into(ingredients).insert(
         IngredientsCompanion.insert(
           id: id,
-          name: name.trim(),
-          unit: Value(unit.trim()),
-          notes: Value(_cleanValue(notes)),
+          name: cleanName,
+          unit: Value(cleanUnit),
+          notes: Value(cleanNotes),
           createdAt: DateTime.now(),
           createdBy: actorId,
         ),
@@ -734,7 +891,7 @@ extension OperationsRepository on AppDatabase {
         action: 'ingredients.manage',
         entityType: 'ingredient',
         entityId: id,
-        description: 'Insumo ${name.trim()} cadastrado.',
+        description: 'Insumo $cleanName cadastrado.',
       );
     });
   }
@@ -772,6 +929,57 @@ extension OperationsRepository on AppDatabase {
         entityType: 'ingredient',
         entityId: ingredientId,
         description: 'Insumo ${name.trim()} atualizado.',
+      );
+    });
+  }
+
+  Future<void> deleteIngredientPermanently({
+    required String ingredientId,
+    required String actorId,
+  }) async {
+    await _assertActorCanUseRecord(
+      tableName: 'ingredients',
+      recordId: ingredientId,
+      actorId: actorId,
+    );
+    final ingredient = await (select(
+      ingredients,
+    )..where((i) => i.id.equals(ingredientId))).getSingleOrNull();
+    if (ingredient == null) return;
+    final usage = await customSelect(
+      '''
+      SELECT
+        (SELECT COUNT(*) FROM feed_batch_items WHERE ingredient_id = ?) batch_count
+      ''',
+      variables: [Variable.withString(ingredientId)],
+      readsFrom: {feedBatchItems},
+    ).getSingle();
+    if (usage.read<int>('batch_count') > 0) {
+      throw StateError(
+        'Este insumo já foi usado em fabricação de ração. '
+        'Não é possível excluir sem quebrar o histórico.',
+      );
+    }
+    await transaction(() async {
+      await (delete(
+        feedFormulaItems,
+      )..where((item) => item.ingredientId.equals(ingredientId))).go();
+      await (delete(
+        ingredientStockMovements,
+      )..where((m) => m.ingredientId.equals(ingredientId))).go();
+      await (delete(
+        ingredientLots,
+      )..where((l) => l.ingredientId.equals(ingredientId))).go();
+      await (delete(
+        ingredientPriceHistory,
+      )..where((p) => p.ingredientId.equals(ingredientId))).go();
+      await (delete(ingredients)..where((i) => i.id.equals(ingredientId))).go();
+      await addAudit(
+        userId: actorId,
+        action: 'ingredients.delete',
+        entityType: 'ingredient',
+        entityId: ingredientId,
+        description: 'Insumo ${ingredient.name} removido definitivamente.',
       );
     });
   }
@@ -828,6 +1036,7 @@ extension OperationsRepository on AppDatabase {
       FROM feed_formulas f JOIN feed_formula_items fi ON fi.formula_id=f.id
       JOIN ingredients i ON i.id=fi.ingredient_id
       WHERE ${_tenantSql('f', tenantId)}
+        AND fi.base_quantity_kg > 0.0001
         ${includeInactive ? '' : 'AND f.is_active = 1'}
         ${includeInactiveIngredients ? '' : '''
         AND NOT EXISTS (
@@ -836,6 +1045,7 @@ extension OperationsRepository on AppDatabase {
           JOIN ingredients hidden_i ON hidden_i.id = hidden_fi.ingredient_id
           WHERE hidden_fi.formula_id = f.id
             AND hidden_i.is_active = 0
+            AND hidden_fi.base_quantity_kg > 0.0001
         )
         '''}
       GROUP BY f.id, fi.ingredient_id
@@ -892,10 +1102,9 @@ extension OperationsRepository on AppDatabase {
       0,
       (sum, value) => sum + value,
     );
-    if ((total - 100).abs() > .01 ||
-        quantities.values.any((value) => value < 0)) {
+    if (total <= .0001 || quantities.values.any((value) => value < 0)) {
       throw ArgumentError(
-        'A formulação base deve totalizar exatamente 100 kg.',
+        'A formulação deve ter ao menos um insumo com quantidade positiva.',
       );
     }
     final id = _uuid.v4();
@@ -931,7 +1140,9 @@ extension OperationsRepository on AppDatabase {
           createdAt: now,
         ),
       );
-      for (final entry in quantities.entries) {
+      for (final entry in quantities.entries.where(
+        (entry) => entry.value > .0001,
+      )) {
         await into(feedFormulaItems).insert(
           FeedFormulaItemsCompanion.insert(
             id: _uuid.v4(),
@@ -978,10 +1189,9 @@ extension OperationsRepository on AppDatabase {
       0,
       (sum, value) => sum + value,
     );
-    if ((total - 100).abs() > .01 ||
-        quantities.values.any((value) => value < 0)) {
+    if (total <= .0001 || quantities.values.any((value) => value < 0)) {
       throw ArgumentError(
-        'A formulação base deve totalizar exatamente 100 kg.',
+        'A formulação deve ter ao menos um insumo com quantidade positiva.',
       );
     }
     await transaction(() async {
@@ -998,7 +1208,9 @@ extension OperationsRepository on AppDatabase {
       await (delete(
         feedFormulaItems,
       )..where((i) => i.formulaId.equals(source.formula.id))).go();
-      for (final entry in quantities.entries) {
+      for (final entry in quantities.entries.where(
+        (entry) => entry.value > .0001,
+      )) {
         await into(feedFormulaItems).insert(
           FeedFormulaItemsCompanion.insert(
             id: _uuid.v4(),
@@ -1125,8 +1337,15 @@ extension OperationsRepository on AppDatabase {
             List<IngredientLotUsage> usages,
           })
         >[];
+    final formulaQuantityKg = formula.items.fold<double>(
+      0,
+      (sum, item) => item.quantityKg > 0 ? sum + item.quantityKg : sum,
+    );
+    if (formulaQuantityKg <= .0001) {
+      throw StateError('A formulação não possui insumos para fabricação.');
+    }
     for (final item in formula.items.where((item) => item.quantityKg > 0)) {
-      final scaled = item.quantityKg * quantityKg / 100;
+      final scaled = item.quantityKg * quantityKg / formulaQuantityKg;
       final usages = await _planIngredientUsage(
         ingredientId: item.ingredientId,
         quantityKg: scaled,
@@ -1338,7 +1557,7 @@ extension OperationsRepository on AppDatabase {
                 createdBy: r.read<String>('created_by'),
                 createdAt: r.read<DateTime>('created_at'),
               ),
-              balanceKg: r.read<double>('balance_kg'),
+              balanceKg: _nonNegativeStock(r.read<double>('balance_kg')),
               formulaName: r.readNullable<String>('formula_name'),
             ),
           )
@@ -3511,8 +3730,8 @@ extension OperationsRepository on AppDatabase {
       (r) => DashboardMetrics(
         activeBirds: r.read<int>('birds'),
         activeLots: r.read<int>('lots'),
-        eggStock: r.read<int>('eggs'),
-        feedStockKg: r.read<double>('feed'),
+        eggStock: _nonNegativeCount(r.read<int>('eggs')),
+        feedStockKg: _nonNegativeStock(r.read<double>('feed')),
         pendingOrders: r.read<int>('pending'),
         monthIncomeCents: r.read<int>('income'),
         monthExpenseCents: r.read<int>('expense'),

@@ -6,7 +6,9 @@ final shortDate = DateFormat('dd/MM/yyyy', 'pt_BR');
 final shortTime = DateFormat('HH:mm', 'pt_BR');
 
 String money(int cents) => brl.format(cents / 100);
-String kg(double value) => '${NumberFormat('0.###', 'pt_BR').format(value)} kg';
+double nonNegativeKg(double value) => value <= 0.0005 ? 0 : value;
+String kg(double value) =>
+    '${NumberFormat('0.###', 'pt_BR').format(nonNegativeKg(value))} kg';
 String percent(double value) =>
     NumberFormat.percentPattern('pt_BR').format(value);
 
@@ -133,5 +135,14 @@ int parseMoneyToCents(String value) {
   return ((double.tryParse(cleaned) ?? 0) * 100).round();
 }
 
-double parseDecimal(String value) =>
-    double.tryParse(value.replaceAll('.', '').replaceAll(',', '.')) ?? 0;
+double parseDecimal(String value) {
+  final normalized = value.trim().toLowerCase();
+  final isGram = RegExp(r'\b(g|gr|grama|gramas)\b').hasMatch(normalized);
+  final cleaned = normalized
+      .replaceAll(RegExp(r'\b(kg|quilo|quilos|g|gr|grama|gramas)\b'), '')
+      .replaceAll(RegExp(r'[^0-9,.-]'), '')
+      .replaceAll('.', '')
+      .replaceAll(',', '.');
+  final parsed = double.tryParse(cleaned) ?? 0;
+  return isGram ? parsed / 1000 : parsed;
+}

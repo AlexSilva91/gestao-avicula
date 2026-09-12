@@ -74,6 +74,9 @@ class _IngredientsTabState extends State<_IngredientsTab> {
           final activeItems = items
               .where((item) => item.ingredient.isActive)
               .toList();
+          final stockItems = activeItems
+              .where((item) => item.stockKg > .0001)
+              .toList();
           return SeletoTabList(
             children: [
               Wrap(
@@ -94,6 +97,19 @@ class _IngredientsTabState extends State<_IngredientsTab> {
                     ),
                     icon: const Icon(Icons.add),
                     label: const Text('Novo insumo'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: stockItems.isEmpty || activeItems.length < 2
+                        ? null
+                        : () => showDialog<void>(
+                            context: context,
+                            builder: (_) => _IngredientTransferDialog(
+                              ref: widget.ref,
+                              ingredients: activeItems,
+                            ),
+                          ),
+                    icon: const Icon(Icons.swap_horiz),
+                    label: const Text('Transferir estoque'),
                   ),
                   FilledButton.icon(
                     onPressed: activeItems.isEmpty
@@ -341,19 +357,18 @@ class _IngredientCard extends StatelessWidget {
                   icon: const Icon(Icons.price_change_outlined),
                   label: const Text('Preço'),
                 ),
-                if (item.ingredient.isActive)
-                  OutlinedButton.icon(
-                    onPressed: () => _confirmDeactivateIngredient(
-                      context: context,
-                      ref: ref,
-                      item: item,
-                    ),
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Apagar'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.error,
-                    ),
+                OutlinedButton.icon(
+                  onPressed: () => _confirmDeleteIngredientPermanently(
+                    context: context,
+                    ref: ref,
+                    item: item,
                   ),
+                  icon: const Icon(Icons.delete_forever_outlined),
+                  label: const Text('Remover'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                ),
               ],
             ),
           ],
@@ -363,7 +378,7 @@ class _IngredientCard extends StatelessWidget {
   }
 }
 
-Future<void> _confirmDeactivateIngredient({
+Future<void> _confirmDeleteIngredientPermanently({
   required BuildContext context,
   required WidgetRef ref,
   required IngredientOverview item,
@@ -371,9 +386,11 @@ Future<void> _confirmDeactivateIngredient({
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: Text('Apagar ${item.ingredient.name}?'),
+      title: Text('Remover ${item.ingredient.name}?'),
       content: const Text(
-        'O insumo ficará inativo e o histórico de lotes, preços e formulações será preservado.',
+        'Esta ação remove definitivamente o insumo, preços, lotes e movimentos '
+        'de estoque vinculados a ele. Se o insumo estiver em formulações ou '
+        'fabricações, a remoção será bloqueada para proteger o histórico.',
       ),
       actions: [
         TextButton(
@@ -386,7 +403,7 @@ Future<void> _confirmDeactivateIngredient({
             backgroundColor: Theme.of(dialogContext).colorScheme.error,
             foregroundColor: Theme.of(dialogContext).colorScheme.onError,
           ),
-          child: const Text('Apagar'),
+          child: const Text('Remover'),
         ),
       ],
     ),
@@ -395,13 +412,7 @@ Future<void> _confirmDeactivateIngredient({
   try {
     await ref
         .read(operationsControllerProvider)
-        .updateIngredient(
-          ingredientId: item.ingredient.id,
-          name: item.ingredient.name,
-          unit: item.ingredient.unit,
-          isActive: false,
-          notes: item.ingredient.notes,
-        );
+        .deleteIngredientPermanently(item.ingredient.id);
   } catch (e) {
     if (context.mounted) await showOperationError(context, e);
   }
@@ -505,7 +516,11 @@ class _FormulasTabState extends State<_FormulasTab> {
   @override
   Widget build(BuildContext context) {
     final availableIngredients =
-        widget.ref.watch(ingredientsProvider(showInactive)).asData?.value ?? [];
+        (widget.ref.watch(ingredientsProvider(showInactive)).asData?.value ??
+                [])
+            .where((item) => item.ingredient.isActive && item.stockKg > .0001)
+            .where((item) => _isAllowedFormulaIngredient(item.ingredient.name))
+            .toList();
     return widget.ref
         .watch(formulasProvider(showInactive))
         .when(
@@ -1388,6 +1403,169 @@ class _IngredientEntryDialogState extends State<_IngredientEntryDialog> {
   );
 }
 
+class _IngredientTransferDialog extends StatefulWidget {
+  const _IngredientTransferDialog({
+    required this.ref,
+    required this.ingredients,
+  });
+  final WidgetRef ref;
+  final List<IngredientOverview> ingredients;
+
+  @override
+  State<_IngredientTransferDialog> createState() =>
+      _IngredientTransferDialogState();
+}
+
+class _IngredientTransferDialogState extends State<_IngredientTransferDialog> {
+  String? fromIngredientId;
+  String? toIngredientId;
+  final quantity = TextEditingController();
+  final notes = TextEditingController();
+  bool saving = false;
+
+  List<IngredientOverview> get sourceIngredients => widget.ingredients
+      .where((item) => item.ingredient.isActive && item.stockKg > .0001)
+      .toList();
+
+  List<IngredientOverview> get targetIngredients => widget.ingredients
+      .where(
+        (item) =>
+            item.ingredient.isActive && item.ingredient.id != fromIngredientId,
+      )
+      .toList();
+
+  IngredientOverview? get sourceIngredient => sourceIngredients
+      .where((item) => item.ingredient.id == fromIngredientId)
+      .firstOrNull;
+
+  @override
+  void initState() {
+    super.initState();
+    fromIngredientId = sourceIngredients.firstOrNull?.ingredient.id;
+    toIngredientId = targetIngredients.firstOrNull?.ingredient.id;
+  }
+
+  @override
+  void dispose() {
+    quantity.dispose();
+    notes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final source = sourceIngredient;
+    final targets = targetIngredients;
+    if (toIngredientId != null &&
+        !targets.any((item) => item.ingredient.id == toIngredientId)) {
+      toIngredientId = targets.firstOrNull?.ingredient.id;
+    }
+    return AlertDialog(
+      title: const Text('Transferir estoque'),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: fromIngredientId,
+                decoration: const InputDecoration(labelText: 'Origem'),
+                items: [
+                  for (final item in sourceIngredients)
+                    DropdownMenuItem(
+                      value: item.ingredient.id,
+                      child: Text(
+                        '${item.ingredient.name} · ${kg(item.stockKg)}',
+                      ),
+                    ),
+                ],
+                onChanged: saving
+                    ? null
+                    : (value) => setState(() {
+                        fromIngredientId = value;
+                        toIngredientId =
+                            targetIngredients.firstOrNull?.ingredient.id;
+                      }),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: toIngredientId,
+                decoration: const InputDecoration(labelText: 'Destino'),
+                items: [
+                  for (final item in targets)
+                    DropdownMenuItem(
+                      value: item.ingredient.id,
+                      child: Text(item.ingredient.name),
+                    ),
+                ],
+                onChanged: saving
+                    ? null
+                    : (value) => setState(() => toIngredientId = value),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: quantity,
+                enabled: !saving,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Quantidade',
+                  suffixText: 'kg',
+                  helperText: source == null
+                      ? null
+                      : 'Disponível: ${kg(source.stockKg)}',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notes,
+                enabled: !saving,
+                decoration: const InputDecoration(labelText: 'Observação'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed:
+              saving || fromIngredientId == null || toIngredientId == null
+              ? null
+              : () async {
+                  setState(() => saving = true);
+                  try {
+                    await widget.ref
+                        .read(operationsControllerProvider)
+                        .transferIngredientStock(
+                          fromIngredientId: fromIngredientId!,
+                          toIngredientId: toIngredientId!,
+                          quantityKg: parseDecimal(quantity.text),
+                          notes: notes.text,
+                        );
+                    if (context.mounted) Navigator.pop(context);
+                  } catch (e) {
+                    await showOperationError(context, e);
+                    if (mounted) setState(() => saving = false);
+                  }
+                },
+          child: saving
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Transferir'),
+        ),
+      ],
+    );
+  }
+}
+
 class _IngredientCorrectionDialog extends StatefulWidget {
   const _IngredientCorrectionDialog({required this.ref, required this.lot});
   final WidgetRef ref;
@@ -1650,7 +1828,12 @@ class _ReadyFeedDialogState extends State<_ReadyFeedDialog> {
 }
 
 class _ManufactureDialogState extends State<_ManufactureDialog> {
-  final quantity = TextEditingController(text: '100');
+  late final double? recommendedQuantity = _recommendedManufactureQuantity(
+    widget.formula.formula.phase,
+  );
+  late final quantity = TextEditingController(
+    text: decimal.format(recommendedQuantity ?? 100),
+  );
   final notes = TextEditingController();
   DateTime date = DateTime.now();
   bool saving = false;
@@ -1682,11 +1865,12 @@ class _ManufactureDialogState extends State<_ManufactureDialog> {
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
+            runSpacing: 8,
             children: [
-              for (final v in [25, 50, 100, 150, 200])
+              for (final v in _manufactureQuantityOptions(recommendedQuantity))
                 ActionChip(
-                  label: Text('$v kg'),
-                  onPressed: () => quantity.text = '$v',
+                  label: Text('${decimal.format(v)} kg'),
+                  onPressed: () => quantity.text = decimal.format(v),
                 ),
             ],
           ),
@@ -1732,6 +1916,38 @@ class _ManufactureDialogState extends State<_ManufactureDialog> {
       ),
     ],
   );
+}
+
+double? _recommendedManufactureQuantity(String phase) {
+  final normalized = phase.trim().toUpperCase();
+  return switch (normalized) {
+    'RECRIA' || 'CRESCIMENTO' => 55,
+    'PRE_POSTURA' => 45,
+    _ => null,
+  };
+}
+
+List<double> _manufactureQuantityOptions(double? recommended) {
+  final values = <double>[?recommended, 25, 45, 50, 55, 100, 150, 200];
+  return values.toSet().toList();
+}
+
+bool _isAllowedFormulaIngredient(String name) {
+  final normalized = name.trim().toLowerCase();
+  return const {
+    'xerem fino',
+    'farelo de soja fino',
+    'farelo de trigo',
+    'calcário calcítico',
+    'calcario calcitico',
+    'meganúcleo frango c 4%',
+    'meganucleo frango c 4%',
+    'meganúcleo postura 4%',
+    'meganucleo postura 4%',
+    'urucum',
+    'cúrcuma',
+    'curcuma',
+  }.contains(normalized);
 }
 
 class _FormulaDialog extends StatefulWidget {
@@ -2030,8 +2246,8 @@ class _FormulaDialogState extends State<_FormulaDialog> {
             const SizedBox(height: 8),
             Text(
               widget.editCurrent
-                  ? 'A soma deve totalizar 100 kg.'
-                  : 'A soma deve totalizar 100 kg. O histórico anterior será preservado.',
+                  ? 'A soma representa o tamanho base desta formulação.'
+                  : 'A soma representa o tamanho base desta formulação. O histórico anterior será preservado.',
             ),
           ],
         ),

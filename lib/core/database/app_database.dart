@@ -15,6 +15,12 @@ const _globalUserPermissions = {
   'tenant.view_all',
   'tenants.create',
 };
+const _defaultFormulaStockRebuildSettingKey =
+    'default_formula_stock_rebuild_2026_09_11';
+const _prePostureRequestedFormulaSettingKey =
+    'pre_posture_requested_formula_2026_09_11';
+const _requestedManufactureProposalFormulasSettingKey =
+    'requested_manufacture_proposal_formulas_2026_09_12_v2';
 
 class Tenants extends Table {
   TextColumn get id => text()();
@@ -445,6 +451,462 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> seedInitialData() async {
     await _seedOperationalDefaults('system');
+    await rebuildDefaultFormulasForAvailableStock(actorId: 'system');
+    await ensureRequestedManufactureProposalFormulas(actorId: 'system');
+    await sanitizeFormulaIngredients(actorId: 'system');
+  }
+
+  Future<void> sanitizeFormulaIngredients({required String actorId}) async {
+    final now = DateTime.now();
+    await _ensureIngredient(
+      id: 'ingredient-farelo-trigo',
+      name: 'Farelo de trigo',
+      actorId: actorId,
+      now: now,
+    );
+    await _ensureIngredient(
+      id: 'ingredient-meganucleo-frango-c-4',
+      name: 'Meganúcleo Frango C 4%',
+      actorId: actorId,
+      now: now,
+    );
+    await _ensureIngredient(
+      id: 'ingredient-meganucleo-postura-4',
+      name: 'Meganúcleo Postura 4%',
+      actorId: actorId,
+      now: now,
+    );
+    final allowedIdsByName = <String, String>{
+      for (final name in [
+        'Xerem fino',
+        'Farelo de soja fino',
+        'Farelo de trigo',
+        'Calcário calcítico',
+        'Meganúcleo Frango C 4%',
+        'Meganúcleo Postura 4%',
+        'Urucum',
+        'Cúrcuma',
+      ])
+        name: await _ingredientIdByName(name),
+    };
+    final replacementByName = {
+      'Xerem grosso': 'Xerem fino',
+      'Trigo': 'Farelo de trigo',
+      'Farelo de soja grosso': 'Farelo de soja fino',
+      'Núcleo postura': 'Meganúcleo Postura 4%',
+    };
+    final ingredientsById = {
+      for (final ingredient in await select(ingredients).get())
+        ingredient.id: ingredient.name,
+    };
+    final formulas = await select(feedFormulas).get();
+    await transaction(() async {
+      for (final formula in formulas) {
+        final items = await (select(
+          feedFormulaItems,
+        )..where((item) => item.formulaId.equals(formula.id))).get();
+        final quantities = <String, double>{};
+        var changed = false;
+        for (final item in items) {
+          if (item.baseQuantityKg <= .0001) {
+            changed = true;
+            continue;
+          }
+          final ingredientName = ingredientsById[item.ingredientId];
+          final targetName = allowedIdsByName.containsKey(ingredientName)
+              ? ingredientName
+              : replacementByName[ingredientName];
+          if (targetName == null) {
+            changed = true;
+            continue;
+          }
+          final targetId = allowedIdsByName[targetName]!;
+          if (targetId != item.ingredientId) changed = true;
+          quantities[targetId] =
+              (quantities[targetId] ?? 0) + item.baseQuantityKg;
+        }
+        if (!changed && quantities.length == items.length) continue;
+        await (delete(
+          feedFormulaItems,
+        )..where((item) => item.formulaId.equals(formula.id))).go();
+        if (quantities.isNotEmpty) {
+          for (final entry in quantities.entries) {
+            await into(feedFormulaItems).insert(
+              FeedFormulaItemsCompanion.insert(
+                id: const Uuid().v4(),
+                formulaId: formula.id,
+                ingredientId: entry.key,
+                baseQuantityKg: entry.value,
+              ),
+            );
+          }
+        }
+        await addAudit(
+          userId: actorId,
+          action: 'feed_formulas.sanitize_items',
+          entityType: 'feed_formula',
+          entityId: formula.id,
+          description:
+              'Formulação ${formula.name} saneada para manter apenas insumos permitidos em uso.',
+        );
+      }
+      await into(appSettings).insertOnConflictUpdate(
+        AppSettingsCompanion.insert(
+          key: 'formula_items_sanitized_2026_09_12',
+          value: now.toIso8601String(),
+          updatedAt: now,
+          updatedBy: Value(actorId),
+        ),
+      );
+    });
+  }
+
+  Future<void> ensureRequestedManufactureProposalFormulas({
+    required String actorId,
+    bool force = false,
+  }) async {
+    if (!force) {
+      final marker =
+          await (select(appSettings)..where(
+                (setting) => setting.key.equals(
+                  _requestedManufactureProposalFormulasSettingKey,
+                ),
+              ))
+              .getSingleOrNull();
+      if (marker != null) return;
+    }
+    final now = DateTime.now();
+    final fareloTrigoId = await _ensureIngredient(
+      id: 'ingredient-farelo-trigo',
+      name: 'Farelo de trigo',
+      actorId: actorId,
+      now: now,
+    );
+    final megaFrangoId = await _ensureIngredient(
+      id: 'ingredient-meganucleo-frango-c-4',
+      name: 'Meganúcleo Frango C 4%',
+      actorId: actorId,
+      now: now,
+    );
+    final megaPosturaId = await _ensureIngredient(
+      id: 'ingredient-meganucleo-postura-4',
+      name: 'Meganúcleo Postura 4%',
+      actorId: actorId,
+      now: now,
+    );
+    final growthFormula = await _systemFormulaByPhase('RECRIA');
+    final prePostureFormula = await _systemFormulaByPhase('PRE_POSTURA');
+    await transaction(() async {
+      if (growthFormula != null) {
+        await _replaceFormulaItems(
+          formula: growthFormula,
+          name: 'Crescimento',
+          quantities: {
+            await _ingredientIdByName('Xerem fino'): 37.8,
+            await _ingredientIdByName('Farelo de soja fino'): 9,
+            fareloTrigoId: 6,
+            megaFrangoId: 2.2,
+          },
+        );
+        await addAudit(
+          userId: actorId,
+          action: 'feed_formulas.growth_proposal',
+          entityType: 'feed_formula',
+          entityId: growthFormula.id,
+          description:
+              'Formulação de Crescimento ajustada para fabricação de 55 kg.',
+        );
+      }
+      if (prePostureFormula != null) {
+        await _replaceFormulaItems(
+          formula: prePostureFormula,
+          name: 'Pré-postura',
+          quantities: {
+            await _ingredientIdByName('Xerem fino'): 27.594,
+            await _ingredientIdByName('Farelo de soja fino'): 9,
+            fareloTrigoId: 2.7,
+            await _ingredientIdByName('Calcário calcítico'): 3.6,
+            megaPosturaId: 1.62,
+            await _ingredientIdByName('Urucum'): .243,
+            await _ingredientIdByName('Cúrcuma'): .243,
+          },
+        );
+        await addAudit(
+          userId: actorId,
+          action: 'feed_formulas.pre_posture_proposal',
+          entityType: 'feed_formula',
+          entityId: prePostureFormula.id,
+          description:
+              'Formulação de Pré-postura ajustada para proposta de fabricação.',
+        );
+      }
+      await into(appSettings).insertOnConflictUpdate(
+        AppSettingsCompanion.insert(
+          key: _requestedManufactureProposalFormulasSettingKey,
+          value: now.toIso8601String(),
+          updatedAt: now,
+          updatedBy: Value(actorId),
+        ),
+      );
+    });
+  }
+
+  Future<FeedFormula?> _systemFormulaByPhase(String phase) =>
+      (select(feedFormulas)
+            ..where((row) => row.createdBy.equals('system'))
+            ..where((row) => row.phase.equals(phase))
+            ..limit(1))
+          .getSingleOrNull();
+
+  Future<void> _replaceFormulaItems({
+    required FeedFormula formula,
+    required String name,
+    required Map<String, double> quantities,
+  }) async {
+    await (update(feedFormulas)..where((row) => row.id.equals(formula.id)))
+        .write(FeedFormulasCompanion(name: Value(name)));
+    await (delete(
+      feedFormulaItems,
+    )..where((item) => item.formulaId.equals(formula.id))).go();
+    for (final entry in quantities.entries) {
+      await into(feedFormulaItems).insert(
+        FeedFormulaItemsCompanion.insert(
+          id: const Uuid().v4(),
+          formulaId: formula.id,
+          ingredientId: entry.key,
+          baseQuantityKg: entry.value,
+        ),
+      );
+    }
+  }
+
+  Future<void> ensureRequestedPrePostureFormula({
+    required String actorId,
+    bool force = false,
+  }) async {
+    if (!force) {
+      final marker =
+          await (select(appSettings)..where(
+                (setting) =>
+                    setting.key.equals(_prePostureRequestedFormulaSettingKey),
+              ))
+              .getSingleOrNull();
+      if (marker != null) return;
+    }
+    final formula =
+        await (select(feedFormulas)
+              ..where((row) => row.createdBy.equals('system'))
+              ..where((row) => row.phase.equals('PRE_POSTURA'))
+              ..limit(1))
+            .getSingleOrNull();
+    if (formula == null) return;
+    final now = DateTime.now();
+    final nucleusId = await _ensureIngredient(
+      id: 'ingredient-nucleo-postura',
+      name: 'Núcleo postura',
+      actorId: actorId,
+      now: now,
+    );
+    final recipe = <String, double>{
+      await _ingredientIdByName('Xerem grosso'): 61.32,
+      await _ingredientIdByName('Farelo de soja fino'): 20,
+      await _ingredientIdByName('Trigo'): 6,
+      await _ingredientIdByName('Calcário calcítico'): 8,
+      nucleusId: 3.6,
+      await _ingredientIdByName('Urucum'): .54,
+      await _ingredientIdByName('Cúrcuma'): .54,
+    };
+    await transaction(() async {
+      await (delete(
+        feedFormulaItems,
+      )..where((item) => item.formulaId.equals(formula.id))).go();
+      for (final entry in recipe.entries) {
+        await into(feedFormulaItems).insert(
+          FeedFormulaItemsCompanion.insert(
+            id: const Uuid().v4(),
+            formulaId: formula.id,
+            ingredientId: entry.key,
+            baseQuantityKg: entry.value,
+          ),
+        );
+      }
+      await addAudit(
+        userId: actorId,
+        action: 'feed_formulas.pre_posture_requested',
+        entityType: 'feed_formula',
+        entityId: formula.id,
+        description:
+            'Formulação padrão de Pré-postura criada conforme solicitação.',
+      );
+      await into(appSettings).insertOnConflictUpdate(
+        AppSettingsCompanion.insert(
+          key: _prePostureRequestedFormulaSettingKey,
+          value: now.toIso8601String(),
+          updatedAt: now,
+          updatedBy: Value(actorId),
+        ),
+      );
+    });
+  }
+
+  Future<String> _ensureIngredient({
+    required String id,
+    required String name,
+    required String actorId,
+    required DateTime now,
+  }) async {
+    final byId = await (select(
+      ingredients,
+    )..where((ingredient) => ingredient.id.equals(id))).getSingleOrNull();
+    if (byId != null) return byId.id;
+    final byName = (await select(ingredients).get())
+        .where(
+          (ingredient) =>
+              ingredient.name.trim().toLowerCase() == name.toLowerCase(),
+        )
+        .firstOrNull;
+    if (byName != null) return byName.id;
+    await into(ingredients).insert(
+      IngredientsCompanion.insert(
+        id: id,
+        name: name,
+        createdAt: now,
+        createdBy: actorId,
+      ),
+    );
+    return id;
+  }
+
+  Future<String> _ingredientIdByName(String name) async {
+    final ingredient = (await select(ingredients).get())
+        .where(
+          (ingredient) =>
+              ingredient.name.trim().toLowerCase() == name.toLowerCase(),
+        )
+        .firstOrNull;
+    if (ingredient == null) {
+      throw StateError('Insumo obrigatório não encontrado: $name.');
+    }
+    return ingredient.id;
+  }
+
+  Future<int> rebuildDefaultFormulasForAvailableStock({
+    required String actorId,
+    bool force = false,
+  }) async {
+    if (!force) {
+      final marker =
+          await (select(appSettings)..where(
+                (setting) =>
+                    setting.key.equals(_defaultFormulaStockRebuildSettingKey),
+              ))
+              .getSingleOrNull();
+      if (marker != null) return 0;
+    }
+
+    final stockedRows = await customSelect(
+      '''
+      SELECT i.id
+      FROM ingredients i
+      WHERE i.is_active = 1
+        AND COALESCE((
+          SELECT SUM(
+            CASE
+              WHEN m.type IN ('PURCHASE_IN','ADJUSTMENT_IN')
+              THEN m.quantity_kg
+              ELSE -m.quantity_kg
+            END
+          )
+          FROM ingredient_stock_movements m
+          WHERE m.ingredient_id = i.id
+        ), 0) > 0.0001
+      ''',
+      readsFrom: {ingredients, ingredientStockMovements},
+    ).get();
+    final validIngredientIds = stockedRows
+        .map((row) => row.read<String>('id'))
+        .toSet();
+    if (validIngredientIds.isEmpty) return 0;
+
+    final formulas =
+        (await (select(
+          feedFormulas,
+        )..where((formula) => formula.createdBy.equals('system'))).get()).where(
+          (formula) => formula.phase.trim().toUpperCase() != 'RECRIA',
+        );
+    var updated = 0;
+    final now = DateTime.now();
+    await transaction(() async {
+      for (final formula in formulas) {
+        final currentItems = await (select(
+          feedFormulaItems,
+        )..where((item) => item.formulaId.equals(formula.id))).get();
+        final usableItems = currentItems
+            .where(
+              (item) =>
+                  item.baseQuantityKg > .0001 &&
+                  validIngredientIds.contains(item.ingredientId),
+            )
+            .toList();
+        if (usableItems.isEmpty) continue;
+        final normalized = _normalizeFormulaItemsToHundredKg(usableItems);
+        await (delete(
+          feedFormulaItems,
+        )..where((item) => item.formulaId.equals(formula.id))).go();
+        for (final entry in normalized.entries) {
+          await into(feedFormulaItems).insert(
+            FeedFormulaItemsCompanion.insert(
+              id: const Uuid().v4(),
+              formulaId: formula.id,
+              ingredientId: entry.key,
+              baseQuantityKg: entry.value,
+            ),
+          );
+        }
+        updated++;
+        await addAudit(
+          userId: actorId,
+          action: 'feed_formulas.default_stock_rebuild',
+          entityType: 'feed_formula',
+          entityId: formula.id,
+          description:
+              'Formulação padrão ${formula.name} refeita apenas com insumos em estoque.',
+        );
+      }
+      if (updated > 0 && !force) {
+        await into(appSettings).insertOnConflictUpdate(
+          AppSettingsCompanion.insert(
+            key: _defaultFormulaStockRebuildSettingKey,
+            value: now.toIso8601String(),
+            updatedAt: now,
+            updatedBy: Value(actorId),
+          ),
+        );
+      }
+    });
+    return updated;
+  }
+
+  Map<String, double> _normalizeFormulaItemsToHundredKg(
+    List<FeedFormulaItem> items,
+  ) {
+    final total = items.fold<double>(
+      0,
+      (sum, item) => sum + item.baseQuantityKg,
+    );
+    final result = <String, double>{};
+    var subtotal = 0.0;
+    for (var index = 0; index < items.length; index++) {
+      final item = items[index];
+      final quantity = index == items.length - 1
+          ? 100 - subtotal
+          : double.parse(
+              ((item.baseQuantityKg / total) * 100).toStringAsFixed(3),
+            );
+      result[item.ingredientId] = quantity;
+      subtotal += quantity;
+    }
+    return result;
   }
 
   Future<bool> hasUsers() async {
@@ -487,14 +949,17 @@ class AppDatabase extends _$AppDatabase {
       'curcuma': 'Cúrcuma',
       'urucum': 'Urucum',
       'calcario-calcitico': 'Calcário calcítico',
+      'farelo-trigo': 'Farelo de trigo',
+      'meganucleo-frango-c-4': 'Meganúcleo Frango C 4%',
+      'meganucleo-postura-4': 'Meganúcleo Postura 4%',
     };
     const recipes = <String, List<double>>{
-      'CRIA': [63, 0, 0, 0, 33, 0, 0, 4],
-      'RECRIA': [62, 0, 14, 0, 20, 0, 0, 4],
-      'PRE_POSTURA': [62, 0, 7.5, 22, 0, .25, .25, 8],
-      'PRODUCAO_I': [59.5, 0, 5, 23, 0, .25, .25, 12],
-      'PRODUCAO_II': [60, 0, 5, 22.5, 0, .25, .25, 12],
-      'PRODUCAO_III': [60.5, 0, 5, 22, 0, .25, .25, 12],
+      'CRIA': [0, 63, 0, 33, 0, 0, 0, 4, 0, 0, 0],
+      'RECRIA': [0, 37.8, 0, 9, 0, 0, 0, 0, 6, 2.2, 0],
+      'PRE_POSTURA': [0, 27.594, 0, 9, 0, .243, .243, 3.6, 2.7, 0, 1.62],
+      'PRODUCAO_I': [0, 59.5, 0, 23, 0, .25, .25, 12, 5, 0, 0],
+      'PRODUCAO_II': [0, 60, 0, 22.5, 0, .25, .25, 12, 5, 0, 0],
+      'PRODUCAO_III': [0, 60.5, 0, 22, 0, .25, .25, 12, 5, 0, 0],
     };
     final now = DateTime.now();
     await transaction(() async {
@@ -524,12 +989,14 @@ class AppDatabase extends _$AppDatabase {
         );
         var index = 0;
         for (final ingredientId in ingredientSeeds.keys) {
+          final quantity = recipe.value[index++];
+          if (quantity <= .0001) continue;
           await into(feedFormulaItems).insert(
             FeedFormulaItemsCompanion.insert(
               id: '$formulaId-$ingredientId',
               formulaId: formulaId,
               ingredientId: 'ingredient-$ingredientId',
-              baseQuantityKg: recipe.value[index++],
+              baseQuantityKg: quantity,
             ),
             mode: InsertMode.insertOrIgnore,
           );

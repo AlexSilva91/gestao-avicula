@@ -241,6 +241,11 @@ class OperationsController {
     notes: notes,
     actorId: _actor('ingredients.manage'),
   );
+  Future<void> deleteIngredientPermanently(String ingredientId) =>
+      _db.deleteIngredientPermanently(
+        ingredientId: ingredientId,
+        actorId: _actor('ingredients.manage'),
+      );
   Future<void> addPrice(
     String ingredientId,
     int cents,
@@ -284,6 +289,18 @@ class OperationsController {
     ingredientLotId: ingredientLotId,
     quantityKg: quantityKg,
     input: input,
+    notes: notes,
+    actorId: _actor('ingredients.manage'),
+  );
+  Future<void> transferIngredientStock({
+    required String fromIngredientId,
+    required String toIngredientId,
+    required double quantityKg,
+    String? notes,
+  }) => _db.transferIngredientStock(
+    fromIngredientId: fromIngredientId,
+    toIngredientId: toIngredientId,
+    quantityKg: quantityKg,
     notes: notes,
     actorId: _actor('ingredients.manage'),
   );

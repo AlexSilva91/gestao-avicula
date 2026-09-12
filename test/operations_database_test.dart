@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:drift/drift.dart' show Variable;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:seleto/core/database/app_database.dart';
@@ -246,6 +247,50 @@ void main() {
     expect(batch.batch.costPerKgCents, closeTo(116.67, .01));
   });
 
+  test('ingredient stock can be transferred to another ingredient', () async {
+    final ingredients = await db.watchIngredientOverviews().first;
+    final source = ingredients.firstWhere(
+      (item) => item.ingredient.name == 'Xerem grosso',
+    );
+    final target = ingredients.firstWhere(
+      (item) => item.ingredient.name == 'Xerem fino',
+    );
+    await db.registerIngredientStockEntry(
+      ingredientId: source.ingredient.id,
+      entryDate: DateTime(2026, 1, 1),
+      packageUnit: 'KG',
+      packageQuantity: 20,
+      packageWeightKg: 1,
+      totalCostCents: 2000,
+      actorId: actor,
+    );
+
+    await db.transferIngredientStock(
+      fromIngredientId: source.ingredient.id,
+      toIngredientId: target.ingredient.id,
+      quantityKg: 7,
+      actorId: actor,
+    );
+
+    final balances = await db.watchIngredientOverviews().first;
+    expect(
+      balances
+          .firstWhere((item) => item.ingredient.id == source.ingredient.id)
+          .stockKg,
+      closeTo(13, .0001),
+    );
+    expect(
+      balances
+          .firstWhere((item) => item.ingredient.id == target.ingredient.id)
+          .stockKg,
+      closeTo(7, .0001),
+    );
+    final targetLots = await db
+        .watchIngredientLotBalances(ingredientId: target.ingredient.id)
+        .first;
+    expect(targetLots.single.balanceKg, closeTo(7, .0001));
+  });
+
   test('ready feed purchase enters stock and creates expense', () async {
     await db.registerReadyFeedPurchase(
       name: 'Ração crescimento pronta',
@@ -427,6 +472,367 @@ void main() {
     expect(editedFormula.formula.isActive, isFalse);
     expect(editedFormula.items.length, formula.items.length);
   });
+
+  test(
+    'adding an inactive ingredient name reactivates it without sql error',
+    () async {
+      final ingredient = (await db.watchIngredientOverviews().first).first;
+
+      await db.updateIngredient(
+        ingredientId: ingredient.ingredient.id,
+        name: 'Insumo temporario',
+        unit: 'kg',
+        isActive: false,
+        notes: 'Inativo',
+        actorId: actor,
+      );
+
+      await db.addIngredient(
+        name: 'Insumo temporario',
+        unit: 'saco',
+        notes: 'Reativado no cadastro',
+        actorId: actor,
+      );
+
+      final ingredients = await db
+          .watchIngredientOverviews(includeInactive: true)
+          .first;
+      final reactivated = ingredients
+          .where((item) => item.ingredient.name == 'Insumo temporario')
+          .toList();
+      expect(reactivated, hasLength(1));
+      expect(reactivated.single.ingredient.id, ingredient.ingredient.id);
+      expect(reactivated.single.ingredient.isActive, isTrue);
+      expect(reactivated.single.ingredient.unit, 'saco');
+
+      expect(
+        () => db.addIngredient(
+          name: 'Insumo temporario',
+          unit: 'kg',
+          notes: null,
+          actorId: actor,
+        ),
+        throwsStateError,
+      );
+    },
+  );
+
+  test(
+    'ingredient can be permanently deleted when it has no formula usage',
+    () async {
+      await db.addIngredient(
+        name: 'Insumo descartavel',
+        unit: 'kg',
+        notes: 'Remover no teste',
+        actorId: actor,
+      );
+      final ingredient =
+          (await db.watchIngredientOverviews(includeInactive: true).first)
+              .firstWhere(
+                (item) => item.ingredient.name == 'Insumo descartavel',
+              )
+              .ingredient;
+
+      await db.registerIngredientPrice(
+        ingredientId: ingredient.id,
+        priceCents: 120,
+        effectiveDate: DateTime(2026, 1, 1),
+        actorId: actor,
+      );
+      await db.registerIngredientStockEntry(
+        ingredientId: ingredient.id,
+        entryDate: DateTime(2026, 1, 2),
+        packageUnit: 'KG',
+        packageQuantity: 5,
+        packageWeightKg: 1,
+        totalCostCents: 600,
+        actorId: actor,
+      );
+
+      await db.deleteIngredientPermanently(
+        ingredientId: ingredient.id,
+        actorId: actor,
+      );
+
+      final ingredients = await db
+          .watchIngredientOverviews(includeInactive: true)
+          .first;
+      expect(
+        ingredients.where((item) => item.ingredient.id == ingredient.id),
+        isEmpty,
+      );
+      expect(await db.watchIngredientPrices(ingredient.id).first, isEmpty);
+      expect(
+        await db
+            .watchIngredientLotBalances(
+              ingredientId: ingredient.id,
+              includeInactiveIngredients: true,
+            )
+            .first,
+        isEmpty,
+      );
+    },
+  );
+
+  test('ingredient linked only to formulas can be permanently deleted', () async {
+    final ingredientId =
+        (await db.watchFormulaOverviews().first).first.items.first.ingredientId;
+
+    await db.deleteIngredientPermanently(
+      ingredientId: ingredientId,
+      actorId: actor,
+    );
+
+    final ingredients = await db
+        .watchIngredientOverviews(includeInactive: true)
+        .first;
+    expect(
+      ingredients.where((item) => item.ingredient.id == ingredientId),
+      isEmpty,
+    );
+    final formulaLinks = await db
+        .customSelect(
+          'SELECT COUNT(*) AS count FROM feed_formula_items WHERE ingredient_id = ?',
+          variables: [Variable.withString(ingredientId)],
+          readsFrom: {db.feedFormulaItems},
+        )
+        .getSingle();
+    expect(formulaLinks.read<int>('count'), 0);
+  });
+
+  test(
+    'ingredient used in manufactured feed is protected from deletion',
+    () async {
+      final formula = (await db.watchFormulaOverviews().first).firstWhere(
+        (item) => item.items.isNotEmpty,
+      );
+      for (final ingredient in formula.items) {
+        await db.registerIngredientStockEntry(
+          ingredientId: ingredient.ingredientId,
+          entryDate: DateTime(2026, 1, 1),
+          packageUnit: 'KG',
+          packageQuantity: 100,
+          packageWeightKg: 1,
+          totalCostCents: 10000,
+          actorId: actor,
+        );
+      }
+      final ingredientId = formula.items.first.ingredientId;
+
+      await db.manufactureFeed(
+        formula: formula,
+        quantityKg: 10,
+        actorId: actor,
+      );
+
+      await expectLater(
+        db.deleteIngredientPermanently(
+          ingredientId: ingredientId,
+          actorId: actor,
+        ),
+        throwsStateError,
+      );
+    },
+  );
+
+  test('requested manufacture proposal formulas are created', () async {
+    await db.ensureRequestedManufactureProposalFormulas(
+      actorId: actor,
+      force: true,
+    );
+
+    final formulas = await db.watchFormulaOverviews().first;
+    final growth = formulas.firstWhere(
+      (item) => item.formula.phase == 'RECRIA',
+    );
+    final growthQuantities = {
+      for (final item in growth.items) item.name: item.quantityKg,
+    };
+    expect(growth.formula.name, 'Crescimento');
+    expect(growthQuantities['Xerem fino'], closeTo(37.8, .001));
+    expect(growthQuantities['Farelo de soja fino'], closeTo(9, .001));
+    expect(growthQuantities['Farelo de trigo'], closeTo(6, .001));
+    expect(growthQuantities['Meganúcleo Frango C 4%'], closeTo(2.2, .001));
+    expect(
+      growthQuantities.values.fold<double>(
+        0,
+        (sum, quantity) => sum + quantity,
+      ),
+      closeTo(55, .001),
+    );
+
+    final formula = formulas.firstWhere(
+      (item) => item.formula.phase == 'PRE_POSTURA',
+    );
+    final quantities = {
+      for (final item in formula.items) item.name: item.quantityKg,
+    };
+    expect(quantities['Xerem fino'], closeTo(27.594, .001));
+    expect(quantities['Farelo de soja fino'], closeTo(9, .001));
+    expect(quantities['Farelo de trigo'], closeTo(2.7, .001));
+    expect(quantities['Calcário calcítico'], closeTo(3.6, .001));
+    expect(quantities['Meganúcleo Postura 4%'], closeTo(1.62, .001));
+    expect(quantities['Urucum'], closeTo(.243, .001));
+    expect(quantities['Cúrcuma'], closeTo(.243, .001));
+    expect(
+      quantities.values.fold<double>(0, (sum, quantity) => sum + quantity),
+      closeTo(45, .001),
+    );
+
+    for (final item in formula.items) {
+      await db.registerIngredientStockEntry(
+        ingredientId: item.ingredientId,
+        entryDate: DateTime(2026, 1, 1),
+        packageUnit: 'KG',
+        packageQuantity: 100,
+        packageWeightKg: 1,
+        totalCostCents: 10000,
+        actorId: actor,
+      );
+    }
+
+    await db.manufactureFeed(
+      formula: formula,
+      quantityKg: 45,
+      date: DateTime(2026, 1, 2),
+      actorId: actor,
+    );
+    final batch = (await db.watchFeedBatchBalances().first).single;
+    final batchRows = await db
+        .customSelect(
+          '''
+      SELECT i.name, bi.quantity_kg
+      FROM feed_batch_items bi
+      JOIN ingredients i ON i.id = bi.ingredient_id
+      WHERE bi.batch_id = ?
+      ''',
+          variables: [Variable.withString(batch.batch.id)],
+          readsFrom: {db.feedBatchItems, db.ingredients},
+        )
+        .get();
+    final manufacturedQuantities = {
+      for (final row in batchRows)
+        row.read<String>('name'): row.read<double>('quantity_kg'),
+    };
+    expect(manufacturedQuantities['Xerem fino'], closeTo(27.594, .001));
+    expect(manufacturedQuantities['Farelo de soja fino'], closeTo(9, .001));
+    expect(manufacturedQuantities['Farelo de trigo'], closeTo(2.7, .001));
+    expect(manufacturedQuantities['Calcário calcítico'], closeTo(3.6, .001));
+    expect(
+      manufacturedQuantities['Meganúcleo Postura 4%'],
+      closeTo(1.62, .001),
+    );
+    expect(manufacturedQuantities['Urucum'], closeTo(.243, .001));
+    expect(manufacturedQuantities['Cúrcuma'], closeTo(.243, .001));
+  });
+
+  test(
+    'formula items only keep allowed ingredients with positive quantities',
+    () async {
+      const allowedNames = {
+        'Xerem fino',
+        'Farelo de soja fino',
+        'Farelo de trigo',
+        'Calcário calcítico',
+        'Meganúcleo Frango C 4%',
+        'Meganúcleo Postura 4%',
+        'Cúrcuma',
+        'Urucum',
+      };
+
+      await db.sanitizeFormulaIngredients(actorId: actor);
+
+      final rows = await db.customSelect('''
+      SELECT i.name, fi.base_quantity_kg
+      FROM feed_formula_items fi
+      JOIN ingredients i ON i.id = fi.ingredient_id
+    ''').get();
+
+      expect(rows, isNotEmpty);
+      for (final row in rows) {
+        expect(allowedNames, contains(row.read<String>('name')));
+        expect(row.read<double>('base_quantity_kg'), greaterThan(.0001));
+      }
+      expect(
+        rows.map((row) => row.read<String>('name')),
+        isNot(contains('Núcleo postura')),
+      );
+      expect(
+        rows.map((row) => row.read<String>('name')),
+        isNot(contains('Xerem grosso')),
+      );
+      expect(
+        rows.map((row) => row.read<String>('name')),
+        isNot(contains('Trigo')),
+      );
+      expect(
+        rows.map((row) => row.read<String>('name')),
+        isNot(contains('Farelo de soja grosso')),
+      );
+    },
+  );
+
+  test(
+    'default formulas are rebuilt with stocked ingredients except recria',
+    () async {
+      final ingredients = await db.watchIngredientOverviews().first;
+      final xerem = ingredients.firstWhere(
+        (item) => item.ingredient.name == 'Xerem grosso',
+      );
+      final limestone = ingredients.firstWhere(
+        (item) => item.ingredient.name == 'Calcário calcítico',
+      );
+      for (final ingredient in [xerem, limestone]) {
+        await db.registerIngredientStockEntry(
+          ingredientId: ingredient.ingredient.id,
+          entryDate: DateTime(2026, 1, 1),
+          packageUnit: 'KG',
+          packageQuantity: 100,
+          packageWeightKg: 1,
+          totalCostCents: 10000,
+          actorId: actor,
+        );
+      }
+      final beforeRecria = (await db.watchFormulaOverviews().first).firstWhere(
+        (formula) => formula.formula.phase == 'RECRIA',
+      );
+      final beforeRecriaItems = {
+        for (final item in beforeRecria.items)
+          item.ingredientId: item.quantityKg,
+      };
+
+      final updated = await db.rebuildDefaultFormulasForAvailableStock(
+        actorId: actor,
+        force: true,
+      );
+
+      expect(updated, greaterThan(0));
+      final formulas = await db.watchFormulaOverviews().first;
+      final stockedIds = {xerem.ingredient.id, limestone.ingredient.id};
+      for (final formula in formulas.where(
+        (formula) =>
+            formula.formula.createdBy == 'system' &&
+            formula.formula.phase != 'RECRIA',
+      )) {
+        expect(
+          formula.items.map((item) => item.ingredientId).toSet(),
+          everyElement(isIn(stockedIds)),
+        );
+        expect(
+          formula.items.fold<double>(0, (sum, item) => sum + item.quantityKg),
+          closeTo(100, .001),
+        );
+        expect(formula.items.every((item) => item.quantityKg > 0), isTrue);
+      }
+      final afterRecria = formulas.firstWhere(
+        (formula) => formula.formula.phase == 'RECRIA',
+      );
+      expect({
+        for (final item in afterRecria.items)
+          item.ingredientId: item.quantityKg,
+      }, beforeRecriaItems);
+    },
+  );
 
   test('laying rate history is calculated daily and monthly per lot', () async {
     await db.registerLotPurchase(
