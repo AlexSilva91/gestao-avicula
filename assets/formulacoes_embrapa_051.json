@@ -5,10 +5,10 @@
       "phase": "CRIA",
       "notes": "Formulação para 100 kg. Fase: 0 a 6 semanas. Fonte: Guia de Manejo Embrapa 051.",
       "items": [
-        { "ingrediente": "Xerém",               "quantidadeKg": 64.73 },
-        { "ingrediente": "Soja",                "quantidadeKg": 20.36 },
+        { "ingrediente": "Xerem fino",          "quantidadeKg": 64.73 },
+        { "ingrediente": "Farelo de soja fino", "quantidadeKg": 20.36 },
         { "ingrediente": "Farelo de trigo",     "quantidadeKg": 10.91 },
-        { "ingrediente": "Núcleo de crescimento","quantidadeKg":  4.00 }
+        { "ingrediente": "Meganúcleo Frango C 4%","quantidadeKg":  4.00 }
       ]
     },
     {
@@ -16,10 +16,10 @@
       "phase": "RECRIA",
       "notes": "Formulação para 100 kg. Fase: 7 a 15 semanas. Fonte: Guia de Manejo Embrapa 051.",
       "items": [
-        { "ingrediente": "Xerém",               "quantidadeKg": 68.73 },
-        { "ingrediente": "Soja",                "quantidadeKg": 16.36 },
+        { "ingrediente": "Xerem fino",          "quantidadeKg": 68.73 },
+        { "ingrediente": "Farelo de soja fino", "quantidadeKg": 16.36 },
         { "ingrediente": "Farelo de trigo",     "quantidadeKg": 10.91 },
-        { "ingrediente": "Núcleo de crescimento","quantidadeKg":  4.00 }
+        { "ingrediente": "Meganúcleo Frango C 4%","quantidadeKg":  4.00 }
       ]
     },
     {
@@ -27,11 +27,11 @@
       "phase": "PRE_POSTURA",
       "notes": "Formulação para 100 kg. Fase: 16 a 21 semanas. Fonte: Guia de Manejo Embrapa 051.",
       "items": [
-        { "ingrediente": "Xerém",             "quantidadeKg": 61.32 },
-        { "ingrediente": "Soja",              "quantidadeKg": 20.00 },
+        { "ingrediente": "Xerem fino",        "quantidadeKg": 61.32 },
+        { "ingrediente": "Farelo de soja fino","quantidadeKg": 20.00 },
         { "ingrediente": "Farelo de trigo",   "quantidadeKg":  6.00 },
-        { "ingrediente": "Calcário",          "quantidadeKg":  8.00 },
-        { "ingrediente": "Núcleo de postura", "quantidadeKg":  3.60 },
+        { "ingrediente": "Calcário calcítico", "quantidadeKg":  8.00 },
+        { "ingrediente": "Meganúcleo Postura 4%", "quantidadeKg":  3.60 },
         { "ingrediente": "Urucum",            "quantidadeKg":  0.54 },
         { "ingrediente": "Cúrcuma",           "quantidadeKg":  0.54 }
       ]
@@ -41,11 +41,11 @@
       "phase": "PRODUCAO_I",
       "notes": "Formulação para 100 kg. Fase: 22 a 37 semanas. Fonte: Guia de Manejo Embrapa 051.",
       "items": [
-        { "ingrediente": "Xerém",             "quantidadeKg": 62.32 },
-        { "ingrediente": "Soja",              "quantidadeKg": 19.00 },
+        { "ingrediente": "Xerem fino",        "quantidadeKg": 62.32 },
+        { "ingrediente": "Farelo de soja fino","quantidadeKg": 19.00 },
         { "ingrediente": "Farelo de trigo",   "quantidadeKg":  6.00 },
-        { "ingrediente": "Calcário",          "quantidadeKg":  8.00 },
-        { "ingrediente": "Núcleo de postura", "quantidadeKg":  3.60 },
+        { "ingrediente": "Calcário calcítico", "quantidadeKg":  8.00 },
+        { "ingrediente": "Meganúcleo Postura 4%", "quantidadeKg":  3.60 },
         { "ingrediente": "Urucum",            "quantidadeKg":  0.54 },
         { "ingrediente": "Cúrcuma",           "quantidadeKg":  0.56 }
       ]
@@ -55,11 +55,11 @@
       "phase": "PRODUCAO_II",
       "notes": "Formulação para 100 kg. Fase: 38 a 65 semanas. Fonte: Guia de Manejo Embrapa 051.",
       "items": [
-        { "ingrediente": "Xerém",             "quantidadeKg": 63.32 },
-        { "ingrediente": "Soja",              "quantidadeKg": 18.00 },
+        { "ingrediente": "Xerem fino",        "quantidadeKg": 63.32 },
+        { "ingrediente": "Farelo de soja fino","quantidadeKg": 18.00 },
         { "ingrediente": "Farelo de trigo",   "quantidadeKg":  6.00 },
-        { "ingrediente": "Calcário",          "quantidadeKg":  8.00 },
-        { "ingrediente": "Núcleo de postura", "quantidadeKg":  3.60 },
+        { "ingrediente": "Calcário calcítico", "quantidadeKg":  8.00 },
+        { "ingrediente": "Meganúcleo Postura 4%", "quantidadeKg":  3.60 },
         { "ingrediente": "Urucum",            "quantidadeKg":  0.54 },
         { "ingrediente": "Cúrcuma",           "quantidadeKg":  0.56 }
       ]
@@ -69,11 +69,11 @@
       "phase": "PRODUCAO_III",
       "notes": "Formulação para 100 kg. Fase: acima de 65 semanas. Fonte: Guia de Manejo Embrapa 051.",
       "items": [
-        { "ingrediente": "Xerém",             "quantidadeKg": 64.32 },
-        { "ingrediente": "Soja",              "quantidadeKg": 17.00 },
+        { "ingrediente": "Xerem fino",        "quantidadeKg": 64.32 },
+        { "ingrediente": "Farelo de soja fino","quantidadeKg": 17.00 },
         { "ingrediente": "Farelo de trigo",   "quantidadeKg":  6.00 },
-        { "ingrediente": "Calcário",          "quantidadeKg":  8.00 },
-        { "ingrediente": "Núcleo de postura", "quantidadeKg":  3.60 },
+        { "ingrediente": "Calcário calcítico", "quantidadeKg":  8.00 },
+        { "ingrediente": "Meganúcleo Postura 4%", "quantidadeKg":  3.60 },
         { "ingrediente": "Urucum",            "quantidadeKg":  0.54 },
         { "ingrediente": "Cúrcuma",           "quantidadeKg":  0.56 }
       ]
