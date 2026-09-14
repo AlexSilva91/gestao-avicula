@@ -30,6 +30,14 @@ final monthlyLayingRatesProvider = StreamProvider<List<LayingRateHistoryEntry>>(
       .watch(databaseProvider)
       .watchMonthlyLayingRates(tenantId: _tenantScope(ref)),
 );
+
+final monthlyPostureComparisonProvider =
+    StreamProvider<MonthlyPostureComparison>(
+      (ref) => ref
+          .watch(databaseProvider)
+          .watchMonthlyPostureComparison(tenantId: _tenantScope(ref)),
+    );
+
 final monthlyLayingRatesRangeProvider =
     StreamProvider.family<
       List<LayingRateHistoryEntry>,

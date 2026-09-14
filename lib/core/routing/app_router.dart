@@ -4,6 +4,7 @@ import '../../features/auth/application/auth_controller.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/dashboard/presentation/pages/dashboard_page.dart';
 import '../../features/egg_collection/presentation/pages/egg_collection_page.dart';
+import '../../features/egg_collection/presentation/pages/posture_simulation_page.dart';
 import '../../features/lots/presentation/pages/lots_page.dart';
 import '../../features/users/presentation/pages/users_page.dart';
 import '../../features/operations/presentation/pages/audit_page.dart';
@@ -47,6 +48,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/egg-collection',
         builder: (_, _) => const EggCollectionPage(),
+      ),
+      GoRoute(
+        path: '/posture-simulation',
+        builder: (_, _) => const PostureSimulationPage(),
       ),
       GoRoute(path: '/users', builder: (_, _) => const UsersPage()),
       GoRoute(path: '/movements', builder: (_, _) => const MovementsPage()),

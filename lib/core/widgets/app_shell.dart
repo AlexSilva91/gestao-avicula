@@ -79,6 +79,13 @@ const _destinationSections = <_DestinationSection>[
       'egg_collection.view',
     ),
     _DestinationItem(
+      Icons.insights_outlined,
+      Icons.insights,
+      'Simulação',
+      '/posture-simulation',
+      'egg_collection.view',
+    ),
+    _DestinationItem(
       Icons.egg_outlined,
       Icons.egg,
       'Estoque de ovos',
@@ -189,7 +196,9 @@ String _backgroundForPath(String path) {
     return 'assets/images/backgrounds/bg_caipira_orange_yolk.png';
   }
   if (path == '/feed') return 'assets/images/backgrounds/bg_feed.png';
-  if (path == '/egg-collection' || path == '/egg-stock') {
+  if (path == '/egg-collection' ||
+      path == '/posture-simulation' ||
+      path == '/egg-stock') {
     return 'assets/images/backgrounds/bg_eggs.png';
   }
   if (path == '/commercial' || path == '/finance' || path == '/reports') {

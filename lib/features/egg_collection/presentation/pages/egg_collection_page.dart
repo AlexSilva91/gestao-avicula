@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/constants/design_tokens.dart';
@@ -21,10 +22,22 @@ class EggCollectionPage extends ConsumerWidget {
       children: [
         Align(
           alignment: Alignment.centerRight,
-          child: FilledButton.icon(
-            onPressed: () => _openForm(context, ref),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Registrar coleta'),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => context.go('/posture-simulation'),
+                icon: const Icon(Icons.insights_outlined),
+                label: const Text('Simulação'),
+              ),
+              FilledButton.icon(
+                onPressed: () => _openForm(context, ref),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Registrar coleta'),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 16),

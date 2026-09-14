@@ -1201,6 +1201,57 @@ void main() {
     expect(january.layingRate, closeTo(.777, .001));
   });
 
+  test(
+    'monthly posture comparison updates from registered collections',
+    () async {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final currentStart = DateTime(now.year, now.month);
+      final currentEnd = today.add(const Duration(days: 1));
+      final previousStart = DateTime(now.year, now.month - 1);
+      final previousDays = currentStart.difference(previousStart).inDays;
+      final currentDays = currentEnd.difference(currentStart).inDays;
+      final lotId = await db.registerLotPurchase(
+        name: 'Comparativo postura',
+        quantity: 100,
+        receivedAt: previousStart.subtract(const Duration(days: 5)),
+        arrivalAgeDays: 180,
+        actorId: actor,
+      );
+
+      await db.registerEggCollection(
+        collectedOn: previousStart.add(const Duration(days: 2)),
+        lotId: lotId,
+        quantity: 80,
+        brokenEggs: 0,
+        discardedEggs: 0,
+        actorId: actor,
+      );
+      await db.registerEggCollection(
+        collectedOn: currentStart.add(const Duration(days: 1)),
+        lotId: lotId,
+        quantity: 40,
+        brokenEggs: 0,
+        discardedEggs: 0,
+        actorId: actor,
+      );
+
+      final comparison = await db.watchMonthlyPostureComparison().first;
+      expect(comparison.previous.totalEggs, 80);
+      expect(comparison.previous.activeBirdDays, previousDays * 100);
+      expect(
+        comparison.previous.layingRate,
+        closeTo(80 / (previousDays * 100), .001),
+      );
+      expect(comparison.current.totalEggs, 40);
+      expect(comparison.current.activeBirdDays, currentDays * 100);
+      expect(
+        comparison.current.layingRate,
+        closeTo(40 / (currentDays * 100), .001),
+      );
+    },
+  );
+
   test('egg sale creates stock out and finance in one transaction', () async {
     await db.registerLotPurchase(
       name: 'Poedeiras',

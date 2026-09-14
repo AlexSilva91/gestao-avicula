@@ -288,6 +288,45 @@ class LayingRateHistoryEntry {
   double get layingRate => activeBirdDays <= 0 ? 0 : totalEggs / activeBirdDays;
 }
 
+class MonthlyPosturePeriod {
+  const MonthlyPosturePeriod({
+    required this.label,
+    required this.periodStart,
+    required this.periodEnd,
+    required this.totalEggs,
+    required this.stockEggs,
+    required this.lostEggs,
+    required this.activeBirdDays,
+    required this.collectionDays,
+  });
+
+  final String label;
+  final DateTime periodStart;
+  final DateTime periodEnd;
+  final int totalEggs;
+  final int stockEggs;
+  final int lostEggs;
+  final int activeBirdDays;
+  final int collectionDays;
+
+  double get layingRate => activeBirdDays <= 0 ? 0 : totalEggs / activeBirdDays;
+  double get lossRate => totalEggs <= 0 ? 0 : lostEggs / totalEggs;
+}
+
+class MonthlyPostureComparison {
+  const MonthlyPostureComparison({
+    required this.previous,
+    required this.current,
+  });
+
+  final MonthlyPosturePeriod previous;
+  final MonthlyPosturePeriod current;
+
+  double get rateDelta => current.layingRate - previous.layingRate;
+  int get eggDelta => current.totalEggs - previous.totalEggs;
+  bool get hasPreviousRate => previous.activeBirdDays > 0;
+}
+
 @DriftDatabase(
   tables: [
     Tenants,
@@ -2168,6 +2207,122 @@ class AppDatabase extends _$AppDatabase {
     return query.watch().map(_mapLayingRateRows);
   }
 
+  Stream<MonthlyPostureComparison> watchMonthlyPostureComparison({
+    String? tenantId,
+  }) {
+    final today = DateTime.now();
+    final currentStart = DateTime(today.year, today.month);
+    final currentEnd = DateTime(
+      today.year,
+      today.month,
+      today.day,
+    ).add(const Duration(days: 1));
+    final previousStart = DateTime(today.year, today.month - 1);
+    final query = customSelect(
+      '''
+      WITH periods AS (
+        SELECT 'previous' AS period_key, ? AS period_start, ? AS period_end
+        UNION ALL
+        SELECT 'current' AS period_key, ? AS period_start, ? AS period_end
+      )
+      SELECT
+        p.period_key,
+        p.period_start,
+        p.period_end,
+        COALESCE((
+          SELECT SUM(e.quantity)
+          FROM egg_collections e
+          WHERE e.collected_on >= p.period_start
+            AND e.collected_on < p.period_end
+            AND ${_tenantSql('e', tenantId)}
+        ), 0) AS total_eggs,
+        COALESCE((
+          SELECT SUM(e.quantity - e.broken_eggs - e.discarded_eggs)
+          FROM egg_collections e
+          WHERE e.collected_on >= p.period_start
+            AND e.collected_on < p.period_end
+            AND ${_tenantSql('e', tenantId)}
+        ), 0) AS stock_eggs,
+        COALESCE((
+          SELECT SUM(e.broken_eggs + e.discarded_eggs)
+          FROM egg_collections e
+          WHERE e.collected_on >= p.period_start
+            AND e.collected_on < p.period_end
+            AND ${_tenantSql('e', tenantId)}
+        ), 0) AS lost_eggs,
+        COALESCE((
+          SELECT COUNT(DISTINCT date(e.collected_on, 'unixepoch'))
+          FROM egg_collections e
+          WHERE e.collected_on >= p.period_start
+            AND e.collected_on < p.period_end
+            AND ${_tenantSql('e', tenantId)}
+        ), 0) AS collection_days,
+        MAX(0, COALESCE((
+          SELECT SUM(
+            (CASE WHEN m.type IN ('PURCHASE', 'TRANSFER_IN', 'ADJUSTMENT_IN')
+              THEN m.quantity ELSE -m.quantity END) *
+            CAST(MAX(
+              0,
+              julianday(date(p.period_end, 'unixepoch')) -
+              julianday(
+                CASE
+                  WHEN date(m.occurred_at, 'unixepoch') > date(p.period_start, 'unixepoch')
+                  THEN date(m.occurred_at, 'unixepoch')
+                  ELSE date(p.period_start, 'unixepoch')
+                END
+              )
+            ) AS INTEGER)
+          )
+          FROM lots l
+          LEFT JOIN bird_movements m
+            ON m.lot_id = l.id
+           AND m.occurred_at < p.period_end
+          WHERE ${_tenantSql('l', tenantId)}
+        ), 0)) AS active_bird_days
+      FROM periods p
+      ORDER BY CASE p.period_key WHEN 'previous' THEN 0 ELSE 1 END
+      ''',
+      variables: [
+        Variable.withDateTime(previousStart),
+        Variable.withDateTime(currentStart),
+        Variable.withDateTime(currentStart),
+        Variable.withDateTime(currentEnd),
+        ..._tenantVariables(tenantId, 5),
+      ],
+      readsFrom: {eggCollections, lots, birdMovements},
+    );
+    return query.watch().map((rows) {
+      final periods = rows.map(_mapMonthlyPosturePeriod).toList();
+      final previous = periods.firstWhere(
+        (period) => period.label == 'previous',
+        orElse: () => MonthlyPosturePeriod(
+          label: 'previous',
+          periodStart: previousStart,
+          periodEnd: currentStart,
+          totalEggs: 0,
+          stockEggs: 0,
+          lostEggs: 0,
+          activeBirdDays: 0,
+          collectionDays: 0,
+        ),
+      );
+      final current = periods.firstWhere(
+        (period) => period.label == 'current',
+        orElse: () => MonthlyPosturePeriod(
+          label: 'current',
+          periodStart: currentStart,
+          periodEnd: currentEnd,
+          totalEggs: 0,
+          stockEggs: 0,
+          lostEggs: 0,
+          activeBirdDays: 0,
+          collectionDays: 0,
+        ),
+      );
+      return MonthlyPostureComparison(previous: previous, current: current);
+    });
+  }
+
   Future<void> registerEggCollection({
     required DateTime collectedOn,
     required String lotId,
@@ -2271,6 +2426,18 @@ class AppDatabase extends _$AppDatabase {
         ),
       )
       .toList();
+
+  MonthlyPosturePeriod _mapMonthlyPosturePeriod(QueryRow row) =>
+      MonthlyPosturePeriod(
+        label: row.read<String>('period_key'),
+        periodStart: row.read<DateTime>('period_start'),
+        periodEnd: row.read<DateTime>('period_end'),
+        totalEggs: row.read<int>('total_eggs'),
+        stockEggs: row.read<int>('stock_eggs'),
+        lostEggs: row.read<int>('lost_eggs'),
+        activeBirdDays: row.read<int>('active_bird_days'),
+        collectionDays: row.read<int>('collection_days'),
+      );
 
   String? _clean(String? value) {
     final trimmed = value?.trim();
