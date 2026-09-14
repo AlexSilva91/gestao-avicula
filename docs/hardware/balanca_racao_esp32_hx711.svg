@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1100" width="1600" height="1100">
+  <defs>
+    <style>
+      .bg { fill: #f7f8f4; }
+      .panel { fill: #ffffff; stroke: #c9d4cd; stroke-width: 2; }
+      .title { font-family: Arial, sans-serif; font-size: 34px; font-weight: 800; fill: #17372c; }
+      .subtitle { font-family: Arial, sans-serif; font-size: 18px; fill: #4d6158; }
+      .label { font-family: Arial, sans-serif; font-size: 18px; font-weight: 700; fill: #21362d; }
+      .small { font-family: Arial, sans-serif; font-size: 15px; fill: #3f554b; }
+      .tiny { font-family: Arial, sans-serif; font-size: 13px; fill: #3f554b; }
+      .pin { font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; fill: #153428; }
+      .box-title { font-family: Arial, sans-serif; font-size: 22px; font-weight: 800; fill: #17372c; }
+      .esp { fill: #dff0ea; stroke: #286d57; stroke-width: 2; }
+      .hx { fill: #fff2cf; stroke: #a97912; stroke-width: 2; }
+      .cell { fill: #e8edf5; stroke: #51627a; stroke-width: 2; }
+      .phone { fill: #1e293b; stroke: #0f172a; stroke-width: 2; }
+      .wood { fill: #d2a261; stroke: #8a5a25; stroke-width: 2; }
+      .metal { fill: #e7ecef; stroke: #7c8b93; stroke-width: 2; }
+      .wire-red { stroke: #d62828; stroke-width: 5; fill: none; }
+      .wire-black { stroke: #111827; stroke-width: 5; fill: none; }
+      .wire-green { stroke: #16803c; stroke-width: 5; fill: none; }
+      .wire-white { stroke: #cfd8dc; stroke-width: 5; fill: none; }
+      .wire-blue { stroke: #2563eb; stroke-width: 5; fill: none; }
+      .wire-yellow { stroke: #e3a008; stroke-width: 5; fill: none; }
+      .wire-gray { stroke: #7a8791; stroke-width: 3; stroke-dasharray: 8 7; fill: none; }
+      .arrow { marker-end: url(#arrow); }
+      .note { fill: #fff7e6; stroke: #d39826; stroke-width: 1.5; }
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#286d57" />
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="1100"/>
+  <text class="title" x="60" y="58">Projeto de balanca para racao - ESP32 + HX711</text>
+  <text class="subtitle" x="60" y="88">Modelo barato: 4 celulas de carga 50 kg + placa combinadora + modulo HX711 + ESP32 enviando peso para o app</text>
+
+  <rect class="panel" x="50" y="120" width="700" height="430" rx="14"/>
+  <text class="box-title" x="80" y="158">1. Montagem fisica da plataforma</text>
+
+  <rect class="wood" x="150" y="210" width="500" height="230" rx="8"/>
+  <text class="label" x="305" y="242">Tampo superior</text>
+  <text class="small" x="278" y="267">madeira, MDF ou chapa metalica</text>
+
+  <rect class="metal" x="175" y="455" width="450" height="34" rx="6"/>
+  <text class="small" x="290" y="510">Base inferior rigida</text>
+
+  <rect class="cell" x="120" y="185" width="115" height="48" rx="7"/>
+  <rect class="cell" x="565" y="185" width="115" height="48" rx="7"/>
+  <rect class="cell" x="565" y="412" width="115" height="48" rx="7"/>
+  <rect class="cell" x="120" y="412" width="115" height="48" rx="7"/>
+  <text class="pin" x="146" y="215">CEL 1</text>
+  <text class="pin" x="591" y="215">CEL 2</text>
+  <text class="pin" x="591" y="442">CEL 3</text>
+  <text class="pin" x="146" y="442">CEL 4</text>
+
+  <path class="wire-gray arrow" d="M400 325 C470 325, 510 345, 545 380"/>
+  <text class="small" x="455" y="323">balde/saco</text>
+  <text class="small" x="455" y="346">de racao</text>
+  <circle cx="400" cy="325" r="54" fill="#f3d19c" stroke="#a06628" stroke-width="2"/>
+  <rect x="350" y="278" width="100" height="70" rx="12" fill="#f7dfb8" stroke="#a06628" stroke-width="2"/>
+
+  <rect class="note" x="88" y="476" width="610" height="48" rx="8"/>
+  <text class="small" x="105" y="505">Use espacadores: a celula precisa flexionar entre a base inferior e o tampo superior.</text>
+
+  <rect class="panel" x="800" y="120" width="750" height="430" rx="14"/>
+  <text class="box-title" x="830" y="158">2. Esquema eletrico principal</text>
+
+  <rect class="esp" x="870" y="230" width="230" height="210" rx="12"/>
+  <text class="label" x="942" y="262">ESP32</text>
+  <text class="pin" x="895" y="310">3V3</text>
+  <text class="pin" x="895" y="345">GND</text>
+  <text class="pin" x="895" y="380">GPIO 4</text>
+  <text class="pin" x="895" y="415">GPIO 5</text>
+
+  <rect class="hx" x="1250" y="230" width="220" height="210" rx="12"/>
+  <text class="label" x="1325" y="262">HX711</text>
+  <text class="pin" x="1270" y="310">VCC</text>
+  <text class="pin" x="1270" y="345">GND</text>
+  <text class="pin" x="1270" y="380">DT / DOUT</text>
+  <text class="pin" x="1270" y="415">SCK / CLK</text>
+  <text class="pin" x="1415" y="300">E+</text>
+  <text class="pin" x="1415" y="330">E-</text>
+  <text class="pin" x="1415" y="360">A+</text>
+  <text class="pin" x="1415" y="390">A-</text>
+
+  <path class="wire-red" d="M980 306 L1250 306"/>
+  <path class="wire-black" d="M980 341 L1250 341"/>
+  <path class="wire-blue" d="M980 376 L1250 376"/>
+  <path class="wire-yellow" d="M980 411 L1250 411"/>
+  <text class="tiny" x="1118" y="296">3.3 V</text>
+  <text class="tiny" x="1118" y="333">terra comum</text>
+  <text class="tiny" x="1118" y="369">dados</text>
+  <text class="tiny" x="1118" y="404">clock</text>
+
+  <rect class="phone" x="1010" y="470" width="96" height="56" rx="12"/>
+  <rect x="1021" y="478" width="74" height="38" rx="5" fill="#d8f5e5"/>
+  <text class="tiny" x="1027" y="501">APP</text>
+  <path class="wire-gray arrow" d="M990 440 C995 462, 1010 470, 1038 477"/>
+  <text class="small" x="835" y="505">ESP32 envia peso via Wi-Fi local ou Bluetooth</text>
+
+  <rect class="note" x="1140" y="472" width="365" height="48" rx="8"/>
+  <text class="small" x="1157" y="501">Alimente o ESP32 por USB/powerbank. HX711 em 3V3.</text>
+
+  <rect class="panel" x="50" y="590" width="1500" height="450" rx="14"/>
+  <text class="box-title" x="80" y="628">3. Ligacao das 4 celulas baratas de 3 fios na placa combinadora</text>
+  <text class="subtitle" x="80" y="656">Mais pratico: cada sensor entra na placa combinadora; da placa saem E+, E-, A+ e A- para o HX711.</text>
+
+  <rect class="cell" x="135" y="740" width="160" height="72" rx="8"/>
+  <text class="label" x="180" y="770">CEL 1</text>
+  <text class="tiny" x="156" y="795">vermelho / branco / preto</text>
+
+  <rect class="cell" x="475" y="740" width="160" height="72" rx="8"/>
+  <text class="label" x="520" y="770">CEL 2</text>
+  <text class="tiny" x="496" y="795">vermelho / branco / preto</text>
+
+  <rect class="cell" x="475" y="900" width="160" height="72" rx="8"/>
+  <text class="label" x="520" y="930">CEL 3</text>
+  <text class="tiny" x="496" y="955">vermelho / branco / preto</text>
+
+  <rect class="cell" x="135" y="900" width="160" height="72" rx="8"/>
+  <text class="label" x="180" y="930">CEL 4</text>
+  <text class="tiny" x="156" y="955">vermelho / branco / preto</text>
+
+  <rect x="760" y="740" width="270" height="230" rx="12" fill="#eef8f3" stroke="#286d57" stroke-width="2"/>
+  <text class="label" x="804" y="774">Placa combinadora</text>
+  <text class="small" x="795" y="804">Load cell junction board</text>
+  <text class="pin" x="790" y="850">S1: CEL 1</text>
+  <text class="pin" x="790" y="880">S2: CEL 2</text>
+  <text class="pin" x="790" y="910">S3: CEL 3</text>
+  <text class="pin" x="790" y="940">S4: CEL 4</text>
+  <text class="pin" x="950" y="840">E+</text>
+  <text class="pin" x="950" y="870">E-</text>
+  <text class="pin" x="950" y="900">A+</text>
+  <text class="pin" x="950" y="930">A-</text>
+
+  <path class="wire-red" d="M295 772 C430 712, 650 730, 760 845"/>
+  <path class="wire-white" d="M295 787 C445 745, 645 755, 760 858"/>
+  <path class="wire-black" d="M295 802 C455 778, 640 782, 760 871"/>
+
+  <path class="wire-red" d="M635 772 C700 760, 728 815, 760 876"/>
+  <path class="wire-white" d="M635 787 C700 788, 730 842, 760 889"/>
+  <path class="wire-black" d="M635 802 C700 816, 728 868, 760 902"/>
+
+  <path class="wire-red" d="M635 932 C700 918, 728 922, 760 910"/>
+  <path class="wire-white" d="M635 947 C700 945, 728 942, 760 923"/>
+  <path class="wire-black" d="M635 962 C700 970, 728 960, 760 936"/>
+
+  <path class="wire-red" d="M295 932 C430 992, 650 982, 760 940"/>
+  <path class="wire-white" d="M295 947 C445 1018, 645 1000, 760 953"/>
+  <path class="wire-black" d="M295 962 C455 1042, 640 1018, 760 966"/>
+
+  <rect class="hx" x="1180" y="770" width="220" height="170" rx="12"/>
+  <text class="label" x="1254" y="802">HX711</text>
+  <text class="pin" x="1205" y="845">E+</text>
+  <text class="pin" x="1205" y="875">E-</text>
+  <text class="pin" x="1205" y="905">A+</text>
+  <text class="pin" x="1205" y="935">A-</text>
+
+  <path class="wire-red" d="M990 836 L1180 842"/>
+  <path class="wire-black" d="M990 866 L1180 872"/>
+  <path class="wire-green" d="M990 896 L1180 902"/>
+  <path class="wire-white" d="M990 926 L1180 932"/>
+  <text class="tiny" x="1055" y="826">excitacao +</text>
+  <text class="tiny" x="1055" y="862">excitacao -</text>
+  <text class="tiny" x="1055" y="893">sinal +</text>
+  <text class="tiny" x="1055" y="923">sinal -</text>
+
+  <rect class="note" x="80" y="990" width="1410" height="34" rx="8"/>
+  <text class="small" x="100" y="1013">Atenção: confirme as cores no anuncio/manual da celula comprada. Em muitas celulas 4 fios: vermelho=E+, preto=E-, verde=A+, branco=A-. Nas baratas de 3 fios, use a serigrafia da placa combinadora.</text>
+</svg>
