@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
@@ -19,6 +21,7 @@ class AuthController extends ChangeNotifier {
   String? notice;
   int _sessionGeneration = 0;
   bool _disposed = false;
+  Timer? _presenceTimer;
   bool get isAuthenticated => session != null;
   Future<bool> hasUsers() => _repository.hasUsers();
   Future<String?> rememberedUsername() => _repository.rememberedUsername();
@@ -39,6 +42,7 @@ class AuthController extends ChangeNotifier {
         password,
         rememberLogin: rememberLogin,
       );
+      _startPresenceHeartbeat();
       return true;
     } catch (e) {
       error = _messageFrom(e, fallback: 'Não foi possível entrar.');
@@ -68,6 +72,7 @@ class AuthController extends ChangeNotifier {
         rememberLogin: rememberLogin,
       );
       session = result.session;
+      _startPresenceHeartbeat();
       notice = result.message;
       return result.signedIn;
     } catch (e) {
@@ -81,6 +86,12 @@ class AuthController extends ChangeNotifier {
 
   Future<void> signOut() async {
     _sessionGeneration++;
+    final signedOutUserId = session?.userId;
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
+    if (signedOutUserId != null) {
+      await _repository.clearPresence(signedOutUserId);
+    }
     await _repository.signOut();
     session = null;
     error = null;
@@ -96,6 +107,7 @@ class AuthController extends ChangeNotifier {
       final restoredSession = await _repository.restoreRememberedSession();
       if (restoreGeneration == _sessionGeneration) {
         session = restoredSession;
+        _startPresenceHeartbeat();
       }
     } catch (_) {
       if (restoreGeneration == _sessionGeneration) session = null;
@@ -108,7 +120,18 @@ class AuthController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _presenceTimer?.cancel();
     super.dispose();
+  }
+
+  void _startPresenceHeartbeat() {
+    _presenceTimer?.cancel();
+    final userId = session?.userId;
+    if (userId == null) return;
+    unawaited(_repository.touchPresence(userId));
+    _presenceTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      unawaited(_repository.touchPresence(userId));
+    });
   }
 
   String _messageFrom(Object error, {required String fallback}) {

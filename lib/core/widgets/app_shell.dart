@@ -3,10 +3,56 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/application/auth_controller.dart';
+import '../constants/app_version.dart';
 import '../constants/design_tokens.dart';
+import '../database/app_database.dart';
+import '../database/operations_repository.dart';
 import '../sync/firebase_backup_service.dart';
 import 'app_background.dart';
 import 'brand_mark.dart';
+
+class AppUpdateNotice {
+  const AppUpdateNotice({
+    required this.versionName,
+    required this.versionCode,
+    required this.message,
+    required this.url,
+  });
+
+  final String versionName;
+  final int versionCode;
+  final String message;
+  final String url;
+}
+
+final _runtimeActiveUsersProvider = StreamProvider<List<User>>((ref) {
+  final session = ref.watch(authControllerProvider).session;
+  final tenantId = session?.allows('tenant.view_all') == true
+      ? null
+      : session?.tenantId;
+  return ref
+      .watch(databaseProvider)
+      .watchRuntimeActiveUsers(tenantId: tenantId);
+});
+
+final _appUpdateNoticeProvider = StreamProvider<AppUpdateNotice?>((ref) {
+  return ref.watch(databaseProvider).watchAppSettings().map((settings) {
+    final values = {for (final setting in settings) setting.key: setting.value};
+    final latestCode =
+        int.tryParse(values['latest_app_version_code'] ?? '') ?? 0;
+    if (latestCode <= SeletoAppVersion.code) return null;
+    return AppUpdateNotice(
+      versionName: values['latest_app_version_name']?.trim().isNotEmpty == true
+          ? values['latest_app_version_name']!.trim()
+          : latestCode.toString(),
+      versionCode: latestCode,
+      message: values['app_update_message']?.trim().isNotEmpty == true
+          ? values['app_update_message']!.trim()
+          : 'Há uma nova versão do GRANJA SELETO disponível.',
+      url: values['app_update_url']?.trim() ?? '',
+    );
+  });
+});
 
 class SeletoDestination {
   const SeletoDestination(
@@ -237,6 +283,9 @@ class _AppShellState extends ConsumerState<AppShell> {
     final path = GoRouterState.of(context).uri.path;
     final session = ref.watch(authControllerProvider).session;
     final syncService = ref.watch(firebaseBackupServiceProvider);
+    final activeUsers =
+        ref.watch(_runtimeActiveUsersProvider).asData?.value ?? const <User>[];
+    final updateNotice = ref.watch(_appUpdateNoticeProvider).asData?.value;
     final destinations = seletoDestinations
         .where((d) => session?.allows(d.permission) ?? false)
         .toList();
@@ -253,7 +302,19 @@ class _AppShellState extends ConsumerState<AppShell> {
             horizontalPadding,
             28,
           ),
-          child: widget.child,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (updateNotice != null) ...[
+                _UpdateNoticeBanner(notice: updateNotice),
+                const SizedBox(height: 12),
+              ],
+              if (height == null)
+                widget.child
+              else
+                Expanded(child: widget.child),
+            ],
+          ),
         ),
       ),
     );
@@ -317,6 +378,8 @@ class _AppShellState extends ConsumerState<AppShell> {
                 ),
               ),
             ),
+          if (session != null)
+            _ActiveUsersButton(users: activeUsers, mobile: mobile),
           IconButton(
             tooltip: 'Sair',
             icon: const Icon(Icons.logout_rounded),
@@ -371,6 +434,148 @@ class _AppShellState extends ConsumerState<AppShell> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ActiveUsersButton extends StatelessWidget {
+  const _ActiveUsersButton({required this.users, required this.mobile});
+
+  final List<User> users;
+  final bool mobile;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return PopupMenuButton<void>(
+      tooltip: 'Usuários online',
+      offset: const Offset(0, 42),
+      itemBuilder: (_) => [
+        PopupMenuItem<void>(
+          enabled: false,
+          child: SizedBox(
+            width: 240,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${users.length} usuário(s) online',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                if (users.isEmpty)
+                  Text(
+                    'Nenhum batimento ativo no momento.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  )
+                else
+                  for (final user in users.take(8))
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        children: [
+                          Icon(Icons.circle, size: 9, color: scheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              user.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+              ],
+            ),
+          ),
+        ),
+      ],
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: mobile ? 4 : 6),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(Icons.groups_2_outlined, color: scheme.onSurfaceVariant),
+            Positioned(
+              right: -8,
+              top: -7,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: scheme.primary,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  users.length.toString(),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: scheme.onPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UpdateNoticeBanner extends StatelessWidget {
+  const _UpdateNoticeBanner({required this.notice});
+
+  final AppUpdateNotice notice;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer.withValues(alpha: .68),
+        borderRadius: BorderRadius.circular(SeletoTokens.radiusMd),
+        border: Border.all(color: scheme.secondary.withValues(alpha: .22)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.system_update_alt, color: scheme.onSecondaryContainer),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '${notice.message} Versão ${notice.versionName}.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: scheme.onSecondaryContainer,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => AlertDialog(
+                title: const Text('Atualização disponível'),
+                content: SelectableText(
+                  [
+                    notice.message,
+                    'Versão: ${notice.versionName}',
+                    if (notice.url.isNotEmpty) 'Local: ${notice.url}',
+                  ].join('\n\n'),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Fechar'),
+                  ),
+                ],
+              ),
+            ),
+            child: const Text('Ver'),
+          ),
+        ],
       ),
     );
   }

@@ -133,6 +133,12 @@ class LocalAuthRepository implements AuthRepository {
     syncService?.clearUserScope();
   }
 
+  Future<void> touchPresence(String userId) =>
+      _database.touchUserPresence(userId);
+
+  Future<void> clearPresence(String userId) =>
+      _database.clearUserPresence(userId);
+
   Future<AuthSession> _sessionFromUser(User user) async => AuthSession(
     userId: user.id,
     tenantId: user.tenantId,

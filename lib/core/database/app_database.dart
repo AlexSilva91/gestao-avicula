@@ -145,6 +145,7 @@ class Users extends Table {
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
   DateTimeColumn get lastLoginAt => dateTime().nullable()();
+  DateTimeColumn get lastSeenAt => dateTime().nullable()();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -383,7 +384,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -493,6 +494,10 @@ class AppDatabase extends _$AppDatabase {
         await _ensureDefaultTenant();
         await _createPerformanceIndexes();
       }
+      if (from < 14) {
+        await m.addColumn(users, users.lastSeenAt);
+        await _createPerformanceIndexes();
+      }
     },
     beforeOpen: (_) async {
       await _ensureDefaultTenant();
@@ -551,6 +556,9 @@ class AppDatabase extends _$AppDatabase {
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_users_tenant ON users (tenant_id, is_active)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_users_last_seen ON users (tenant_id, last_seen_at)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_audit_user_timestamp ON audit_logs (user_id, timestamp)',
@@ -1316,7 +1324,11 @@ class AppDatabase extends _$AppDatabase {
     }
     final now = DateTime.now();
     await (update(users)..where((u) => u.id.equals(user.id))).write(
-      UsersCompanion(lastLoginAt: Value(now), updatedAt: Value(now)),
+      UsersCompanion(
+        lastLoginAt: Value(now),
+        lastSeenAt: Value(now),
+        updatedAt: Value(now),
+      ),
     );
     await addAudit(
       userId: user.id,
@@ -1339,6 +1351,34 @@ class AppDatabase extends _$AppDatabase {
   Future<User?> userById(String userId) async {
     if (userId.trim().isEmpty) return null;
     return (select(users)..where((u) => u.id.equals(userId))).getSingleOrNull();
+  }
+
+  Future<void> touchUserPresence(String userId) async {
+    if (userId.trim().isEmpty) return;
+    await (update(users)..where((u) => u.id.equals(userId))).write(
+      UsersCompanion(lastSeenAt: Value(DateTime.now())),
+    );
+  }
+
+  Future<void> clearUserPresence(String userId) async {
+    if (userId.trim().isEmpty) return;
+    await (update(users)..where((u) => u.id.equals(userId))).write(
+      const UsersCompanion(lastSeenAt: Value(null)),
+    );
+  }
+
+  Stream<List<User>> watchRuntimeActiveUsers({
+    String? tenantId,
+    Duration activeWindow = const Duration(minutes: 2),
+  }) {
+    final cutoff = DateTime.now().subtract(activeWindow);
+    final query = select(users)
+      ..where(
+        (u) => u.isActive.equals(true) & u.lastSeenAt.isBiggerThanValue(cutoff),
+      )
+      ..orderBy([(u) => OrderingTerm.desc(u.lastSeenAt)]);
+    if (tenantId != null) query.where((u) => u.tenantId.equals(tenantId));
+    return query.watch();
   }
 
   Stream<List<Tenant>> watchTenants({bool includeInactive = false}) {

@@ -251,6 +251,55 @@ class ReportPoint {
   final double secondary;
 }
 
+class LotPerformancePoint {
+  const LotPerformancePoint({
+    required this.lotName,
+    required this.receivedAt,
+    required this.arrivalAgeDays,
+    required this.activeBirds,
+    required this.eggCount,
+    required this.feedKg,
+    required this.mortality,
+    required this.collectionDays,
+  });
+
+  final String lotName;
+  final DateTime receivedAt;
+  final int arrivalAgeDays;
+  final int activeBirds;
+  final int eggCount;
+  final double feedKg;
+  final int mortality;
+  final int collectionDays;
+
+  double get layingRate => activeBirds <= 0 || collectionDays <= 0
+      ? 0
+      : eggCount / (activeBirds * collectionDays);
+  double get feedPerBirdKg => activeBirds <= 0 ? 0 : feedKg / activeBirds;
+  double get mortalityRate {
+    final total = activeBirds + mortality;
+    return total <= 0 ? 0 : mortality / total;
+  }
+}
+
+class DailyDashboardPoint {
+  const DailyDashboardPoint({
+    required this.label,
+    required this.date,
+    required this.eggs,
+    required this.feedKg,
+    required this.salesCents,
+    required this.soldEggs,
+  });
+
+  final String label;
+  final DateTime date;
+  final int eggs;
+  final double feedKg;
+  final int salesCents;
+  final int soldEggs;
+}
+
 extension OperationsRepository on AppDatabase {
   String _tenantSql(String alias, String? tenantId) => tenantId == null
       ? '1=1'
@@ -541,6 +590,176 @@ extension OperationsRepository on AppDatabase {
             (r) => ReportPoint(
               '${r.read<DateTime>('collected_on').day}/${r.read<DateTime>('collected_on').month}',
               r.read<int>('total').toDouble(),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Stream<List<LotPerformancePoint>> watchDashboardLotPerformance({
+    int days = 30,
+    String? tenantId,
+  }) {
+    final now = DateTime.now();
+    final startDate = now.subtract(Duration(days: days));
+    final endDate = now.add(const Duration(days: 1));
+    return customSelect(
+      '''SELECT
+        l.name,
+        l.received_at,
+        l.arrival_age_days,
+        COALESCE((
+          SELECT SUM(CASE
+            WHEN bm.type IN ('PURCHASE','TRANSFER_IN','ADJUSTMENT_IN')
+            THEN bm.quantity ELSE -bm.quantity END)
+          FROM bird_movements bm
+          WHERE bm.lot_id = l.id AND ${_tenantSql('bm', tenantId)}
+        ), 0) AS active_birds,
+        COALESCE((
+          SELECT SUM(ec.quantity - ec.broken_eggs - ec.discarded_eggs)
+          FROM egg_collections ec
+          WHERE ec.lot_id = l.id
+            AND ec.collected_on >= ? AND ec.collected_on < ?
+            AND ${_tenantSql('ec', tenantId)}
+        ), 0) AS egg_count,
+        COALESCE((
+          SELECT COUNT(DISTINCT date(ec.collected_on, 'unixepoch'))
+          FROM egg_collections ec
+          WHERE ec.lot_id = l.id
+            AND ec.collected_on >= ? AND ec.collected_on < ?
+            AND ${_tenantSql('ec', tenantId)}
+        ), 0) AS collection_days,
+        CAST(COALESCE((
+          SELECT SUM(df.quantity_kg)
+          FROM daily_feedings df
+          WHERE df.lot_id = l.id
+            AND df.feeding_date >= ? AND df.feeding_date < ?
+            AND ${_tenantSql('df', tenantId)}
+        ), 0) AS REAL) AS feed_kg,
+        COALESCE((
+          SELECT SUM(mm.quantity)
+          FROM bird_movements mm
+          WHERE mm.lot_id = l.id
+            AND mm.type = 'MORTALITY'
+            AND ${_tenantSql('mm', tenantId)}
+        ), 0) AS mortality
+        FROM lots l
+        WHERE l.status = 'ACTIVE' AND ${_tenantSql('l', tenantId)}
+        ORDER BY active_birds DESC, l.received_at DESC''',
+      variables: [
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(startDate),
+        Variable.withDateTime(endDate),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(startDate),
+        Variable.withDateTime(endDate),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(startDate),
+        Variable.withDateTime(endDate),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+      ],
+      readsFrom: {lots, birdMovements, eggCollections, dailyFeedings},
+    ).watch().map(
+      (rows) => rows
+          .map(
+            (r) => LotPerformancePoint(
+              lotName: r.read<String>('name'),
+              receivedAt: r.read<DateTime>('received_at'),
+              arrivalAgeDays: r.read<int>('arrival_age_days'),
+              activeBirds: r.read<int>('active_birds'),
+              eggCount: r.read<int>('egg_count'),
+              feedKg: r.read<double>('feed_kg'),
+              mortality: r.read<int>('mortality'),
+              collectionDays: r.read<int>('collection_days'),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Stream<List<DailyDashboardPoint>> watchDashboardDailySeries({
+    DateTime? start,
+    DateTime? end,
+    String? tenantId,
+  }) {
+    final now = DateTime.now();
+    final startDate = start ?? DateTime(now.year, now.month);
+    final endDate = end ?? now.add(const Duration(days: 1));
+    return customSelect(
+      '''WITH daily AS (
+        SELECT
+          strftime('%Y-%m-%d', collected_on, 'unixepoch') AS date_key,
+          strftime('%d/%m', collected_on, 'unixepoch') AS label,
+          SUM(quantity - broken_eggs - discarded_eggs) AS eggs,
+          0.0 AS feed_kg,
+          0 AS sales_cents,
+          0 AS sold_eggs
+        FROM egg_collections
+        WHERE collected_on >= ? AND collected_on < ?
+          AND ${_tenantSql('egg_collections', tenantId)}
+        GROUP BY date_key
+        UNION ALL
+        SELECT
+          strftime('%Y-%m-%d', feeding_date, 'unixepoch') AS date_key,
+          strftime('%d/%m', feeding_date, 'unixepoch') AS label,
+          0 AS eggs,
+          SUM(quantity_kg) AS feed_kg,
+          0 AS sales_cents,
+          0 AS sold_eggs
+        FROM daily_feedings
+        WHERE feeding_date >= ? AND feeding_date < ?
+          AND ${_tenantSql('daily_feedings', tenantId)}
+        GROUP BY date_key
+        UNION ALL
+        SELECT
+          strftime('%Y-%m-%d', s.sold_at, 'unixepoch') AS date_key,
+          strftime('%d/%m', s.sold_at, 'unixepoch') AS label,
+          0 AS eggs,
+          0.0 AS feed_kg,
+          SUM(s.total_cents) AS sales_cents,
+          SUM((s.dozens * 12) + s.loose_eggs + COALESCE(s.tray_quantity * b.eggs_per_tray, 0)) AS sold_eggs
+        FROM sales s
+        LEFT JOIN egg_tray_batches b ON b.id = s.tray_batch_id
+        WHERE s.sold_at >= ? AND s.sold_at < ?
+          AND s.status = 'CONFIRMED'
+          AND ${_tenantSql('s', tenantId)}
+        GROUP BY date_key
+      )
+      SELECT
+        date_key,
+        MAX(label) AS label,
+        COALESCE(SUM(eggs), 0) AS eggs,
+        CAST(COALESCE(SUM(feed_kg), 0) AS REAL) AS feed_kg,
+        COALESCE(SUM(sales_cents), 0) AS sales_cents,
+        COALESCE(SUM(sold_eggs), 0) AS sold_eggs
+      FROM daily
+      WHERE date_key IS NOT NULL
+      GROUP BY date_key
+      ORDER BY date_key''',
+      variables: [
+        Variable.withDateTime(startDate),
+        Variable.withDateTime(endDate),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(startDate),
+        Variable.withDateTime(endDate),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(startDate),
+        Variable.withDateTime(endDate),
+        ..._tenantVariables(tenantId),
+      ],
+      readsFrom: {eggCollections, dailyFeedings, sales, eggTrayBatches},
+    ).watch().map(
+      (rows) => rows
+          .map(
+            (r) => DailyDashboardPoint(
+              label: r.read<String>('label'),
+              date: DateTime.parse(r.read<String>('date_key')),
+              eggs: r.read<int>('eggs'),
+              feedKg: r.read<double>('feed_kg'),
+              salesCents: r.read<int>('sales_cents'),
+              soldEggs: r.read<int>('sold_eggs'),
             ),
           )
           .toList(),
@@ -3591,10 +3810,20 @@ extension OperationsRepository on AppDatabase {
     );
   }
 
-  Stream<List<AuditLog>> watchAuditLogs({int limit = 200, String? tenantId}) {
+  Stream<List<AuditLog>> watchAuditLogs({
+    int limit = 15,
+    int offset = 0,
+    String? tenantId,
+  }) {
+    final safeLimit = limit < 1
+        ? 1
+        : limit > 15
+        ? 15
+        : limit;
+    final safeOffset = offset < 0 ? 0 : offset;
     final query = select(auditLogs)
       ..orderBy([(a) => OrderingTerm.desc(a.timestamp)])
-      ..limit(limit);
+      ..limit(safeLimit, offset: safeOffset);
     if (tenantId != null) {
       final tenantUsers = selectOnly(users)
         ..addColumns([users.id])
@@ -3602,6 +3831,25 @@ extension OperationsRepository on AppDatabase {
       query.where((a) => a.userId.isNull() | a.userId.isInQuery(tenantUsers));
     }
     return query.watch();
+  }
+
+  Stream<int> watchAuditLogCount({String? tenantId}) {
+    if (tenantId == null) {
+      return customSelect(
+        'SELECT COUNT(*) AS total FROM audit_logs',
+        readsFrom: {auditLogs},
+      ).watchSingle().map((row) => row.read<int>('total'));
+    }
+    return customSelect(
+      '''SELECT COUNT(*) AS total
+         FROM audit_logs a
+         WHERE a.user_id IS NULL OR EXISTS (
+           SELECT 1 FROM users u
+           WHERE u.id = a.user_id AND u.tenant_id = ?
+         )''',
+      variables: [Variable.withString(tenantId)],
+      readsFrom: {auditLogs, users},
+    ).watchSingle().map((row) => row.read<int>('total'));
   }
 
   Stream<List<BirdMovement>> watchBirdMovements({

@@ -17,6 +17,9 @@ class UsersPage extends ConsumerWidget {
     final tenants =
         ref.watch(tenantsProvider).asData?.value ?? const <Tenant>[];
     final tenantNames = {for (final tenant in tenants) tenant.id: tenant.name};
+    final activeUsers =
+        ref.watch(runtimeActiveUsersProvider).asData?.value ?? const <User>[];
+    final activeUserIds = activeUsers.map((user) => user.id).toSet();
     return AppShell(
       title: 'Usuários e acessos',
       child: ref
@@ -40,7 +43,7 @@ class UsersPage extends ConsumerWidget {
                   alignment: WrapAlignment.spaceBetween,
                   children: [
                     Text(
-                      '${users.length} usuário(s) · ${session?.tenantName ?? 'Parceria'}',
+                      '${users.length} usuário(s) · ${activeUsers.length} online · ${session?.tenantName ?? 'Parceria'}',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     if (session?.allows('tenants.create') == true)
@@ -60,6 +63,7 @@ class UsersPage extends ConsumerWidget {
                 _UsersGrid(
                   users: users,
                   tenantNames: tenantNames,
+                  activeUserIds: activeUserIds,
                   onAction: (user, action) =>
                       _handleUserAction(context, ref, user, action),
                   onDetails: (user) => _showDetails(context, ref, user),
@@ -86,6 +90,7 @@ class UsersPage extends ConsumerWidget {
       builder: (_) => _UserDetailsDialog(
         user: user,
         tenantName: tenantNames[user.tenantId] ?? 'Parceria padrão',
+        online: _isRuntimeActive(user),
         permissions: permissions,
       ),
     );
@@ -147,12 +152,14 @@ class _UsersGrid extends StatelessWidget {
   const _UsersGrid({
     required this.users,
     required this.tenantNames,
+    required this.activeUserIds,
     required this.onAction,
     required this.onDetails,
   });
 
   final List<User> users;
   final Map<String, String> tenantNames;
+  final Set<String> activeUserIds;
   final void Function(User user, String action) onAction;
   final void Function(User user) onDetails;
 
@@ -172,13 +179,14 @@ class _UsersGrid extends StatelessWidget {
           crossAxisCount: columns,
           mainAxisSpacing: 10,
           crossAxisSpacing: 10,
-          mainAxisExtent: 178,
+          mainAxisExtent: 194,
         ),
         itemBuilder: (context, index) {
           final user = users[index];
           return _UserCard(
             user: user,
             tenantName: tenantNames[user.tenantId] ?? 'Parceria padrão',
+            online: activeUserIds.contains(user.id),
             onAction: onAction,
             onDetails: onDetails,
           );
@@ -192,12 +200,14 @@ class _UserCard extends ConsumerWidget {
   const _UserCard({
     required this.user,
     required this.tenantName,
+    required this.online,
     required this.onAction,
     required this.onDetails,
   });
 
   final User user;
   final String tenantName;
+  final bool online;
   final void Function(User user, String action) onAction;
   final void Function(User user) onDetails;
 
@@ -321,7 +331,11 @@ class _UserCard extends ConsumerWidget {
                 children: [
                   _TinyBadge(
                     icon: user.isActive ? Icons.check_circle : Icons.block,
-                    label: user.isActive ? 'Ativo' : 'Inativo',
+                    label: online
+                        ? 'Online agora'
+                        : user.isActive
+                        ? 'Ativo'
+                        : 'Inativo',
                     color: user.isActive ? scheme.primary : scheme.error,
                   ),
                   _TinyBadge(
@@ -336,7 +350,8 @@ class _UserCard extends ConsumerWidget {
               const SizedBox(height: 6),
               _CardInfoLine(
                 icon: Icons.schedule,
-                text: 'Última vez online: ${_formatDateTime(user.lastLoginAt)}',
+                text:
+                    'Última vez online: ${_formatDateTime(user.lastSeenAt ?? user.lastLoginAt)}',
               ),
             ],
           ),
@@ -415,11 +430,13 @@ class _UserDetailsDialog extends StatelessWidget {
   const _UserDetailsDialog({
     required this.user,
     required this.tenantName,
+    required this.online,
     required this.permissions,
   });
 
   final User user;
   final String tenantName;
+  final bool online;
   final List<String> permissions;
 
   @override
@@ -476,14 +493,22 @@ class _UserDetailsDialog extends StatelessWidget {
                 value: tenantName,
               ),
               _DetailRow(
-                icon: user.isActive ? Icons.check_circle : Icons.block,
+                icon: online
+                    ? Icons.radio_button_checked
+                    : user.isActive
+                    ? Icons.check_circle
+                    : Icons.block,
                 label: 'Status',
-                value: user.isActive ? 'Ativo' : 'Inativo',
+                value: online
+                    ? 'Online agora'
+                    : user.isActive
+                    ? 'Ativo'
+                    : 'Inativo',
               ),
               _DetailRow(
                 icon: Icons.login,
                 label: 'Última vez online',
-                value: _formatDateTime(user.lastLoginAt),
+                value: _formatDateTime(user.lastSeenAt ?? user.lastLoginAt),
               ),
               _DetailRow(
                 icon: Icons.event_available,
@@ -1084,6 +1109,12 @@ IconData _roleIcon(User user, bool isSuperAdmin) {
 String _formatDateTime(DateTime? value) {
   if (value == null) return 'Nunca acessou';
   return '${shortDate.format(value)} às ${shortTime.format(value)}';
+}
+
+bool _isRuntimeActive(User user) {
+  final lastSeen = user.lastSeenAt;
+  if (lastSeen == null || !user.isActive) return false;
+  return DateTime.now().difference(lastSeen) <= const Duration(minutes: 2);
 }
 
 List<SeletoPermission> _grantablePermissions(WidgetRef ref) {

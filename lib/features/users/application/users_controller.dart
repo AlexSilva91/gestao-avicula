@@ -11,6 +11,16 @@ final usersProvider = StreamProvider<List<User>>((ref) {
   return ref.watch(databaseProvider).watchUsers(tenantId: tenantId);
 });
 
+final runtimeActiveUsersProvider = StreamProvider<List<User>>((ref) {
+  final session = ref.watch(authControllerProvider).session;
+  final tenantId = session?.allows('tenant.view_all') == true
+      ? null
+      : session?.tenantId;
+  return ref
+      .watch(databaseProvider)
+      .watchRuntimeActiveUsers(tenantId: tenantId);
+});
+
 final tenantsProvider = StreamProvider<List<Tenant>>((ref) {
   final session = ref.watch(authControllerProvider).session;
   final source = ref.watch(databaseProvider).watchTenants();

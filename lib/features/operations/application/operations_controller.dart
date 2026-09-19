@@ -116,6 +116,26 @@ final auditLogsProvider = StreamProvider(
   (ref) =>
       ref.watch(databaseProvider).watchAuditLogs(tenantId: _tenantScope(ref)),
 );
+final auditLogCountProvider = StreamProvider(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchAuditLogCount(tenantId: _tenantScope(ref)),
+);
+final pagedAuditLogsProvider =
+    StreamProvider.family<List<AuditLog>, ({int page, int pageSize})>((
+      ref,
+      request,
+    ) {
+      final pageSize = request.pageSize > 15 ? 15 : request.pageSize;
+      final page = request.page < 1 ? 1 : request.page;
+      return ref
+          .watch(databaseProvider)
+          .watchAuditLogs(
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+            tenantId: _tenantScope(ref),
+          );
+    });
 final birdMovementsProvider = StreamProvider(
   (ref) => ref
       .watch(databaseProvider)
@@ -134,6 +154,16 @@ final eggProductionSeriesProvider = StreamProvider(
   (ref) => ref
       .watch(databaseProvider)
       .watchEggProductionSeries(tenantId: _tenantScope(ref)),
+);
+final dashboardLotPerformanceProvider = StreamProvider(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchDashboardLotPerformance(tenantId: _tenantScope(ref)),
+);
+final dashboardDailySeriesProvider = StreamProvider(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchDashboardDailySeries(tenantId: _tenantScope(ref)),
 );
 final eggProductionSeriesRangeProvider =
     StreamProvider.family<List<ReportPoint>, ({DateTime start, DateTime end})>(

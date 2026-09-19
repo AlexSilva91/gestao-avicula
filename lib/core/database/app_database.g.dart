@@ -488,6 +488,17 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _lastSeenAtMeta = const VerificationMeta(
+    'lastSeenAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastSeenAt = GeneratedColumn<DateTime>(
+    'last_seen_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -500,6 +511,7 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
     createdAt,
     updatedAt,
     lastLoginAt,
+    lastSeenAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -594,6 +606,15 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
         ),
       );
     }
+    if (data.containsKey('last_seen_at')) {
+      context.handle(
+        _lastSeenAtMeta,
+        lastSeenAt.isAcceptableOrUnknown(
+          data['last_seen_at']!,
+          _lastSeenAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -643,6 +664,10 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_login_at'],
       ),
+      lastSeenAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_seen_at'],
+      ),
     );
   }
 
@@ -663,6 +688,7 @@ class User extends DataClass implements Insertable<User> {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? lastLoginAt;
+  final DateTime? lastSeenAt;
   const User({
     required this.id,
     required this.tenantId,
@@ -674,6 +700,7 @@ class User extends DataClass implements Insertable<User> {
     required this.createdAt,
     required this.updatedAt,
     this.lastLoginAt,
+    this.lastSeenAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -689,6 +716,9 @@ class User extends DataClass implements Insertable<User> {
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || lastLoginAt != null) {
       map['last_login_at'] = Variable<DateTime>(lastLoginAt);
+    }
+    if (!nullToAbsent || lastSeenAt != null) {
+      map['last_seen_at'] = Variable<DateTime>(lastSeenAt);
     }
     return map;
   }
@@ -707,6 +737,9 @@ class User extends DataClass implements Insertable<User> {
       lastLoginAt: lastLoginAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastLoginAt),
+      lastSeenAt: lastSeenAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSeenAt),
     );
   }
 
@@ -726,6 +759,7 @@ class User extends DataClass implements Insertable<User> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       lastLoginAt: serializer.fromJson<DateTime?>(json['lastLoginAt']),
+      lastSeenAt: serializer.fromJson<DateTime?>(json['lastSeenAt']),
     );
   }
   @override
@@ -742,6 +776,7 @@ class User extends DataClass implements Insertable<User> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'lastLoginAt': serializer.toJson<DateTime?>(lastLoginAt),
+      'lastSeenAt': serializer.toJson<DateTime?>(lastSeenAt),
     };
   }
 
@@ -756,6 +791,7 @@ class User extends DataClass implements Insertable<User> {
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> lastLoginAt = const Value.absent(),
+    Value<DateTime?> lastSeenAt = const Value.absent(),
   }) => User(
     id: id ?? this.id,
     tenantId: tenantId ?? this.tenantId,
@@ -767,6 +803,7 @@ class User extends DataClass implements Insertable<User> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     lastLoginAt: lastLoginAt.present ? lastLoginAt.value : this.lastLoginAt,
+    lastSeenAt: lastSeenAt.present ? lastSeenAt.value : this.lastSeenAt,
   );
   User copyWithCompanion(UsersCompanion data) {
     return User(
@@ -788,6 +825,9 @@ class User extends DataClass implements Insertable<User> {
       lastLoginAt: data.lastLoginAt.present
           ? data.lastLoginAt.value
           : this.lastLoginAt,
+      lastSeenAt: data.lastSeenAt.present
+          ? data.lastSeenAt.value
+          : this.lastSeenAt,
     );
   }
 
@@ -803,7 +843,8 @@ class User extends DataClass implements Insertable<User> {
           ..write('isActive: $isActive, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('lastLoginAt: $lastLoginAt')
+          ..write('lastLoginAt: $lastLoginAt, ')
+          ..write('lastSeenAt: $lastSeenAt')
           ..write(')'))
         .toString();
   }
@@ -820,6 +861,7 @@ class User extends DataClass implements Insertable<User> {
     createdAt,
     updatedAt,
     lastLoginAt,
+    lastSeenAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -834,7 +876,8 @@ class User extends DataClass implements Insertable<User> {
           other.isActive == this.isActive &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.lastLoginAt == this.lastLoginAt);
+          other.lastLoginAt == this.lastLoginAt &&
+          other.lastSeenAt == this.lastSeenAt);
 }
 
 class UsersCompanion extends UpdateCompanion<User> {
@@ -848,6 +891,7 @@ class UsersCompanion extends UpdateCompanion<User> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> lastLoginAt;
+  final Value<DateTime?> lastSeenAt;
   final Value<int> rowid;
   const UsersCompanion({
     this.id = const Value.absent(),
@@ -860,6 +904,7 @@ class UsersCompanion extends UpdateCompanion<User> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.lastLoginAt = const Value.absent(),
+    this.lastSeenAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   UsersCompanion.insert({
@@ -873,6 +918,7 @@ class UsersCompanion extends UpdateCompanion<User> {
     required DateTime createdAt,
     required DateTime updatedAt,
     this.lastLoginAt = const Value.absent(),
+    this.lastSeenAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        username = Value(username),
@@ -891,6 +937,7 @@ class UsersCompanion extends UpdateCompanion<User> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? lastLoginAt,
+    Expression<DateTime>? lastSeenAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -904,6 +951,7 @@ class UsersCompanion extends UpdateCompanion<User> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (lastLoginAt != null) 'last_login_at': lastLoginAt,
+      if (lastSeenAt != null) 'last_seen_at': lastSeenAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -919,6 +967,7 @@ class UsersCompanion extends UpdateCompanion<User> {
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? lastLoginAt,
+    Value<DateTime?>? lastSeenAt,
     Value<int>? rowid,
   }) {
     return UsersCompanion(
@@ -932,6 +981,7 @@ class UsersCompanion extends UpdateCompanion<User> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       lastLoginAt: lastLoginAt ?? this.lastLoginAt,
+      lastSeenAt: lastSeenAt ?? this.lastSeenAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -969,6 +1019,9 @@ class UsersCompanion extends UpdateCompanion<User> {
     if (lastLoginAt.present) {
       map['last_login_at'] = Variable<DateTime>(lastLoginAt.value);
     }
+    if (lastSeenAt.present) {
+      map['last_seen_at'] = Variable<DateTime>(lastSeenAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -988,6 +1041,7 @@ class UsersCompanion extends UpdateCompanion<User> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('lastLoginAt: $lastLoginAt, ')
+          ..write('lastSeenAt: $lastSeenAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -21890,6 +21944,7 @@ typedef $$UsersTableCreateCompanionBuilder =
       required DateTime createdAt,
       required DateTime updatedAt,
       Value<DateTime?> lastLoginAt,
+      Value<DateTime?> lastSeenAt,
       Value<int> rowid,
     });
 typedef $$UsersTableUpdateCompanionBuilder =
@@ -21904,6 +21959,7 @@ typedef $$UsersTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> lastLoginAt,
+      Value<DateTime?> lastSeenAt,
       Value<int> rowid,
     });
 
@@ -21962,6 +22018,11 @@ class $$UsersTableFilterComposer extends Composer<_$AppDatabase, $UsersTable> {
 
   ColumnFilters<DateTime> get lastLoginAt => $composableBuilder(
     column: $table.lastLoginAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastSeenAt => $composableBuilder(
+    column: $table.lastSeenAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -22024,6 +22085,11 @@ class $$UsersTableOrderingComposer
     column: $table.lastLoginAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get lastSeenAt => $composableBuilder(
+    column: $table.lastSeenAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$UsersTableAnnotationComposer
@@ -22072,6 +22138,11 @@ class $$UsersTableAnnotationComposer
     column: $table.lastLoginAt,
     builder: (column) => column,
   );
+
+  GeneratedColumn<DateTime> get lastSeenAt => $composableBuilder(
+    column: $table.lastSeenAt,
+    builder: (column) => column,
+  );
 }
 
 class $$UsersTableTableManager
@@ -22112,6 +22183,7 @@ class $$UsersTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> lastLoginAt = const Value.absent(),
+                Value<DateTime?> lastSeenAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => UsersCompanion(
                 id: id,
@@ -22124,6 +22196,7 @@ class $$UsersTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 lastLoginAt: lastLoginAt,
+                lastSeenAt: lastSeenAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -22138,6 +22211,7 @@ class $$UsersTableTableManager
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<DateTime?> lastLoginAt = const Value.absent(),
+                Value<DateTime?> lastSeenAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => UsersCompanion.insert(
                 id: id,
@@ -22150,6 +22224,7 @@ class $$UsersTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 lastLoginAt: lastLoginAt,
+                lastSeenAt: lastSeenAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
