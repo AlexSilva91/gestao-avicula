@@ -14,6 +14,7 @@ import '../../features/operations/presentation/pages/commercial_page.dart';
 import '../../features/operations/presentation/pages/egg_stock_page.dart';
 import '../../features/operations/presentation/pages/feed_page.dart';
 import '../../features/operations/presentation/pages/finance_page.dart';
+import '../../features/operations/presentation/pages/hardware_integrations_page.dart';
 import '../../features/operations/presentation/pages/movements_page.dart';
 import '../../features/operations/presentation/pages/reports_page.dart';
 import '../../features/operations/presentation/pages/settings_page.dart';
@@ -61,6 +62,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/finance', builder: (_, _) => const FinancePage()),
       GoRoute(path: '/calendar', builder: (_, _) => const CalendarPage()),
       GoRoute(path: '/reports', builder: (_, _) => const ReportsPage()),
+      GoRoute(
+        path: '/integrations',
+        builder: (_, _) => const HardwareIntegrationsPage(),
+      ),
       GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
       GoRoute(path: '/audit', builder: (_, _) => const AuditPage()),
       GoRoute(path: '/alerts', builder: (_, _) => const AlertsPage()),

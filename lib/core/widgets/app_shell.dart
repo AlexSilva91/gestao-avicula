@@ -198,6 +198,13 @@ const _destinationSections = <_DestinationSection>[
       'users.view',
     ),
     _DestinationItem(
+      Icons.settings_input_antenna_outlined,
+      Icons.settings_input_antenna,
+      'Integrações',
+      '/integrations',
+      'settings.view',
+    ),
+    _DestinationItem(
       Icons.settings_outlined,
       Icons.settings,
       'Configurações',
@@ -251,7 +258,10 @@ String _backgroundForPath(String path) {
     return 'assets/images/backgrounds/bg_management.png';
   }
   if (path == '/alerts') return 'assets/images/backgrounds/bg_management.png';
-  if (path == '/users' || path == '/settings' || path == '/audit') {
+  if (path == '/users' ||
+      path == '/integrations' ||
+      path == '/settings' ||
+      path == '/audit') {
     return 'assets/images/backgrounds/bg_management.png';
   }
   return 'assets/images/backgrounds/bg_production.png';

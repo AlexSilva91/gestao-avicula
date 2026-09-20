@@ -11,6 +11,7 @@ import '../../../auth/application/auth_controller.dart';
 import '../../../lots/application/lots_controller.dart';
 import '../../../lots/domain/value_objects/lot_lifecycle.dart';
 import '../../application/operations_controller.dart';
+import 'hardware_integrations_page.dart';
 
 class FeedPage extends ConsumerWidget {
   const FeedPage({super.key});
@@ -1264,6 +1265,13 @@ String? _tenantScope(WidgetRef ref) {
   return session?.allows('tenant.view_all') == true ? null : session?.tenantId;
 }
 
+String _appendNote(String current, String addition) {
+  final trimmed = current.trim();
+  if (trimmed.isEmpty) return addition;
+  if (trimmed.contains(addition)) return trimmed;
+  return '$trimmed\n$addition';
+}
+
 class _IngredientEntryDialog extends StatefulWidget {
   const _IngredientEntryDialog({required this.ref, required this.ingredients});
   final WidgetRef ref;
@@ -1301,141 +1309,185 @@ class _IngredientEntryDialogState extends State<_IngredientEntryDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Entrada de estoque'),
-    content: SizedBox(
-      width: 460,
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: ingredientId,
-              decoration: const InputDecoration(labelText: 'Insumo'),
-              items: [
-                for (final item in widget.ingredients)
-                  DropdownMenuItem(
-                    value: item.ingredient.id,
-                    child: Text(item.ingredient.name),
-                  ),
-              ],
-              onChanged: saving
-                  ? null
-                  : (value) => setState(() => ingredientId = value),
-            ),
-            const SizedBox(height: 12),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'SACO', label: Text('Saco')),
-                ButtonSegment(value: 'KG', label: Text('Kg')),
-              ],
-              selected: {unit},
-              onSelectionChanged: saving
-                  ? null
-                  : (value) => setState(() {
-                      unit = value.first;
-                      if (unit == 'KG') kgPerUnit.text = '1';
-                    }),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: quantity,
-              enabled: !saving,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+  Widget build(BuildContext context) {
+    final settings =
+        widget.ref.watch(appSettingsProvider).asData?.value ??
+        const <AppSetting>[];
+    final hardware = HardwareIntegrationSettings.fromSettings(settings);
+    final scaleAvailable =
+        hardware.scaleReady && hardware.scaleForIngredientPurchase;
+    return AlertDialog(
+      title: const Text('Entrada de estoque'),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: ingredientId,
+                decoration: const InputDecoration(labelText: 'Insumo'),
+                items: [
+                  for (final item in widget.ingredients)
+                    DropdownMenuItem(
+                      value: item.ingredient.id,
+                      child: Text(item.ingredient.name),
+                    ),
+                ],
+                onChanged: saving
+                    ? null
+                    : (value) => setState(() => ingredientId = value),
               ),
-              decoration: InputDecoration(
-                labelText: unit == 'SACO' ? 'Quantidade de sacos' : 'Kg',
+              const SizedBox(height: 12),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'SACO', label: Text('Saco')),
+                  ButtonSegment(value: 'KG', label: Text('Kg')),
+                ],
+                selected: {unit},
+                onSelectionChanged: saving
+                    ? null
+                    : (value) => setState(() {
+                        unit = value.first;
+                        if (unit == 'KG') kgPerUnit.text = '1';
+                      }),
               ),
-            ),
-            if (unit == 'SACO') ...[
               const SizedBox(height: 12),
               TextField(
-                controller: kgPerUnit,
+                controller: quantity,
+                enabled: !saving,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: unit == 'SACO' ? 'Quantidade de sacos' : 'Kg',
+                ),
+              ),
+              if (unit == 'SACO') ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: kgPerUnit,
+                  enabled: !saving,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Kg por saco',
+                    suffixText: 'kg',
+                  ),
+                ),
+              ],
+              if (scaleAvailable) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.tonalIcon(
+                    onPressed: saving
+                        ? null
+                        : () => _applyScaleWeight(context, hardware),
+                    icon: const Icon(Icons.scale_outlined),
+                    label: const Text('Usar leitura da balança'),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: total,
                 enabled: !saving,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
                 decoration: const InputDecoration(
-                  labelText: 'Kg por saco',
-                  suffixText: 'kg',
+                  labelText: 'Valor total',
+                  prefixText: 'R\$ ',
                 ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: supplier,
+                enabled: !saving,
+                decoration: const InputDecoration(labelText: 'Fornecedor'),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Data de entrada'),
+                subtitle: Text(shortDate.format(date)),
+                trailing: const Icon(Icons.calendar_today),
+                onTap: saving
+                    ? null
+                    : () async {
+                        final picked = await pickSeletoDate(context, date);
+                        if (picked != null) setState(() => date = picked);
+                      },
+              ),
+              TextField(
+                controller: notes,
+                enabled: !saving,
+                decoration: const InputDecoration(labelText: 'Observação'),
+              ),
             ],
-            const SizedBox(height: 12),
-            TextField(
-              controller: total,
-              enabled: !saving,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Valor total',
-                prefixText: 'R\$ ',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: supplier,
-              enabled: !saving,
-              decoration: const InputDecoration(labelText: 'Fornecedor'),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Data de entrada'),
-              subtitle: Text(shortDate.format(date)),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: saving
-                  ? null
-                  : () async {
-                      final picked = await pickSeletoDate(context, date);
-                      if (picked != null) setState(() => date = picked);
-                    },
-            ),
-            TextField(
-              controller: notes,
-              enabled: !saving,
-              decoration: const InputDecoration(labelText: 'Observação'),
-            ),
-          ],
+          ),
         ),
       ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: saving ? null : () => Navigator.pop(context),
-        child: const Text('Cancelar'),
-      ),
-      FilledButton(
-        onPressed: saving || ingredientId == null
-            ? null
-            : () async {
-                setState(() => saving = true);
-                try {
-                  await widget.ref
-                      .read(operationsControllerProvider)
-                      .addIngredientEntry(
-                        ingredientId: ingredientId!,
-                        entryDate: date,
-                        packageUnit: unit,
-                        packageQuantity: parseDecimal(quantity.text),
-                        packageWeightKg: unit == 'SACO'
-                            ? parseDecimal(kgPerUnit.text)
-                            : 1,
-                        totalCost: parseMoneyToCents(total.text),
-                        supplier: supplier.text,
-                        notes: notes.text,
-                      );
-                  if (context.mounted) Navigator.pop(context);
-                } catch (e) {
-                  await showOperationError(context, e);
-                  if (mounted) setState(() => saving = false);
-                }
-              },
-        child: const Text('Registrar entrada'),
-      ),
-    ],
-  );
+      actions: [
+        TextButton(
+          onPressed: saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: saving || ingredientId == null
+              ? null
+              : () async {
+                  setState(() => saving = true);
+                  try {
+                    await widget.ref
+                        .read(operationsControllerProvider)
+                        .addIngredientEntry(
+                          ingredientId: ingredientId!,
+                          entryDate: date,
+                          packageUnit: unit,
+                          packageQuantity: parseDecimal(quantity.text),
+                          packageWeightKg: unit == 'SACO'
+                              ? parseDecimal(kgPerUnit.text)
+                              : 1,
+                          totalCost: parseMoneyToCents(total.text),
+                          supplier: supplier.text,
+                          notes: notes.text,
+                        );
+                    if (context.mounted) Navigator.pop(context);
+                  } catch (e) {
+                    await showOperationError(context, e);
+                    if (mounted) setState(() => saving = false);
+                  }
+                },
+          child: const Text('Registrar entrada'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _applyScaleWeight(
+    BuildContext context,
+    HardwareIntegrationSettings hardware,
+  ) async {
+    final weight = hardware.scaleLastWeightKg;
+    if (weight <= 0) {
+      await showOperationError(
+        context,
+        StateError('Faça uma leitura de teste da balança antes de usar.'),
+      );
+      return;
+    }
+    setState(() {
+      unit = 'KG';
+      quantity.text = decimal.format(weight);
+      kgPerUnit.text = '1';
+      notes.text = _appendNote(
+        notes.text,
+        'Peso preenchido pela balança (${hardware.scaleConnection}).',
+      );
+    });
+  }
 }
 
 class _IngredientTransferDialog extends StatefulWidget {
@@ -2458,6 +2510,11 @@ class _FeedingDialogState extends State<_FeedingDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final settings =
+        widget.ref.watch(appSettingsProvider).asData?.value ??
+        const <AppSetting>[];
+    final hardware = HardwareIntegrationSettings.fromSettings(settings);
+    final scaleAvailable = hardware.scaleReady && hardware.scaleForFeeding;
     final lots =
         widget.ref.watch(lotSummariesProvider).asData?.value ?? <LotSummary>[];
     final batches =
@@ -2615,6 +2672,19 @@ class _FeedingDialogState extends State<_FeedingDialog> {
                   suffixText: 'kg',
                 ),
               ),
+              if (scaleAvailable) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.tonalIcon(
+                    onPressed: saving
+                        ? null
+                        : () => _applyScaleWeight(context, hardware),
+                    icon: const Icon(Icons.scale_outlined),
+                    label: const Text('Usar leitura da balança'),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               TextField(
                 controller: notes,
@@ -2668,6 +2738,27 @@ class _FeedingDialogState extends State<_FeedingDialog> {
       }
     }
     return null;
+  }
+
+  Future<void> _applyScaleWeight(
+    BuildContext context,
+    HardwareIntegrationSettings hardware,
+  ) async {
+    final weight = hardware.scaleLastWeightKg;
+    if (weight <= 0) {
+      await showOperationError(
+        context,
+        StateError('Faça uma leitura de teste da balança antes de usar.'),
+      );
+      return;
+    }
+    setState(() {
+      qty.text = decimal.format(weight);
+      notes.text = _appendNote(
+        notes.text,
+        'Peso preenchido pela balança (${hardware.scaleConnection}).',
+      );
+    });
   }
 }
 
