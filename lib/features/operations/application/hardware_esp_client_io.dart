@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
 class EspDeviceProbe {
   const EspDeviceProbe({
     required this.endpoint,
@@ -69,8 +71,10 @@ class EspChannelSchedule {
 class HardwareEspClient {
   const HardwareEspClient();
 
-  static const _timeout = Duration(milliseconds: 850);
+  static const _probeTimeout = Duration(milliseconds: 850);
+  static const _requestTimeout = Duration(seconds: 3);
   static const _knownSetupEndpoint = 'http://192.168.4.1';
+  static const _networkChannel = MethodChannel('seleto/network');
 
   Future<EspDeviceProbe?> discover({
     void Function(String message)? onLog,
@@ -183,11 +187,16 @@ class HardwareEspClient {
       'channel': '$channel',
       'state': state,
     });
+    if (payload['ok'] == false) {
+      throw HttpException('ESP recusou comando do canal $channel: $payload');
+    }
     final on = payload['on'] == true;
     return EspRelayResult(
       channel: channel,
       on: on,
-      message: 'Canal $channel confirmado pelo ESP: ${on ? 'ON' : 'OFF'}',
+      message: state == 'pulse'
+          ? 'Pulso do canal $channel confirmado pelo ESP'
+          : 'Canal $channel confirmado pelo ESP: ${on ? 'ON' : 'OFF'}',
       payload: payload,
     );
   }
@@ -216,7 +225,7 @@ class HardwareEspClient {
 
   Future<EspDeviceProbe?> _tryProbe(String endpoint) async {
     try {
-      final probe = await ping(endpoint).timeout(_timeout);
+      final probe = await ping(endpoint).timeout(_probeTimeout);
       final app = probe.payload['app']?.toString();
       final deviceId = probe.deviceId.toUpperCase();
       final isSeletoEsp =
@@ -246,13 +255,17 @@ class HardwareEspClient {
 
   Future<Map<String, Object?>> _getJson(String url) async {
     final client = HttpClient();
-    client.connectionTimeout = _timeout;
+    final boundToWifi = await _bindWifiIfLocalEndpoint(url);
+    client.connectionTimeout = _requestTimeout;
     try {
-      final request = await client.getUrl(Uri.parse(url)).timeout(_timeout);
-      final response = await request.close().timeout(_timeout);
+      final request = await client
+          .getUrl(Uri.parse(url))
+          .timeout(_requestTimeout);
+      final response = await request.close().timeout(_requestTimeout);
       return _decodeResponse(response);
     } finally {
       client.close(force: true);
+      if (boundToWifi) await _clearNetworkBinding();
     }
   }
 
@@ -261,7 +274,8 @@ class HardwareEspClient {
     Map<String, String> fields,
   ) async {
     final client = HttpClient();
-    client.connectionTimeout = _timeout;
+    final boundToWifi = await _bindWifiIfLocalEndpoint(url);
+    client.connectionTimeout = _requestTimeout;
     try {
       final body = fields.entries
           .map(
@@ -270,24 +284,29 @@ class HardwareEspClient {
                 '${Uri.encodeQueryComponent(entry.value)}',
           )
           .join('&');
-      final request = await client.postUrl(Uri.parse(url)).timeout(_timeout);
+      final encodedBody = utf8.encode(body);
+      final request = await client
+          .postUrl(Uri.parse(url))
+          .timeout(_requestTimeout);
       request.headers.contentType = ContentType(
         'application',
         'x-www-form-urlencoded',
         charset: 'utf-8',
       );
-      request.write(body);
-      final response = await request.close().timeout(_timeout);
+      request.contentLength = encodedBody.length;
+      request.add(encodedBody);
+      final response = await request.close().timeout(_requestTimeout);
       return _decodeResponse(response);
     } finally {
       client.close(force: true);
+      if (boundToWifi) await _clearNetworkBinding();
     }
   }
 
   Future<Map<String, Object?>> _decodeResponse(
     HttpClientResponse response,
   ) async {
-    final body = await utf8.decodeStream(response).timeout(_timeout);
+    final body = await utf8.decodeStream(response).timeout(_requestTimeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException('ESP respondeu ${response.statusCode}: $body');
     }
@@ -308,5 +327,33 @@ class HardwareEspClient {
     return withScheme.endsWith('/')
         ? withScheme.substring(0, withScheme.length - 1)
         : withScheme;
+  }
+
+  Future<bool> _bindWifiIfLocalEndpoint(String url) async {
+    if (!Platform.isAndroid || !_isLocalEndpoint(url)) return false;
+    try {
+      return await _networkChannel.invokeMethod<bool>('bindProcessToWifi') ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _clearNetworkBinding() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _networkChannel.invokeMethod<void>('clearNetworkBinding');
+    } catch (_) {}
+  }
+
+  bool _isLocalEndpoint(String url) {
+    final host = Uri.tryParse(url)?.host;
+    if (host == null || host.isEmpty) return false;
+    if (host == '192.168.4.1' || host.startsWith('192.168.')) return true;
+    if (host.startsWith('10.')) return true;
+    final parts = host.split('.');
+    if (parts.length != 4 || parts.first != '172') return false;
+    final second = int.tryParse(parts[1]);
+    return second != null && second >= 16 && second <= 31;
   }
 }

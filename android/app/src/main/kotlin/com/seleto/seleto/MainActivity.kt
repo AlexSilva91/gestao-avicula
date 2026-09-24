@@ -2,6 +2,8 @@ package com.seleto.seleto
 
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
@@ -73,6 +75,38 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "seleto/network"
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "bindProcessToWifi" -> result.success(bindProcessToWifi())
+                "clearNetworkBinding" -> {
+                    clearNetworkBinding()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun bindProcessToWifi(): Boolean {
+        val connectivityManager =
+            getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        for (network in connectivityManager.allNetworks) {
+            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: continue
+            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                connectivityManager.bindProcessToNetwork(network)
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun clearNetworkBinding() {
+        val connectivityManager =
+            getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        connectivityManager.bindProcessToNetwork(null)
     }
 
     private fun isIgnoringBatteryOptimizations(): Boolean {
