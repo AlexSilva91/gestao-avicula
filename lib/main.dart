@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -10,10 +11,11 @@ import 'core/platform/alert_scheduler.dart';
 import 'core/platform/notification_service.dart';
 import 'core/sync/firebase_backup_service.dart';
 import 'core/widgets/app_background.dart';
+import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await _initializeFirebase();
   const persistDatabase = bool.fromEnvironment(
     'SELETO_PERSIST_DB',
     defaultValue: true,
@@ -34,6 +36,15 @@ Future<void> main() async {
       child: _AppBootstrap(database: database),
     ),
   );
+}
+
+Future<void> _initializeFirebase() async {
+  if (Firebase.apps.isNotEmpty) return;
+  if (kIsWeb) {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.web);
+    return;
+  }
+  await Firebase.initializeApp();
 }
 
 /// Shows a first frame immediately while the local database and locale data

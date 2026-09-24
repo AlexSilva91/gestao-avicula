@@ -60,11 +60,24 @@ class LocalAuthRepository implements AuthRepository {
   }) async {
     final normalizedUsername = username.trim().toLowerCase();
     var existing = await _database.userByUsername(normalizedUsername);
+    SyncResult? remoteSync;
     if (existing == null) {
-      await syncService?.syncForLoginUsername(normalizedUsername);
+      remoteSync = await syncService?.syncForLoginUsername(normalizedUsername);
       existing = await _database.userByUsername(normalizedUsername);
     }
     if (existing == null) {
+      if (remoteSync != null &&
+          (remoteSync.status == SyncStatus.failed ||
+              remoteSync.status == SyncStatus.offline ||
+              remoteSync.status == SyncStatus.skipped)) {
+        final message =
+            remoteSync.message ??
+            'Verifique a conexão e a configuração do Firebase.';
+        throw AuthenticationFailure(
+          'Usuário não encontrado no banco local e a consulta ao Firebase '
+          'não foi concluída. $message',
+        );
+      }
       throw const AuthenticationFailure(
         'Usuário não encontrado. Confira o nome digitado ou crie uma conta.',
       );

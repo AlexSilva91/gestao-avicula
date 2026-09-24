@@ -149,10 +149,16 @@ class FirebaseBackupService extends ChangeNotifier {
     }
     try {
       if (!_canUseFirebase()) {
-        return const SyncResult(SyncStatus.skipped);
+        return const SyncResult(
+          SyncStatus.skipped,
+          message: 'Firebase não inicializado neste ambiente.',
+        );
       }
       if (!await _hasConnection()) {
-        return const SyncResult(SyncStatus.offline);
+        return const SyncResult(
+          SyncStatus.offline,
+          message: 'Sem conexão para consultar o Firebase.',
+        );
       }
       await _ensureAuthenticated();
       final usersSnapshot = await _firestore

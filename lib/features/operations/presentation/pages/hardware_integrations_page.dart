@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
+import '../../application/hardware_esp_client.dart';
 import '../../application/operations_controller.dart';
 
 class HardwareIntegrationSettings {
@@ -114,6 +116,7 @@ class HardwareIntegrationsPage extends ConsumerStatefulWidget {
 
 class _HardwareIntegrationsPageState
     extends ConsumerState<HardwareIntegrationsPage> {
+  final espClient = const HardwareEspClient();
   final scaleDevice = TextEditingController();
   final scaleEndpoint = TextEditingController();
   final scaleWeight = TextEditingController();
@@ -153,6 +156,14 @@ class _HardwareIntegrationsPageState
   String? scaleConnectionResult;
   String? scalePrecisionResult;
   String? lightingConnectionResult;
+  bool espDiscoveryStarted = false;
+  bool espScanning = false;
+  String espTerminalTitle = 'SELETO ESP LINK';
+  List<String> espTerminalLines = const [
+    'SYS> aguardando handshake com ESP32',
+    'SYS> modo Wi-Fi procura /api/status automaticamente',
+    'SYS> fallback AP: GRANJA-SELETO-SETUP / seleto1234',
+  ];
 
   @override
   void dispose() {
@@ -207,6 +218,12 @@ class _HardwareIntegrationsPageState
           error: (_, _) => const SeletoAsyncError(),
           data: (settings) {
             _hydrate(settings);
+            if (!espDiscoveryStarted) {
+              espDiscoveryStarted = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _discoverEsp(auto: true);
+              });
+            }
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -216,6 +233,14 @@ class _HardwareIntegrationsPageState
                   lightingReady:
                       lightingEnabled &&
                       lightingEndpoint.text.trim().isNotEmpty,
+                ),
+                const SizedBox(height: 16),
+                _EspTerminalPanel(
+                  title: espTerminalTitle,
+                  lines: espTerminalLines,
+                  scanning: espScanning,
+                  onDiscover: () => _discoverEsp(auto: false),
+                  onTestEndpoint: () => _testSavedWifiEndpoint(),
                 ),
                 const SizedBox(height: 16),
                 LayoutBuilder(
@@ -377,9 +402,10 @@ class _HardwareIntegrationsPageState
       ),
       const SizedBox(height: 12),
       _InfoStrip(
-        icon: Icons.call_split_outlined,
-        text:
-            'Quando o protocolo do ESP32/Arduino for definido, estes testes passam a consumir a leitura real. Hoje a bancada já simula e valida o fluxo visual no celular.',
+        icon: Icons.memory_outlined,
+        text: scaleConnection == 'WIFI'
+            ? 'No Wi-Fi, o app consulta o ESP32 real em /api/status e /api/scale. Se nao achar na rede local, conecte o celular em GRANJA-SELETO-SETUP.'
+            : 'Bluetooth salva o identificador do ESP. Para teste serial direto, use GRANJA_SELETO_ESP32.',
       ),
       const SizedBox(height: 12),
       Wrap(
@@ -392,7 +418,9 @@ class _HardwareIntegrationsPageState
             label: const Text('Salvar'),
           ),
           FilledButton.tonalIcon(
-            onPressed: saving ? null : () => _testScaleConnection('WIFI'),
+            onPressed: saving || espScanning
+                ? null
+                : () => _testScaleConnection('WIFI'),
             icon: const Icon(Icons.wifi),
             label: const Text('Testar Wi-Fi'),
           ),
@@ -402,7 +430,7 @@ class _HardwareIntegrationsPageState
             label: const Text('Testar Bluetooth'),
           ),
           FilledButton.tonalIcon(
-            onPressed: saving ? null : _toggleScaleLiveReading,
+            onPressed: saving || espScanning ? null : _toggleScaleLiveReading,
             icon: Icon(
               scaleLiveReading
                   ? Icons.stop_circle_outlined
@@ -626,6 +654,10 @@ class _HardwareIntegrationsPageState
       });
       return;
     }
+    if (connection == 'WIFI') {
+      await _probeEspConnection(source: 'balanca');
+      return;
+    }
     await _saveScale();
     if (!mounted) return;
     setState(() {
@@ -634,6 +666,8 @@ class _HardwareIntegrationsPageState
       scaleStatus =
           'Conexão ${_connectionLabel(connection)} pronta para leitura.';
     });
+    _appendEspLog('BT> identificador aceito: ${scaleEndpoint.text.trim()}');
+    _appendEspLog('BT> pareie com GRANJA_SELETO_ESP32 para terminal serial');
   }
 
   Future<void> _toggleScaleLiveReading() async {
@@ -670,9 +704,9 @@ class _HardwareIntegrationsPageState
     scaleReadTimer?.cancel();
     scaleReadTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      _appendScaleSample();
+      unawaited(_appendScaleSample());
     });
-    _appendScaleSample();
+    await _appendScaleSample();
   }
 
   void _stopScaleLiveReading() {
@@ -686,7 +720,20 @@ class _HardwareIntegrationsPageState
     });
   }
 
-  void _appendScaleSample() {
+  Future<void> _appendScaleSample() async {
+    if (scaleConnection == 'WIFI' && scaleEndpoint.text.trim().isNotEmpty) {
+      try {
+        final reading = await espClient.readScale(scaleEndpoint.text.trim());
+        if (!mounted) return;
+        _appendScaleSampleValue(reading.weightKg);
+        _appendEspLog('ESP> ${reading.message}');
+        _appendEspPayload(reading.payload);
+        return;
+      } catch (error) {
+        _appendEspLog('ERR> leitura real falhou: $error');
+      }
+    }
+
     final base = parseDecimal(scaleWeight.text) > 0
         ? parseDecimal(scaleWeight.text)
         : 25.0;
@@ -698,6 +745,10 @@ class _HardwareIntegrationsPageState
       _ => -0.02,
     };
     final sample = base + variation;
+    _appendScaleSampleValue(sample);
+  }
+
+  void _appendScaleSampleValue(double sample) {
     final min = scaleMinSample == null
         ? sample
         : sample < scaleMinSample!
@@ -735,7 +786,7 @@ class _HardwareIntegrationsPageState
       return;
     }
     for (var i = 0; i < 4; i++) {
-      _appendScaleSample();
+      await _appendScaleSample();
     }
     await _saveScale();
     if (!mounted) return;
@@ -755,6 +806,10 @@ class _HardwareIntegrationsPageState
       });
       return;
     }
+    if (connection == 'WIFI') {
+      await _probeEspConnection(source: 'iluminacao');
+      return;
+    }
     await _saveLighting();
     if (!mounted) return;
     setState(() {
@@ -763,6 +818,8 @@ class _HardwareIntegrationsPageState
       lightingStatus =
           'Conexão ${_connectionLabel(connection)} pronta para canais.';
     });
+    _appendEspLog('BT> identificador aceito: ${lightingEndpoint.text.trim()}');
+    _appendEspLog('BT> pareie com GRANJA_SELETO_ESP32 para terminal serial');
   }
 
   Future<void> _testLightingChannel(int index, bool turnOn) async {
@@ -788,6 +845,15 @@ class _HardwareIntegrationsPageState
     setState(() => saving = true);
     try {
       final channel = index + 1;
+      if (lightingConnection == 'WIFI') {
+        final result = await espClient.setRelay(
+          endpoint: lightingEndpoint.text.trim(),
+          channel: channel,
+          turnOn: turnOn,
+        );
+        _appendEspLog('ESP> ${result.message}');
+        _appendEspPayload(result.payload);
+      }
       await ref
           .read(operationsControllerProvider)
           .saveSetting(
@@ -811,6 +877,46 @@ class _HardwareIntegrationsPageState
   }
 
   Future<void> _pulseLightingChannel(int index) async {
+    if (lightingConnection == 'WIFI' &&
+        lightingEnabled &&
+        lightingEndpoint.text.trim().isNotEmpty &&
+        lightingChannelEnabled[index] &&
+        lightingChannelPins[index].text.trim().isNotEmpty) {
+      setState(() => saving = true);
+      try {
+        final channel = index + 1;
+        final result = await espClient.pulseRelay(
+          endpoint: lightingEndpoint.text.trim(),
+          channel: channel,
+        );
+        await ref
+            .read(operationsControllerProvider)
+            .saveSetting(
+              'hardware_lighting_channel_${channel}_last_test_state',
+              'PULSE',
+            );
+        if (!mounted) return;
+        setState(() {
+          lightingChannelOn[index] = result.on;
+          lightingChannelStatus[index] =
+              'OK: pulso do canal $channel confirmado pelo ESP.';
+          lightingStatus = 'Pulso do canal $channel concluído no ESP.';
+        });
+        _appendEspLog('ESP> ${result.message}');
+        _appendEspPayload(result.payload);
+      } catch (error) {
+        if (!mounted) return;
+        setState(() {
+          lightingChannelStatus[index] = 'FALHA: ESP nao confirmou o pulso.';
+          lightingStatus = 'Falha ao acionar canal ${index + 1}.';
+        });
+        _appendEspLog('ERR> pulso falhou: $error');
+      } finally {
+        if (mounted) setState(() => saving = false);
+      }
+      return;
+    }
+
     await _testLightingChannel(index, true);
     if (!mounted || lightingChannelStatus[index].startsWith('FALHA')) return;
     await Future<void>.delayed(const Duration(milliseconds: 350));
@@ -828,6 +934,148 @@ class _HardwareIntegrationsPageState
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _discoverEsp({required bool auto}) async {
+    if (espScanning) return;
+    setState(() {
+      espScanning = true;
+      espTerminalTitle = auto ? 'AUTO SCAN' : 'MANUAL SCAN';
+      espTerminalLines = [
+        'SYS> ${auto ? 'varredura automatica' : 'varredura manual'} iniciada',
+      ];
+    });
+    try {
+      final probe = await espClient.discover(onLog: _appendEspLog);
+      if (!mounted) return;
+      if (probe == null) {
+        setState(() {
+          espTerminalTitle = 'ESP NAO ENCONTRADO';
+          scaleStatus =
+              'ESP não encontrado. Conecte o celular em GRANJA-SELETO-SETUP.';
+          lightingStatus =
+              'ESP não encontrado. Use a rede padrão do controlador.';
+        });
+        _appendEspLog('AP> SSID GRANJA-SELETO-SETUP');
+        _appendEspLog('AP> senha seleto1234');
+        _appendEspLog('AP> depois toque em Detectar ESP');
+        return;
+      }
+      await _applyEspProbe(probe);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => espTerminalTitle = 'ERRO NO LINK');
+      _appendEspLog('ERR> $error');
+    } finally {
+      if (mounted) setState(() => espScanning = false);
+    }
+  }
+
+  Future<void> _testSavedWifiEndpoint() async {
+    final endpoint = _currentWifiEndpoint();
+    if (endpoint.isEmpty) {
+      _appendEspLog('ERR> nenhum endpoint Wi-Fi salvo para testar');
+      return;
+    }
+    setState(() {
+      espScanning = true;
+      espTerminalTitle = 'ESP HANDSHAKE';
+    });
+    try {
+      final probe = await espClient.ping(endpoint);
+      if (!mounted) return;
+      await _applyEspProbe(probe);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        scaleConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
+        lightingConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
+      });
+      _appendEspLog('ERR> endpoint sem resposta: $error');
+      _appendEspLog('AP> tente conectar em GRANJA-SELETO-SETUP / seleto1234');
+    } finally {
+      if (mounted) setState(() => espScanning = false);
+    }
+  }
+
+  Future<void> _probeEspConnection({required String source}) async {
+    setState(() {
+      espScanning = true;
+      espTerminalTitle = 'ESP HANDSHAKE';
+    });
+    try {
+      final endpoint = source == 'iluminacao'
+          ? lightingEndpoint.text.trim()
+          : scaleEndpoint.text.trim();
+      final probe = await espClient.ping(endpoint);
+      if (!mounted) return;
+      await _applyEspProbe(probe);
+      await (source == 'iluminacao' ? _saveLighting() : _saveScale());
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (source == 'iluminacao') {
+          lightingConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
+          lightingStatus = 'Falha no handshake com o ESP.';
+        } else {
+          scaleConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
+          scaleStatus = 'Falha no handshake com o ESP.';
+        }
+      });
+      _appendEspLog('ERR> handshake falhou: $error');
+      _appendEspLog('AP> conecte no Wi-Fi GRANJA-SELETO-SETUP e tente de novo');
+    } finally {
+      if (mounted) setState(() => espScanning = false);
+    }
+  }
+
+  Future<void> _applyEspProbe(EspDeviceProbe probe) async {
+    final endpoint = probe.endpoint;
+    setState(() {
+      scaleEnabled = true;
+      lightingEnabled = true;
+      scaleConnection = 'WIFI';
+      lightingConnection = 'WIFI';
+      scaleDevice.text = probe.deviceId;
+      scaleEndpoint.text = endpoint;
+      lightingEndpoint.text = endpoint;
+      scaleConnectionResult = 'OK Wi-Fi: ${probe.message}.';
+      lightingConnectionResult = 'OK Wi-Fi: ${probe.message}.';
+      scaleStatus = 'ESP conectado em $endpoint.';
+      lightingStatus = 'Controlador conectado em $endpoint.';
+      espTerminalTitle = 'ESP CONECTADO';
+    });
+    _appendEspLog('ESP> ${probe.message}');
+    _appendEspPayload(probe.payload);
+  }
+
+  String _currentWifiEndpoint() {
+    if (scaleConnection == 'WIFI' && scaleEndpoint.text.trim().isNotEmpty) {
+      return scaleEndpoint.text.trim();
+    }
+    if (lightingConnection == 'WIFI' &&
+        lightingEndpoint.text.trim().isNotEmpty) {
+      return lightingEndpoint.text.trim();
+    }
+    return '';
+  }
+
+  void _appendEspLog(String message) {
+    if (!mounted) return;
+    setState(() {
+      final nextLines = [...espTerminalLines, message];
+      espTerminalLines = nextLines.length > 12
+          ? nextLines.sublist(nextLines.length - 12)
+          : nextLines;
+    });
+  }
+
+  void _appendEspPayload(Map<String, Object?> payload) {
+    const encoder = JsonEncoder.withIndent('  ');
+    final lines = encoder.convert(payload).split('\n');
+    for (final line in lines.take(8)) {
+      _appendEspLog('JSON> $line');
+    }
   }
 }
 
@@ -883,6 +1131,118 @@ class _ScaleReadingPanel extends StatelessWidget {
           ok: lastReadAt != null,
         ),
       ],
+    );
+  }
+}
+
+class _EspTerminalPanel extends StatelessWidget {
+  const _EspTerminalPanel({
+    required this.title,
+    required this.lines,
+    required this.scanning,
+    required this.onDiscover,
+    required this.onTestEndpoint,
+  });
+
+  final String title;
+  final List<String> lines;
+  final bool scanning;
+  final VoidCallback onDiscover;
+  final VoidCallback onTestEndpoint;
+
+  @override
+  Widget build(BuildContext context) {
+    const terminalGreen = Color(0xFF39FF88);
+    const terminalAmber = Color(0xFFFFD166);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF07130D),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: terminalGreen.withValues(alpha: .42)),
+        boxShadow: [
+          BoxShadow(
+            color: terminalGreen.withValues(alpha: .10),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  scanning ? Icons.radar_outlined : Icons.terminal_outlined,
+                  color: scanning ? terminalAmber : terminalGreen,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: terminalGreen,
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                if (scanning)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 132, maxHeight: 220),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: .72),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: terminalGreen.withValues(alpha: .18),
+                  ),
+                ),
+                child: SingleChildScrollView(
+                  reverse: true,
+                  padding: const EdgeInsets.all(10),
+                  child: SelectableText(
+                    lines.join('\n'),
+                    style: const TextStyle(
+                      color: terminalGreen,
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      height: 1.32,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: scanning ? null : onDiscover,
+                  icon: const Icon(Icons.radar_outlined),
+                  label: const Text('Detectar ESP'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: scanning ? null : onTestEndpoint,
+                  icon: const Icon(Icons.lan_outlined),
+                  label: const Text('Testar endpoint'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
