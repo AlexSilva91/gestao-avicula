@@ -38,10 +38,16 @@ https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32
 
 ## 3. Subir o script no ESP32
 
-1. Abra o arquivo `granja_seleto_wifi_bluetooth.ino`.
-2. Copie todo o conteúdo.
-3. Cole em um sketch novo da IDE do Arduino.
-4. Se quiser gravar a rede Wi-Fi direto no código, edite:
+1. Abra a IDE do Arduino.
+2. Vá em `Arquivo > Novo`.
+3. Apague o conteúdo padrão do sketch.
+4. Abra o arquivo `granja_seleto_wifi_bluetooth.ino`.
+5. Copie todo o conteúdo do arquivo.
+6. Cole o conteúdo no sketch novo da IDE do Arduino.
+7. Conecte o ESP32 no computador usando um cabo USB de dados.
+8. Vá em `Ferramentas > Placa` e selecione `ESP32 Dev Module`.
+9. Vá em `Ferramentas > Porta` e selecione a porta do ESP32.
+10. Se quiser gravar a rede Wi-Fi direto no código, edite:
 
 ```cpp
 const char* defaultWifiSsid = "";
@@ -55,19 +61,39 @@ const char* defaultWifiSsid = "MinhaRede";
 const char* defaultWifiPassword = "MinhaSenha";
 ```
 
-5. Clique em `Verificar`.
-6. Clique em `Carregar`.
-7. Abra o `Monitor Serial` em `115200`.
-8. Reinicie o ESP32.
+11. Clique em `Verificar`.
+12. Clique em `Carregar`.
+13. Aguarde a mensagem de upload concluído.
+14. Abra `Ferramentas > Monitor Serial`.
+15. Configure a velocidade do Monitor Serial para `115200 baud`.
+16. Aperte o botão `EN` ou `RESET` no ESP32.
 
 No Monitor Serial, procure:
 
 ```text
+GRANJA SELETO - ESP32 Wi-Fi + Bluetooth
+AP de configuracao: GRANJA-SELETO-SETUP / IP 192.168.4.1
 Wi-Fi conectado. IP: 192.168.x.x
 Bluetooth: GRANJA_SELETO_ESP32
 ```
 
-Anote o IP mostrado.
+Se o Wi-Fi ainda não foi configurado, a mensagem esperada será:
+
+```text
+Wi-Fi nao conectado. Use o AP ou Bluetooth para configurar.
+Bluetooth: GRANJA_SELETO_ESP32
+```
+
+Anote o IP mostrado quando o ESP32 conectar na rede da granja.
+
+Se a IDE não conseguir enviar o sketch:
+
+1. Clique em `Carregar`.
+2. Quando aparecer `Connecting...`, segure o botão `BOOT` do ESP32.
+3. Quando aparecer `Writing...`, solte o botão `BOOT`.
+4. Aguarde o upload finalizar.
+
+Se a porta serial não aparecer, troque o cabo USB. Muitos cabos só carregam energia e não transferem dados.
 
 ## 4. Configurar Wi-Fi sem editar o código
 
