@@ -207,12 +207,15 @@ http://192.168.0.50
 | 3 | 21 |
 | 4 | 19 |
 
-14. Em cada canal, preencha `Liga às` e `Desliga às`.
-15. Toque em `Salvar`.
-16. Toque em `Testar Wi-Fi`.
-17. Use `Ligar`, `Desligar` ou `Pulso` para testar cada canal de forma independente.
-18. Toque em `Sincronizar agenda`.
-19. Confira no terminal visual se aparece `agenda canal X salva em cache`.
+14. Em cada canal, configure as janelas de agenda:
+   - `Manhã`: exemplo `Liga às 04:30` e `Desliga às 06:10`.
+   - `Tarde/noite`: exemplo `Liga às 17:40` e `Desliga às 20:00`.
+15. Desative a chave da janela que não será usada naquele canal. Por exemplo: canal 1 pode usar manhã e tarde/noite, canal 2 pode usar só tarde/noite, canal 3 pode usar só manhã.
+16. Toque em `Salvar`.
+17. Toque em `Testar Wi-Fi`.
+18. Use `Ligar`, `Desligar` ou `Pulso` para testar cada canal de forma independente.
+19. Toque em `Sincronizar agenda`.
+20. Confira no terminal visual se aparece `agenda canal X salva`.
 
 Depois da sincronização, o ESP mantém a agenda na memória flash. Se reiniciar, a agenda continua salva. Como não há módulo RTC com bateria, o horário só fica confiável quando o ESP atualiza via NTP pela internet ou quando o app envia a hora atual ao tocar em `Sincronizar agenda`.
 
@@ -251,8 +254,27 @@ Para enviar uma agenda diária para o canal 1:
 curl -X POST "http://IP_DO_ESP32/api/channel_schedule" \
   -d "channel=1" \
   -d "enabled=1" \
-  -d "on=06:00" \
-  -d "off=18:00" \
+  -d "en1=1" \
+  -d "on1=04:30" \
+  -d "off1=06:10" \
+  -d "en2=1" \
+  -d "on2=17:40" \
+  -d "off2=20:00" \
+  -d "days=127"
+```
+
+Para usar somente uma janela, deixe a outra desativada. Exemplo: somente tarde/noite:
+
+```bash
+curl -X POST "http://IP_DO_ESP32/api/channel_schedule" \
+  -d "channel=1" \
+  -d "enabled=1" \
+  -d "en1=0" \
+  -d "on1=04:30" \
+  -d "off1=06:10" \
+  -d "en2=1" \
+  -d "on2=17:40" \
+  -d "off2=20:00" \
   -d "days=127"
 ```
 
@@ -322,8 +344,11 @@ PULSE 1
 5. Envie uma agenda para o canal 1:
 
 ```text
-SCHEDULE 1 1 06:00 18:00 127
+SCHEDULE 1 1 04:30 06:10 17:40 20:00 127
 ```
+
+Esse comando liga o canal 1 das `04:30` às `06:10` e novamente das `17:40` às `20:00`.
+O formato antigo `SCHEDULE 1 1 06:00 18:00 127` ainda funciona, mas grava somente uma janela.
 
 6. Envie a hora atual em epoch se o ESP estiver sem internet:
 

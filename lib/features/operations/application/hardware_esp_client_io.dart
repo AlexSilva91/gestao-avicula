@@ -46,15 +46,23 @@ class EspChannelSchedule {
   const EspChannelSchedule({
     required this.channel,
     required this.enabled,
-    required this.onTime,
-    required this.offTime,
+    required this.morningEnabled,
+    required this.morningOnTime,
+    required this.morningOffTime,
+    required this.eveningEnabled,
+    required this.eveningOnTime,
+    required this.eveningOffTime,
     this.daysMask = 127,
   });
 
   final int channel;
   final bool enabled;
-  final String onTime;
-  final String offTime;
+  final bool morningEnabled;
+  final String morningOnTime;
+  final String morningOffTime;
+  final bool eveningEnabled;
+  final String eveningOnTime;
+  final String eveningOffTime;
   final int daysMask;
 }
 
@@ -155,8 +163,12 @@ class HardwareEspClient {
     return _postForm('$normalized/api/channel_schedule', {
       'channel': '${schedule.channel}',
       'enabled': schedule.enabled ? '1' : '0',
-      'on': schedule.onTime,
-      'off': schedule.offTime,
+      'en1': schedule.morningEnabled ? '1' : '0',
+      'on1': schedule.morningOnTime,
+      'off1': schedule.morningOffTime,
+      'en2': schedule.eveningEnabled ? '1' : '0',
+      'on2': schedule.eveningOnTime,
+      'off2': schedule.eveningOffTime,
       'days': '${schedule.daysMask}',
     });
   }

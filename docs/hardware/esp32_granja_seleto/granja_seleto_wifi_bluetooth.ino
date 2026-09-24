@@ -13,7 +13,7 @@
     GET  /api/status
     GET  /api/relay?channel=1
     POST /api/relay             channel=1&state=on|off|pulse
-    POST /api/channel_schedule  channel=1&enabled=1&on=06:00&off=18:00&days=127
+    POST /api/channel_schedule  channel=1&enabled=1&on1=04:30&off1=06:10&en1=1&on2=17:40&off2=20:00&en2=1&days=127
     GET  /api/schedule
     POST /api/time              epoch=1735689600
     POST /api/wifi              ssid=NomeDaRede&password=SenhaDaRede
@@ -24,7 +24,7 @@
     RELAY 1 ON
     RELAY 1 OFF
     PULSE 1
-    SCHEDULE 1 1 06:00 18:00 127
+    SCHEDULE 1 1 04:30 06:10 17:40 20:00 127
     TIME 1735689600
     WIFI Nome da Rede|Senha da Rede
 */
@@ -59,6 +59,7 @@ constexpr uint32_t scheduleCheckIntervalMs = 1000;
 constexpr bool relayActiveLow = true;
 constexpr uint8_t relayPins[] = {23, 22, 21, 19};
 constexpr uint8_t relayCount = sizeof(relayPins) / sizeof(relayPins[0]);
+constexpr uint8_t scheduleSlotCount = 2;
 }  // namespace Config
 
 struct WifiCredentials {
@@ -70,10 +71,15 @@ struct WifiCredentials {
   }
 };
 
-struct ChannelSchedule {
+struct ScheduleSlot {
   bool enabled = false;
   int onMinute = 360;
   int offMinute = 1080;
+};
+
+struct ChannelSchedule {
+  bool enabled = false;
+  ScheduleSlot slots[Config::scheduleSlotCount];
   uint8_t daysMask = 127;
 };
 
@@ -108,6 +114,27 @@ int parseTimeToMinute(String value) {
   return hour * 60 + minute;
 }
 
+String commandToken(const String& value, uint8_t index) {
+  int start = -1;
+  uint8_t current = 0;
+  for (int i = 0; i <= value.length(); i++) {
+    const bool atEnd = i == value.length();
+    const bool atSpace = !atEnd && value.charAt(i) == ' ';
+    if (!atEnd && !atSpace && start < 0) start = i;
+    if ((atEnd || atSpace) && start >= 0) {
+      if (current == index) return value.substring(start, i);
+      current++;
+      start = -1;
+    }
+  }
+  return "";
+}
+
+bool truthyText(String value) {
+  value.toLowerCase();
+  return value == "1" || value == "true" || value == "on";
+}
+
 class StorageService {
  public:
   void begin() {
@@ -133,18 +160,37 @@ class StorageService {
     ChannelSchedule schedule;
     const String prefix = String("ch") + String(channel) + "_";
     schedule.enabled = prefs_.getBool((prefix + "en").c_str(), false);
-    schedule.onMinute = prefs_.getInt((prefix + "on").c_str(), 360);
-    schedule.offMinute = prefs_.getInt((prefix + "off").c_str(), 1080);
     schedule.daysMask = prefs_.getUChar((prefix + "days").c_str(), 127);
+    schedule.slots[0].enabled = prefs_.getBool(
+      (prefix + "s1en").c_str(),
+      schedule.enabled
+    );
+    schedule.slots[0].onMinute = prefs_.getInt(
+      (prefix + "s1on").c_str(),
+      prefs_.getInt((prefix + "on").c_str(), 360)
+    );
+    schedule.slots[0].offMinute = prefs_.getInt(
+      (prefix + "s1off").c_str(),
+      prefs_.getInt((prefix + "off").c_str(), 1080)
+    );
+    schedule.slots[1].enabled = prefs_.getBool((prefix + "s2en").c_str(), false);
+    schedule.slots[1].onMinute = prefs_.getInt((prefix + "s2on").c_str(), 1060);
+    schedule.slots[1].offMinute = prefs_.getInt((prefix + "s2off").c_str(), 1200);
     return schedule;
   }
 
   void saveSchedule(uint8_t channel, const ChannelSchedule& schedule) {
     const String prefix = String("ch") + String(channel) + "_";
     prefs_.putBool((prefix + "en").c_str(), schedule.enabled);
-    prefs_.putInt((prefix + "on").c_str(), schedule.onMinute);
-    prefs_.putInt((prefix + "off").c_str(), schedule.offMinute);
     prefs_.putUChar((prefix + "days").c_str(), schedule.daysMask);
+    prefs_.putInt((prefix + "on").c_str(), schedule.slots[0].onMinute);
+    prefs_.putInt((prefix + "off").c_str(), schedule.slots[0].offMinute);
+    for (uint8_t slot = 0; slot < Config::scheduleSlotCount; slot++) {
+      const String slotPrefix = prefix + "s" + String(slot + 1);
+      prefs_.putBool((slotPrefix + "en").c_str(), schedule.slots[slot].enabled);
+      prefs_.putInt((slotPrefix + "on").c_str(), schedule.slots[slot].onMinute);
+      prefs_.putInt((slotPrefix + "off").c_str(), schedule.slots[slot].offMinute);
+    }
   }
 
  private:
@@ -290,7 +336,10 @@ class ScheduleService {
 
     for (uint8_t channel = 1; channel <= Config::relayCount; channel++) {
       const ChannelSchedule& schedule = schedules_[channel - 1];
-      if (!schedule.enabled || (schedule.daysMask & dayBit) == 0) continue;
+      if (!schedule.enabled || (schedule.daysMask & dayBit) == 0) {
+        relay_.set(channel, false);
+        continue;
+      }
       relay_.set(channel, shouldBeOn(schedule, minuteOfDay));
     }
   }
@@ -309,9 +358,17 @@ class ScheduleService {
     String json = "{";
     json += "\"channel\":" + String(channel);
     json += ",\"enabled\":" + boolJson(schedule.enabled);
-    json += ",\"on\":" + quoteJson(minuteToTime(schedule.onMinute));
-    json += ",\"off\":" + quoteJson(minuteToTime(schedule.offMinute));
     json += ",\"days\":" + String(schedule.daysMask);
+    json += ",\"windows\":[";
+    for (uint8_t slot = 0; slot < Config::scheduleSlotCount; slot++) {
+      if (slot > 0) json += ",";
+      json += "{\"slot\":" + String(slot + 1);
+      json += ",\"enabled\":" + boolJson(schedule.slots[slot].enabled);
+      json += ",\"on\":" + quoteJson(minuteToTime(schedule.slots[slot].onMinute));
+      json += ",\"off\":" + quoteJson(minuteToTime(schedule.slots[slot].offMinute));
+      json += "}";
+    }
+    json += "]";
     json += "}";
     return json;
   }
@@ -330,11 +387,18 @@ class ScheduleService {
   }
 
   bool shouldBeOn(const ChannelSchedule& schedule, int minuteOfDay) const {
-    if (schedule.onMinute == schedule.offMinute) return false;
-    if (schedule.onMinute < schedule.offMinute) {
-      return minuteOfDay >= schedule.onMinute && minuteOfDay < schedule.offMinute;
+    for (uint8_t slot = 0; slot < Config::scheduleSlotCount; slot++) {
+      const ScheduleSlot& window = schedule.slots[slot];
+      if (!window.enabled || window.onMinute == window.offMinute) continue;
+      if (window.onMinute < window.offMinute) {
+        if (minuteOfDay >= window.onMinute && minuteOfDay < window.offMinute) {
+          return true;
+        }
+      } else if (minuteOfDay >= window.onMinute || minuteOfDay < window.offMinute) {
+        return true;
+      }
     }
-    return minuteOfDay >= schedule.onMinute || minuteOfDay < schedule.offMinute;
+    return false;
   }
 };
 
@@ -545,17 +609,28 @@ class ApiServer {
 
   void handleChannelSchedulePost() {
     const uint8_t channel = server_.arg("channel").toInt();
-    const int onMinute = parseTimeToMinute(server_.arg("on"));
-    const int offMinute = parseTimeToMinute(server_.arg("off"));
+    const int on1Minute = parseTimeToMinute(
+      server_.hasArg("on1") ? server_.arg("on1") : server_.arg("on")
+    );
+    const int off1Minute = parseTimeToMinute(
+      server_.hasArg("off1") ? server_.arg("off1") : server_.arg("off")
+    );
+    const int on2Minute = parseTimeToMinute(
+      server_.hasArg("on2") ? server_.arg("on2") : String("17:40")
+    );
+    const int off2Minute = parseTimeToMinute(
+      server_.hasArg("off2") ? server_.arg("off2") : String("20:00")
+    );
     const int days = server_.hasArg("days") ? server_.arg("days").toInt() : 127;
     String enabledValue = server_.arg("enabled");
-    enabledValue.toLowerCase();
+    String en1Value = server_.hasArg("en1") ? server_.arg("en1") : enabledValue;
+    String en2Value = server_.hasArg("en2") ? server_.arg("en2") : "0";
 
     if (!relay_.isValidChannel(channel)) {
       sendJson("{\"ok\":false,\"error\":\"invalid_channel\"}", 400);
       return;
     }
-    if (onMinute < 0 || offMinute < 0) {
+    if (on1Minute < 0 || off1Minute < 0 || on2Minute < 0 || off2Minute < 0) {
       sendJson("{\"ok\":false,\"error\":\"invalid_time\"}", 400);
       return;
     }
@@ -565,11 +640,14 @@ class ApiServer {
     }
 
     ChannelSchedule schedule;
-    schedule.enabled =
-      enabledValue == "1" || enabledValue == "true" || enabledValue == "on";
-    schedule.onMinute = onMinute;
-    schedule.offMinute = offMinute;
+    schedule.enabled = truthyText(enabledValue);
     schedule.daysMask = static_cast<uint8_t>(days);
+    schedule.slots[0].enabled = truthyText(en1Value);
+    schedule.slots[0].onMinute = on1Minute;
+    schedule.slots[0].offMinute = off1Minute;
+    schedule.slots[1].enabled = truthyText(en2Value);
+    schedule.slots[1].onMinute = on2Minute;
+    schedule.slots[1].offMinute = off2Minute;
 
     const bool ok = scheduler_.set(channel, schedule);
     String json = "{\"ok\":";
@@ -671,7 +749,8 @@ class BluetoothBridge {
     if (command == "HELP") {
       serial_.println(
         "Comandos: PING, STATUS, RELAY 1 ON, RELAY 1 OFF, PULSE 1, "
-        "SCHEDULE 1 1 06:00 18:00 127, TIME 1735689600, WIFI Rede|Senha"
+        "SCHEDULE 1 1 04:30 06:10 17:40 20:00 127, "
+        "TIME 1735689600, WIFI Rede|Senha"
       );
       return;
     }
@@ -764,33 +843,45 @@ class BluetoothBridge {
   }
 
   void handleScheduleCommand(const String& command) {
-    int positions[5] = {-1, -1, -1, -1, -1};
-    int found = 0;
-    for (int i = 0; i < command.length() && found < 5; i++) {
-      if (command.charAt(i) == ' ') positions[found++] = i;
-    }
-    if (found < 5) {
+    const String channelText = commandToken(command, 1);
+    const String enabledText = commandToken(command, 2);
+    const String on1Text = commandToken(command, 3);
+    const String off1Text = commandToken(command, 4);
+    const String maybeOn2Text = commandToken(command, 5);
+    const String maybeOff2Text = commandToken(command, 6);
+    const String maybeDaysText = commandToken(command, 7);
+
+    if (channelText.length() == 0 || enabledText.length() == 0 ||
+        on1Text.length() == 0 || off1Text.length() == 0 ||
+        maybeOn2Text.length() == 0) {
       serial_.println("{\"ok\":false,\"error\":\"invalid_schedule_command\"}");
       return;
     }
 
-    const uint8_t channel = command.substring(positions[0] + 1, positions[1]).toInt();
-    const bool enabled = command.substring(positions[1] + 1, positions[2]).toInt() == 1;
-    const int onMinute = parseTimeToMinute(command.substring(positions[2] + 1, positions[3]));
-    const int offMinute = parseTimeToMinute(command.substring(positions[3] + 1, positions[4]));
-    const int days = command.substring(positions[4] + 1).toInt();
+    const bool hasSecondWindow = maybeDaysText.length() > 0;
+    const uint8_t channel = channelText.toInt();
+    const bool enabled = enabledText.toInt() == 1 || truthyText(enabledText);
+    const int on1Minute = parseTimeToMinute(on1Text);
+    const int off1Minute = parseTimeToMinute(off1Text);
+    const int on2Minute = hasSecondWindow ? parseTimeToMinute(maybeOn2Text) : 1060;
+    const int off2Minute = hasSecondWindow ? parseTimeToMinute(maybeOff2Text) : 1200;
+    const int days = (hasSecondWindow ? maybeDaysText : maybeOn2Text).toInt();
 
-    if (!relay_.isValidChannel(channel) || onMinute < 0 || offMinute < 0 ||
-        days < 0 || days > 127) {
+    if (!relay_.isValidChannel(channel) || on1Minute < 0 || off1Minute < 0 ||
+        on2Minute < 0 || off2Minute < 0 || days < 0 || days > 127) {
       serial_.println("{\"ok\":false,\"error\":\"invalid_schedule\"}");
       return;
     }
 
     ChannelSchedule schedule;
     schedule.enabled = enabled;
-    schedule.onMinute = onMinute;
-    schedule.offMinute = offMinute;
     schedule.daysMask = static_cast<uint8_t>(days);
+    schedule.slots[0].enabled = enabled;
+    schedule.slots[0].onMinute = on1Minute;
+    schedule.slots[0].offMinute = off1Minute;
+    schedule.slots[1].enabled = enabled && hasSecondWindow;
+    schedule.slots[1].onMinute = on2Minute;
+    schedule.slots[1].offMinute = off2Minute;
 
     const bool ok = scheduler_.set(channel, schedule);
     String json = "{\"ok\":";

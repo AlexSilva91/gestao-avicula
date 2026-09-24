@@ -136,11 +136,19 @@ class _HardwareIntegrationsPageState
   );
   final lightingChannelOnTimes = List.generate(
     4,
-    (index) => TextEditingController(text: '06:00'),
+    (index) => TextEditingController(text: '04:30'),
   );
   final lightingChannelOffTimes = List.generate(
     4,
-    (index) => TextEditingController(text: '18:00'),
+    (index) => TextEditingController(text: '06:10'),
+  );
+  final lightingChannelEveningOnTimes = List.generate(
+    4,
+    (index) => TextEditingController(text: '17:40'),
+  );
+  final lightingChannelEveningOffTimes = List.generate(
+    4,
+    (index) => TextEditingController(text: '20:00'),
   );
   final lightingChannelStatus = List.generate(
     4,
@@ -148,6 +156,8 @@ class _HardwareIntegrationsPageState
   );
   final lightingChannelOn = List.generate(4, (index) => false);
   final lightingChannelEnabled = List.generate(4, (index) => true);
+  final lightingChannelMorningEnabled = List.generate(4, (index) => true);
+  final lightingChannelEveningEnabled = List.generate(4, (index) => true);
   String scaleConnection = 'WIFI';
   String scaleMode = 'BOTH';
   String lightingConnection = 'WIFI';
@@ -197,6 +207,12 @@ class _HardwareIntegrationsPageState
     for (final controller in lightingChannelOffTimes) {
       controller.dispose();
     }
+    for (final controller in lightingChannelEveningOnTimes) {
+      controller.dispose();
+    }
+    for (final controller in lightingChannelEveningOffTimes) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -223,14 +239,32 @@ class _HardwareIntegrationsPageState
       lightingChannelNames[index].text = channel.name;
       lightingChannelPins[index].text = channel.pin;
       lightingChannelEnabled[index] = channel.enabled;
+      lightingChannelMorningEnabled[index] =
+          values['hardware_lighting_channel_${channel.index}_morning_enabled'] !=
+          'false';
+      lightingChannelEveningEnabled[index] =
+          values['hardware_lighting_channel_${channel.index}_evening_enabled'] !=
+          'false';
       lightingChannelOnTimes[index].text =
+          values['hardware_lighting_channel_${channel.index}_morning_on_time']
+              ?.trim() ??
           values['hardware_lighting_channel_${channel.index}_on_time']
               ?.trim() ??
-          '06:00';
+          '04:30';
       lightingChannelOffTimes[index].text =
+          values['hardware_lighting_channel_${channel.index}_morning_off_time']
+              ?.trim() ??
           values['hardware_lighting_channel_${channel.index}_off_time']
               ?.trim() ??
-          '18:00';
+          '06:10';
+      lightingChannelEveningOnTimes[index].text =
+          values['hardware_lighting_channel_${channel.index}_evening_on_time']
+              ?.trim() ??
+          '17:40';
+      lightingChannelEveningOffTimes[index].text =
+          values['hardware_lighting_channel_${channel.index}_evening_off_time']
+              ?.trim() ??
+          '20:00';
     }
   }
 
@@ -413,7 +447,7 @@ class _HardwareIntegrationsPageState
         icon: Icons.memory_outlined,
         text: scaleConnection == 'WIFI'
             ? 'No Wi-Fi, o app consulta o ESP32 real em /api/status e /api/scale. Se nao achar na rede local, conecte o celular em GRANJA-SELETO-SETUP.'
-            : 'Bluetooth salva o identificador do ESP. Para teste serial direto, use GRANJA_SELETO_ESP32.',
+            : 'Bluetooth salva o identificador do ESP. Para teste serial direto, use GRANJA_SELETO_RELE.',
       ),
       const SizedBox(height: 12),
       Wrap(
@@ -546,12 +580,20 @@ class _HardwareIntegrationsPageState
               pinController: lightingChannelPins[i],
               onTimeController: lightingChannelOnTimes[i],
               offTimeController: lightingChannelOffTimes[i],
+              eveningOnTimeController: lightingChannelEveningOnTimes[i],
+              eveningOffTimeController: lightingChannelEveningOffTimes[i],
               enabled: lightingChannelEnabled[i],
+              morningEnabled: lightingChannelMorningEnabled[i],
+              eveningEnabled: lightingChannelEveningEnabled[i],
               on: lightingChannelOn[i],
               status: lightingChannelStatus[i],
               saving: saving,
               onEnabledChanged: (value) =>
                   setState(() => lightingChannelEnabled[i] = value),
+              onMorningEnabledChanged: (value) =>
+                  setState(() => lightingChannelMorningEnabled[i] = value),
+              onEveningEnabledChanged: (value) =>
+                  setState(() => lightingChannelEveningEnabled[i] = value),
               onTurnOn: () => _testLightingChannel(i, true),
               onTurnOff: () => _testLightingChannel(i, false),
               onPulse: () => _pulseLightingChannel(i),
@@ -648,6 +690,18 @@ class _HardwareIntegrationsPageState
             lightingChannelOnTimes[i].text.trim();
         updates['hardware_lighting_channel_${number}_off_time'] =
             lightingChannelOffTimes[i].text.trim();
+        updates['hardware_lighting_channel_${number}_morning_enabled'] =
+            lightingChannelMorningEnabled[i].toString();
+        updates['hardware_lighting_channel_${number}_morning_on_time'] =
+            lightingChannelOnTimes[i].text.trim();
+        updates['hardware_lighting_channel_${number}_morning_off_time'] =
+            lightingChannelOffTimes[i].text.trim();
+        updates['hardware_lighting_channel_${number}_evening_enabled'] =
+            lightingChannelEveningEnabled[i].toString();
+        updates['hardware_lighting_channel_${number}_evening_on_time'] =
+            lightingChannelEveningOnTimes[i].text.trim();
+        updates['hardware_lighting_channel_${number}_evening_off_time'] =
+            lightingChannelEveningOffTimes[i].text.trim();
       }
       for (final entry in updates.entries) {
         await controller.saveSetting(entry.key, entry.value);
@@ -686,7 +740,7 @@ class _HardwareIntegrationsPageState
           'Conexão ${_connectionLabel(connection)} pronta para leitura.';
     });
     _appendEspLog('BT> identificador aceito: ${scaleEndpoint.text.trim()}');
-    _appendEspLog('BT> pareie com GRANJA_SELETO_ESP32 para terminal serial');
+    _appendEspLog('BT> pareie com GRANJA_SELETO_RELE para terminal serial');
   }
 
   Future<void> _toggleScaleLiveReading() async {
@@ -838,7 +892,7 @@ class _HardwareIntegrationsPageState
           'Conexão ${_connectionLabel(connection)} pronta para canais.';
     });
     _appendEspLog('BT> identificador aceito: ${lightingEndpoint.text.trim()}');
-    _appendEspLog('BT> pareie com GRANJA_SELETO_ESP32 para terminal serial');
+    _appendEspLog('BT> pareie com GRANJA_SELETO_RELE para terminal serial');
   }
 
   Future<void> _syncLightingSchedule() async {
@@ -858,9 +912,17 @@ class _HardwareIntegrationsPageState
     }
 
     for (var i = 0; i < 4; i++) {
-      final onTime = lightingChannelOnTimes[i].text.trim();
-      final offTime = lightingChannelOffTimes[i].text.trim();
-      if (!_validScheduleTime(onTime) || !_validScheduleTime(offTime)) {
+      final invalidMorning =
+          lightingChannelMorningEnabled[i] &&
+          (!_validScheduleTime(lightingChannelOnTimes[i].text.trim()) ||
+              !_validScheduleTime(lightingChannelOffTimes[i].text.trim()));
+      final invalidEvening =
+          lightingChannelEveningEnabled[i] &&
+          (!_validScheduleTime(lightingChannelEveningOnTimes[i].text.trim()) ||
+              !_validScheduleTime(
+                lightingChannelEveningOffTimes[i].text.trim(),
+              ));
+      if (invalidMorning || invalidEvening) {
         setState(() {
           lightingChannelStatus[i] =
               'FALHA: use horário no formato HH:MM para a agenda.';
@@ -882,18 +944,27 @@ class _HardwareIntegrationsPageState
 
       for (var i = 0; i < 4; i++) {
         final channel = i + 1;
+        final morningLabel = lightingChannelMorningEnabled[i]
+            ? '${lightingChannelOnTimes[i].text.trim()}-${lightingChannelOffTimes[i].text.trim()}'
+            : 'OFF';
+        final eveningLabel = lightingChannelEveningEnabled[i]
+            ? '${lightingChannelEveningOnTimes[i].text.trim()}-${lightingChannelEveningOffTimes[i].text.trim()}'
+            : 'OFF';
         final payload = await espClient.setChannelSchedule(
           endpoint: endpoint,
           schedule: EspChannelSchedule(
             channel: channel,
             enabled: lightingChannelEnabled[i],
-            onTime: lightingChannelOnTimes[i].text.trim(),
-            offTime: lightingChannelOffTimes[i].text.trim(),
+            morningEnabled: lightingChannelMorningEnabled[i],
+            morningOnTime: lightingChannelOnTimes[i].text.trim(),
+            morningOffTime: lightingChannelOffTimes[i].text.trim(),
+            eveningEnabled: lightingChannelEveningEnabled[i],
+            eveningOnTime: lightingChannelEveningOnTimes[i].text.trim(),
+            eveningOffTime: lightingChannelEveningOffTimes[i].text.trim(),
           ),
         );
         _appendEspLog(
-          'ESP> agenda canal $channel salva em cache '
-          '${lightingChannelOnTimes[i].text.trim()}-${lightingChannelOffTimes[i].text.trim()}',
+          'ESP> agenda canal $channel salva: M $morningLabel / T $eveningLabel',
         );
         _appendEspPayload(payload);
         if (!mounted) return;
@@ -1436,11 +1507,17 @@ class _LightingChannelTile extends StatelessWidget {
     required this.pinController,
     required this.onTimeController,
     required this.offTimeController,
+    required this.eveningOnTimeController,
+    required this.eveningOffTimeController,
     required this.enabled,
+    required this.morningEnabled,
+    required this.eveningEnabled,
     required this.on,
     required this.status,
     required this.saving,
     required this.onEnabledChanged,
+    required this.onMorningEnabledChanged,
+    required this.onEveningEnabledChanged,
     required this.onTurnOn,
     required this.onTurnOff,
     required this.onPulse,
@@ -1451,11 +1528,17 @@ class _LightingChannelTile extends StatelessWidget {
   final TextEditingController pinController;
   final TextEditingController onTimeController;
   final TextEditingController offTimeController;
+  final TextEditingController eveningOnTimeController;
+  final TextEditingController eveningOffTimeController;
   final bool enabled;
+  final bool morningEnabled;
+  final bool eveningEnabled;
   final bool on;
   final String status;
   final bool saving;
   final ValueChanged<bool> onEnabledChanged;
+  final ValueChanged<bool> onMorningEnabledChanged;
+  final ValueChanged<bool> onEveningEnabledChanged;
   final VoidCallback onTurnOn;
   final VoidCallback onTurnOff;
   final VoidCallback onPulse;
@@ -1512,22 +1595,26 @@ class _LightingChannelTile extends StatelessWidget {
                     ),
             ),
             const SizedBox(height: 10),
-            LayoutBuilder(
-              builder: (context, box) => box.maxWidth > 520
-                  ? Row(
-                      children: [
-                        Expanded(child: _onTimeField()),
-                        const SizedBox(width: 10),
-                        Expanded(child: _offTimeField()),
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        _onTimeField(),
-                        const SizedBox(height: 10),
-                        _offTimeField(),
-                      ],
-                    ),
+            _ScheduleWindowFields(
+              title: 'Manhã',
+              enabled: enabled && morningEnabled,
+              switchValue: morningEnabled,
+              saving: saving,
+              onEnabledChanged: enabled ? onMorningEnabledChanged : null,
+              onController: onTimeController,
+              offController: offTimeController,
+              icon: Icons.wb_twilight_outlined,
+            ),
+            const SizedBox(height: 10),
+            _ScheduleWindowFields(
+              title: 'Tarde/noite',
+              enabled: enabled && eveningEnabled,
+              switchValue: eveningEnabled,
+              saving: saving,
+              onEnabledChanged: enabled ? onEveningEnabledChanged : null,
+              onController: eveningOnTimeController,
+              offController: eveningOffTimeController,
+              icon: Icons.nights_stay_outlined,
             ),
             const SizedBox(height: 10),
             Text(
@@ -1585,28 +1672,95 @@ class _LightingChannelTile extends StatelessWidget {
       prefixIcon: Icon(Icons.settings_input_component_outlined),
     ),
   );
+}
 
-  Widget _onTimeField() => TextField(
-    controller: onTimeController,
-    enabled: !saving && enabled,
-    keyboardType: TextInputType.datetime,
-    decoration: const InputDecoration(
-      labelText: 'Liga às',
-      hintText: '06:00',
-      prefixIcon: Icon(Icons.wb_sunny_outlined),
-    ),
-  );
+class _ScheduleWindowFields extends StatelessWidget {
+  const _ScheduleWindowFields({
+    required this.title,
+    required this.enabled,
+    required this.switchValue,
+    required this.saving,
+    required this.onEnabledChanged,
+    required this.onController,
+    required this.offController,
+    required this.icon,
+  });
 
-  Widget _offTimeField() => TextField(
-    controller: offTimeController,
-    enabled: !saving && enabled,
-    keyboardType: TextInputType.datetime,
-    decoration: const InputDecoration(
-      labelText: 'Desliga às',
-      hintText: '18:00',
-      prefixIcon: Icon(Icons.nights_stay_outlined),
-    ),
-  );
+  final String title;
+  final bool enabled;
+  final bool switchValue;
+  final bool saving;
+  final ValueChanged<bool>? onEnabledChanged;
+  final TextEditingController onController;
+  final TextEditingController offController;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .38),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 18, color: colors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                ),
+                Switch(
+                  value: switchValue,
+                  onChanged: saving ? null : onEnabledChanged,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            LayoutBuilder(
+              builder: (context, box) => box.maxWidth > 520
+                  ? Row(
+                      children: [
+                        Expanded(child: _timeField(onController, 'Liga às')),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _timeField(offController, 'Desliga às'),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        _timeField(onController, 'Liga às'),
+                        const SizedBox(height: 10),
+                        _timeField(offController, 'Desliga às'),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _timeField(TextEditingController controller, String label) =>
+      TextField(
+        controller: controller,
+        enabled: !saving && enabled,
+        keyboardType: TextInputType.datetime,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: label == 'Liga às' ? '04:30' : '06:10',
+          prefixIcon: const Icon(Icons.schedule_outlined),
+        ),
+      );
 }
 
 class _IntegrationHeader extends StatelessWidget {
