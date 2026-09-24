@@ -4,12 +4,12 @@ Este manual usa o firmware:
 
 `docs/hardware/esp32_granja_seleto/granja_seleto_wifi_bluetooth.ino`
 
-O firmware permite testar o ESP32 de duas formas:
+O firmware permite controlar o ESP32 de duas formas:
 
 - Wi-Fi: o app informa o IP/endpoint do ESP32.
 - Bluetooth: o app informa o identificador Bluetooth do ESP32.
 
-> Observação importante: na conexão Wi-Fi, a tela de Integrações do app GRANJA SELETO procura o ESP32 automaticamente, testa `/api/status`, exibe a resposta em um terminal visual e usa `/api/scale` e `/api/relay` para leitura/acionamento real. Se não encontrar na rede da granja, conecte o celular na rede padrão do ESP32 e toque em `Detectar ESP`.
+> Observação importante: por enquanto o firmware está focado no módulo relé de 4 canais. A tela de Integrações do app GRANJA SELETO procura o ESP32 automaticamente, testa `/api/status`, exibe a resposta em um terminal visual, permite testar cada canal separadamente e envia a agenda diária para o ESP salvar em cache local.
 
 ## 1. Materiais
 
@@ -18,8 +18,7 @@ O firmware permite testar o ESP32 de duas formas:
 - IDE do Arduino.
 - Celular Android com o app GRANJA SELETO instalado.
 - Rede Wi-Fi 2.4 GHz.
-- Opcional: módulo relé 5 V/3.3 V compatível.
-- Opcional: HX711 e células de carga, se quiser leitura real de balança.
+- Módulo relé de 4 canais 5 V/3.3 V compatível.
 
 ## 2. Preparar a IDE do Arduino
 
@@ -71,17 +70,17 @@ const char* defaultWifiPassword = "MinhaSenha";
 No Monitor Serial, procure:
 
 ```text
-GRANJA SELETO - ESP32 Wi-Fi + Bluetooth
+GRANJA SELETO - ESP32 Rele 4 canais
 AP de configuracao: GRANJA-SELETO-SETUP / IP 192.168.4.1
 Wi-Fi conectado. IP: 192.168.x.x
-Bluetooth: GRANJA_SELETO_ESP32
+Bluetooth: GRANJA_SELETO_RELE
 ```
 
 Se o Wi-Fi ainda não foi configurado, a mensagem esperada será:
 
 ```text
 Wi-Fi nao conectado. Use o AP ou Bluetooth para configurar.
-Bluetooth: GRANJA_SELETO_ESP32
+Bluetooth: GRANJA_SELETO_RELE
 ```
 
 Anote o IP mostrado quando o ESP32 conectar na rede da granja.
@@ -142,13 +141,13 @@ http://192.168.0.50/api/ping
 Resposta esperada:
 
 ```json
-{"ok":true,"deviceId":"GRANJA-SELETO-ESP32-01"}
+{"ok":true,"deviceId":"GRANJA-SELETO-RELE-01"}
 ```
 
-Teste a balança:
+Teste o estado do canal 1:
 
 ```text
-http://IP_DO_ESP32/api/scale
+http://IP_DO_ESP32/api/relay?channel=1
 ```
 
 Teste o status geral:
@@ -185,15 +184,9 @@ seleto1234
 ```
 
 9. Volte ao app e toque em `Detectar ESP`.
-10. Na seção `Balança`, ative `Ativar balança` se ainda não estiver ativo.
+10. Na seção `Iluminação`, ative `Ativar automação de luz`.
 11. Selecione `Wi-Fi`.
-12. Em `Nome/ID do dispositivo`, o app deve preencher:
-
-```text
-GRANJA-SELETO-ESP32-01
-```
-
-13. Em `Endpoint ou IP do ESP32`, o app deve preencher:
+12. Em `Endpoint/IP do controlador`, confirme o endpoint detectado:
 
 ```text
 http://IP_DO_ESP32
@@ -205,20 +198,7 @@ Exemplo:
 http://192.168.0.50
 ```
 
-14. Toque em `Testar Wi-Fi`.
-15. Toque em `Ler em tempo real` para receber `/api/scale` do ESP32.
-
-Para iluminação:
-
-1. Na seção `Iluminação`, ative `Ativar automação de luz`.
-2. Selecione `Wi-Fi`.
-3. Em `Endpoint/IP do controlador`, use o mesmo endpoint detectado:
-
-```text
-http://IP_DO_ESP32
-```
-
-4. Preencha os GPIOs dos canais conforme o firmware:
+13. Preencha os GPIOs dos canais conforme o firmware:
 
 | Canal | GPIO padrão |
 | --- | --- |
@@ -227,9 +207,14 @@ http://IP_DO_ESP32
 | 3 | 21 |
 | 4 | 19 |
 
-5. Toque em `Salvar`.
-6. Toque em `Testar Wi-Fi`.
-7. Use `Ligar`, `Desligar` ou `Pulso` nos canais e confira a confirmação no terminal visual.
+14. Em cada canal, preencha `Liga às` e `Desliga às`.
+15. Toque em `Salvar`.
+16. Toque em `Testar Wi-Fi`.
+17. Use `Ligar`, `Desligar` ou `Pulso` para testar cada canal de forma independente.
+18. Toque em `Sincronizar agenda`.
+19. Confira no terminal visual se aparece `agenda canal X salva em cache`.
+
+Depois da sincronização, o ESP mantém a agenda na memória flash. Se reiniciar, a agenda continua salva. Como não há módulo RTC com bateria, o horário só fica confiável quando o ESP atualiza via NTP pela internet ou quando o app envia a hora atual ao tocar em `Sincronizar agenda`.
 
 ## 7. Testar relé por Wi-Fi
 
@@ -260,6 +245,25 @@ Se quiser testar de um computador na mesma rede:
 curl -X POST "http://IP_DO_ESP32/api/relay" -d "channel=1" -d "state=pulse"
 ```
 
+Para enviar uma agenda diária para o canal 1:
+
+```bash
+curl -X POST "http://IP_DO_ESP32/api/channel_schedule" \
+  -d "channel=1" \
+  -d "enabled=1" \
+  -d "on=06:00" \
+  -d "off=18:00" \
+  -d "days=127"
+```
+
+Para sincronizar a hora pelo app/computador quando o ESP estiver sem internet:
+
+```bash
+curl -X POST "http://IP_DO_ESP32/api/time" -d "epoch=1735689600"
+```
+
+O campo `days=127` significa todos os dias da semana.
+
 ## 8. Configurar Bluetooth
 
 O firmware usa Bluetooth Classic Serial SPP.
@@ -268,7 +272,7 @@ O firmware usa Bluetooth Classic Serial SPP.
 2. Procure o dispositivo:
 
 ```text
-GRANJA_SELETO_ESP32
+GRANJA_SELETO_RELE
 ```
 
 3. Faça o pareamento.
@@ -288,7 +292,7 @@ ou:
 
 Para validar o ESP32 antes do app, use um app de terminal Bluetooth Serial no Android.
 
-1. Conecte ao dispositivo `GRANJA_SELETO_ESP32`.
+1. Conecte ao dispositivo `GRANJA_SELETO_RELE`.
 2. Envie:
 
 ```text
@@ -307,13 +311,7 @@ Resposta esperada:
 STATUS
 ```
 
-4. Envie:
-
-```text
-SCALE
-```
-
-5. Teste o relé:
+4. Teste o relé:
 
 ```text
 RELAY 1 ON
@@ -321,7 +319,19 @@ RELAY 1 OFF
 PULSE 1
 ```
 
-6. Também é possível configurar Wi-Fi por Bluetooth:
+5. Envie uma agenda para o canal 1:
+
+```text
+SCHEDULE 1 1 06:00 18:00 127
+```
+
+6. Envie a hora atual em epoch se o ESP estiver sem internet:
+
+```text
+TIME 1735689600
+```
+
+7. Também é possível configurar Wi-Fi por Bluetooth:
 
 ```text
 WIFI Nome da Rede|Senha da Rede
@@ -332,74 +342,20 @@ WIFI Nome da Rede|Senha da Rede
 1. Abra o app GRANJA SELETO.
 2. Entre em `Operações`.
 3. Abra `Integrações`.
-4. Na seção `Balança`, ative `Ativar balança`.
+4. Ative `Ativar automação de luz`.
 5. Selecione `Bluetooth`.
-6. Em `Nome/ID do dispositivo`, informe:
+6. Em `Identificador Bluetooth`, informe:
 
 ```text
-GRANJA-SELETO-ESP32-01
+GRANJA_SELETO_RELE
 ```
 
-7. Em `Identificador Bluetooth`, informe:
-
-```text
-GRANJA_SELETO_ESP32
-```
-
+7. Configure os canais GPIO `23`, `22`, `21` e `19`.
 8. Toque em `Salvar`.
 9. Toque em `Testar Bluetooth`.
-10. Toque em `Ler em tempo real` para validar o fluxo da tela.
+10. Teste os canais.
 
-Para iluminação:
-
-1. Ative `Ativar automação de luz`.
-2. Selecione `Bluetooth`.
-3. Em `Identificador Bluetooth`, informe:
-
-```text
-GRANJA_SELETO_ESP32
-```
-
-4. Configure os canais GPIO `23`, `22`, `21` e `19`.
-5. Toque em `Salvar`.
-6. Toque em `Testar Bluetooth`.
-7. Teste os canais.
-
-## 11. Usar balança real HX711
-
-Por padrão, o firmware simula uma balança estável em torno de 25 kg. Isso permite testar o app mesmo sem módulo HX711.
-
-Para usar HX711 real:
-
-1. Na IDE do Arduino, instale a biblioteca `HX711`.
-2. No firmware, altere:
-
-```cpp
-#define USE_HX711 0
-```
-
-para:
-
-```cpp
-#define USE_HX711 1
-```
-
-3. Confira os pinos:
-
-```cpp
-constexpr uint8_t hx711DataPin = 4;
-constexpr uint8_t hx711ClockPin = 5;
-```
-
-4. Ajuste a calibração:
-
-```cpp
-constexpr float hx711CalibrationFactor = -7050.0f;
-```
-
-5. Suba novamente o firmware.
-
-## 12. Problemas comuns
+## 11. Problemas comuns
 
 | Sintoma | Causa provável | Solução |
 | --- | --- | --- |
@@ -409,14 +365,14 @@ constexpr float hx711CalibrationFactor = -7050.0f;
 | `api/ping` não abre | Celular em outra rede | Coloque celular e ESP32 no mesmo Wi-Fi |
 | Bluetooth não aparece | Placa sem Bluetooth Classic | Use ESP32 DevKit comum |
 | Relé liga invertido | Módulo ativo em nível baixo/alto | Altere `relayActiveLow` no firmware |
-| Peso fica simulado | `USE_HX711` está 0 | Mude para 1 e instale a biblioteca HX711 |
+| Agenda não executa após reiniciar | ESP sem hora válida | Conecte na internet para NTP ou toque em `Sincronizar agenda` no app |
 
-## 13. Resumo dos valores padrão
+## 12. Resumo dos valores padrão
 
 | Item | Valor |
 | --- | --- |
-| Device ID | `GRANJA-SELETO-ESP32-01` |
-| Bluetooth | `GRANJA_SELETO_ESP32` |
+| Device ID | `GRANJA-SELETO-RELE-01` |
+| Bluetooth | `GRANJA_SELETO_RELE` |
 | AP de configuração | `GRANJA-SELETO-SETUP` |
 | Senha do AP | `seleto1234` |
 | IP do AP | `192.168.4.1` |

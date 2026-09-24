@@ -1,28 +1,31 @@
 /*
-  GRANJA SELETO - ESP32 Wi-Fi + Bluetooth
+  GRANJA SELETO - Controlador ESP32 de rele 4 canais
 
-  Cole este arquivo na IDE do Arduino e envie para uma placa ESP32.
-  O firmware sobe:
-    - Wi-Fi em modo estação, usando SSID/senha configurados abaixo ou via portal.
-    - AP de configuração: GRANJA-SELETO-SETUP / seleto1234.
-    - API HTTP para o app da Granja testar conexão, balança e iluminação.
-    - Bluetooth Serial SPP para os mesmos testes por comandos de texto.
+  Funcao principal:
+    - Controlar modulo rele de 4 canais.
+    - Permitir teste independente de cada canal.
+    - Receber agenda diaria do app, salvar cache local na flash e executar.
+    - Manter horario por NTP quando houver Wi-Fi.
+    - Aceitar sincronizacao de hora enviada pelo app quando nao houver internet.
 
   Endpoints HTTP:
     GET  /api/ping
     GET  /api/status
-    GET  /api/scale
     GET  /api/relay?channel=1
-    POST /api/relay       channel=1&state=on|off|pulse
-    POST /api/wifi        ssid=NomeDaRede&password=SenhaDaRede
+    POST /api/relay             channel=1&state=on|off|pulse
+    POST /api/channel_schedule  channel=1&enabled=1&on=06:00&off=18:00&days=127
+    GET  /api/schedule
+    POST /api/time              epoch=1735689600
+    POST /api/wifi              ssid=NomeDaRede&password=SenhaDaRede
 
-  Bluetooth:
+  Bluetooth Serial:
     PING
     STATUS
-    SCALE
     RELAY 1 ON
     RELAY 1 OFF
     PULSE 1
+    SCHEDULE 1 1 06:00 18:00 127
+    TIME 1735689600
     WIFI Nome da Rede|Senha da Rede
 */
 
@@ -31,36 +34,31 @@
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
-
-// Se for usar HX711 real, instale a biblioteca "HX711" na IDE do Arduino
-// e altere para 1. Com 0, a balanca gera leitura simulada para teste do app.
-#define USE_HX711 0
-
-#if USE_HX711
-#include "HX711.h"
-#endif
+#include <sys/time.h>
+#include <time.h>
 
 namespace Config {
-const char* deviceId = "GRANJA-SELETO-ESP32-01";
-const char* bluetoothName = "GRANJA_SELETO_ESP32";
+const char* deviceId = "GRANJA-SELETO-RELE-01";
+const char* bluetoothName = "GRANJA_SELETO_RELE";
 
-// Pode deixar vazio e configurar pelo portal/AP ou por Bluetooth.
 const char* defaultWifiSsid = "";
 const char* defaultWifiPassword = "";
 
 const char* setupApSsid = "GRANJA-SELETO-SETUP";
 const char* setupApPassword = "seleto1234";
 
+const char* ntpServer1 = "pool.ntp.org";
+const char* ntpServer2 = "time.nist.gov";
+
+constexpr long gmtOffsetSeconds = -3 * 60 * 60;
+constexpr int daylightOffsetSeconds = 0;
 constexpr uint16_t httpPort = 80;
 constexpr uint32_t wifiConnectTimeoutMs = 15000;
+constexpr uint32_t scheduleCheckIntervalMs = 1000;
 
 constexpr bool relayActiveLow = true;
 constexpr uint8_t relayPins[] = {23, 22, 21, 19};
 constexpr uint8_t relayCount = sizeof(relayPins) / sizeof(relayPins[0]);
-
-constexpr uint8_t hx711DataPin = 4;
-constexpr uint8_t hx711ClockPin = 5;
-constexpr float hx711CalibrationFactor = -7050.0f;
 }  // namespace Config
 
 struct WifiCredentials {
@@ -72,6 +70,13 @@ struct WifiCredentials {
   }
 };
 
+struct ChannelSchedule {
+  bool enabled = false;
+  int onMinute = 360;
+  int offMinute = 1080;
+  uint8_t daysMask = 127;
+};
+
 String boolJson(bool value) {
   return value ? "true" : "false";
 }
@@ -81,6 +86,26 @@ String quoteJson(const String& value) {
   escaped.replace("\\", "\\\\");
   escaped.replace("\"", "\\\"");
   return "\"" + escaped + "\"";
+}
+
+String minuteToTime(int minute) {
+  if (minute < 0) minute = 0;
+  if (minute > 1439) minute = 1439;
+  const int hour = minute / 60;
+  const int min = minute % 60;
+  char buffer[6];
+  snprintf(buffer, sizeof(buffer), "%02d:%02d", hour, min);
+  return String(buffer);
+}
+
+int parseTimeToMinute(String value) {
+  value.trim();
+  const int separator = value.indexOf(':');
+  if (separator < 0) return -1;
+  const int hour = value.substring(0, separator).toInt();
+  const int minute = value.substring(separator + 1).toInt();
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return -1;
+  return hour * 60 + minute;
 }
 
 class StorageService {
@@ -104,8 +129,63 @@ class StorageService {
     prefs_.putString("wifi_pass", password);
   }
 
+  ChannelSchedule loadSchedule(uint8_t channel) {
+    ChannelSchedule schedule;
+    const String prefix = String("ch") + String(channel) + "_";
+    schedule.enabled = prefs_.getBool((prefix + "en").c_str(), false);
+    schedule.onMinute = prefs_.getInt((prefix + "on").c_str(), 360);
+    schedule.offMinute = prefs_.getInt((prefix + "off").c_str(), 1080);
+    schedule.daysMask = prefs_.getUChar((prefix + "days").c_str(), 127);
+    return schedule;
+  }
+
+  void saveSchedule(uint8_t channel, const ChannelSchedule& schedule) {
+    const String prefix = String("ch") + String(channel) + "_";
+    prefs_.putBool((prefix + "en").c_str(), schedule.enabled);
+    prefs_.putInt((prefix + "on").c_str(), schedule.onMinute);
+    prefs_.putInt((prefix + "off").c_str(), schedule.offMinute);
+    prefs_.putUChar((prefix + "days").c_str(), schedule.daysMask);
+  }
+
  private:
   Preferences prefs_;
+};
+
+class ClockService {
+ public:
+  void begin() {
+    configTime(
+      Config::gmtOffsetSeconds,
+      Config::daylightOffsetSeconds,
+      Config::ntpServer1,
+      Config::ntpServer2
+    );
+  }
+
+  void syncFromEpoch(time_t epoch) {
+    timeval now;
+    now.tv_sec = epoch;
+    now.tv_usec = 0;
+    settimeofday(&now, nullptr);
+  }
+
+  bool valid() const {
+    time_t now;
+    time(&now);
+    return now > 1700000000;
+  }
+
+  bool localTime(tm& out) const {
+    return getLocalTime(&out, 50);
+  }
+
+  String localTimeText() const {
+    tm now;
+    if (!localTime(now)) return "";
+    char buffer[24];
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &now);
+    return String(buffer);
+  }
 };
 
 class RelayService {
@@ -166,51 +246,96 @@ class RelayService {
   }
 };
 
-class ScaleService {
+class ScheduleService {
  public:
+  ScheduleService(
+    StorageService& storage,
+    ClockService& clock,
+    RelayService& relay
+  ) : storage_(storage), clock_(clock), relay_(relay) {}
+
   void begin() {
-#if USE_HX711
-    scale_.begin(Config::hx711DataPin, Config::hx711ClockPin);
-    scale_.set_scale(Config::hx711CalibrationFactor);
-    scale_.tare();
-#endif
+    for (uint8_t channel = 1; channel <= Config::relayCount; channel++) {
+      schedules_[channel - 1] = storage_.loadSchedule(channel);
+    }
   }
 
-  float readKg() {
-#if USE_HX711
-    if (!scale_.is_ready()) return lastKg_;
-    lastKg_ = scale_.get_units(5);
-#else
-    const float wave[] = {0.00f, 0.01f, -0.01f, 0.02f, -0.02f};
-    lastKg_ = 25.0f + wave[sampleIndex_ % 5];
-    sampleIndex_++;
-#endif
-    lastReadAtMs_ = millis();
-    return lastKg_;
+  bool set(uint8_t channel, const ChannelSchedule& schedule) {
+    if (!relay_.isValidChannel(channel)) return false;
+    schedules_[channel - 1] = schedule;
+    storage_.saveSchedule(channel, schedule);
+    applyNow();
+    return true;
   }
 
-  String toJson() {
-    const float kg = readKg();
+  ChannelSchedule get(uint8_t channel) const {
+    if (!relay_.isValidChannel(channel)) return ChannelSchedule();
+    return schedules_[channel - 1];
+  }
+
+  void loop() {
+    if (millis() - lastCheckMs_ < Config::scheduleCheckIntervalMs) return;
+    lastCheckMs_ = millis();
+    applyNow();
+  }
+
+  void applyNow() {
+    if (!clock_.valid()) return;
+
+    tm now;
+    if (!clock_.localTime(now)) return;
+
+    const int minuteOfDay = now.tm_hour * 60 + now.tm_min;
+    const uint8_t dayBit = dayMaskFor(now.tm_wday);
+
+    for (uint8_t channel = 1; channel <= Config::relayCount; channel++) {
+      const ChannelSchedule& schedule = schedules_[channel - 1];
+      if (!schedule.enabled || (schedule.daysMask & dayBit) == 0) continue;
+      relay_.set(channel, shouldBeOn(schedule, minuteOfDay));
+    }
+  }
+
+  String toJson() const {
+    String json = "[";
+    for (uint8_t i = 0; i < Config::relayCount; i++) {
+      if (i > 0) json += ",";
+      json += scheduleJson(i + 1, schedules_[i]);
+    }
+    json += "]";
+    return json;
+  }
+
+  String scheduleJson(uint8_t channel, const ChannelSchedule& schedule) const {
     String json = "{";
-    json += "\"deviceId\":" + quoteJson(Config::deviceId);
-    json += ",\"unit\":\"kg\"";
-    json += ",\"weightKg\":" + String(kg, 3);
-    json += ",\"source\":\"";
-    json += (USE_HX711 ? "HX711" : "SIMULATED");
-    json += "\"";
-    json += ",\"uptimeMs\":" + String(millis());
-    json += ",\"lastReadAtMs\":" + String(lastReadAtMs_);
+    json += "\"channel\":" + String(channel);
+    json += ",\"enabled\":" + boolJson(schedule.enabled);
+    json += ",\"on\":" + quoteJson(minuteToTime(schedule.onMinute));
+    json += ",\"off\":" + quoteJson(minuteToTime(schedule.offMinute));
+    json += ",\"days\":" + String(schedule.daysMask);
     json += "}";
     return json;
   }
 
  private:
-  float lastKg_ = 0.0f;
-  uint32_t lastReadAtMs_ = 0;
-  uint8_t sampleIndex_ = 0;
-#if USE_HX711
-  HX711 scale_;
-#endif
+  StorageService& storage_;
+  ClockService& clock_;
+  RelayService& relay_;
+  ChannelSchedule schedules_[Config::relayCount];
+  uint32_t lastCheckMs_ = 0;
+
+  uint8_t dayMaskFor(int tmWday) const {
+    // tm_wday: domingo=0. Mascara: bit0=segunda ... bit5=sabado, bit6=domingo.
+    if (tmWday == 0) return 64;
+    return 1 << (tmWday - 1);
+  }
+
+  bool shouldBeOn(const ChannelSchedule& schedule, int minuteOfDay) const {
+    if (schedule.onMinute == schedule.offMinute) return false;
+    if (schedule.onMinute < schedule.offMinute) {
+      return minuteOfDay >= schedule.onMinute && minuteOfDay < schedule.offMinute;
+    }
+    return minuteOfDay >= schedule.onMinute || minuteOfDay < schedule.offMinute;
+  }
 };
 
 class NetworkService {
@@ -268,19 +393,28 @@ class NetworkService {
 
 class ApiServer {
  public:
-  ApiServer(NetworkService& network, ScaleService& scale, RelayService& relay)
-      : server_(Config::httpPort),
-        network_(network),
-        scale_(scale),
-        relay_(relay) {}
+  ApiServer(
+    NetworkService& network,
+    ClockService& clock,
+    RelayService& relay,
+    ScheduleService& scheduler
+  ) : server_(Config::httpPort),
+      network_(network),
+      clock_(clock),
+      relay_(relay),
+      scheduler_(scheduler) {}
 
   void begin() {
     server_.on("/", HTTP_GET, [this]() { handleRoot(); });
     server_.on("/api/ping", HTTP_GET, [this]() { handlePing(); });
     server_.on("/api/status", HTTP_GET, [this]() { handleStatus(); });
-    server_.on("/api/scale", HTTP_GET, [this]() { sendJson(scale_.toJson()); });
     server_.on("/api/relay", HTTP_GET, [this]() { handleRelayGet(); });
     server_.on("/api/relay", HTTP_POST, [this]() { handleRelayPost(); });
+    server_.on("/api/channel_schedule", HTTP_POST, [this]() {
+      handleChannelSchedulePost();
+    });
+    server_.on("/api/schedule", HTTP_GET, [this]() { handleScheduleGet(); });
+    server_.on("/api/time", HTTP_POST, [this]() { handleTimePost(); });
     server_.on("/api/wifi", HTTP_POST, [this]() { handleWifiPost(); });
     server_.onNotFound([this]() { handleNotFound(); });
     server_.begin();
@@ -293,8 +427,9 @@ class ApiServer {
  private:
   WebServer server_;
   NetworkService& network_;
-  ScaleService& scale_;
+  ClockService& clock_;
   RelayService& relay_;
+  ScheduleService& scheduler_;
 
   void addCors() {
     server_.sendHeader("Access-Control-Allow-Origin", "*");
@@ -311,14 +446,18 @@ class ApiServer {
     String json = "{";
     json += "\"deviceId\":" + quoteJson(Config::deviceId);
     json += ",\"app\":\"GRANJA_SELETO\"";
+    json += ",\"role\":\"RELAY_CONTROLLER\"";
     json += ",\"wifiConnected\":" + boolJson(network_.connected());
     json += ",\"wifiSsid\":" + quoteJson(network_.ssid());
     json += ",\"ip\":" + quoteJson(network_.localIp());
     json += ",\"setupApSsid\":" + quoteJson(Config::setupApSsid);
     json += ",\"setupApIp\":" + quoteJson(network_.setupIp());
     json += ",\"bluetoothName\":" + quoteJson(Config::bluetoothName);
+    json += ",\"timeValid\":" + boolJson(clock_.valid());
+    json += ",\"localTime\":" + quoteJson(clock_.localTimeText());
     json += ",\"relayActiveLow\":" + boolJson(Config::relayActiveLow);
     json += ",\"relays\":" + relay_.toJson();
+    json += ",\"schedules\":" + scheduler_.toJson();
     json += ",\"uptimeMs\":" + String(millis());
     json += "}";
     return json;
@@ -328,9 +467,9 @@ class ApiServer {
     addCors();
     String html = "<!doctype html><html><head><meta charset='utf-8'>";
     html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-    html += "<title>GRANJA SELETO ESP32</title></head><body>";
-    html += "<h1>GRANJA SELETO ESP32</h1>";
-    html += "<p>Use /api/status, /api/ping, /api/scale e /api/relay.</p>";
+    html += "<title>GRANJA SELETO RELE</title></head><body>";
+    html += "<h1>GRANJA SELETO RELE</h1>";
+    html += "<p>Use /api/status, /api/relay e /api/channel_schedule.</p>";
     html += "<form method='post' action='/api/wifi'>";
     html += "<h2>Configurar Wi-Fi</h2>";
     html += "<input name='ssid' placeholder='Nome da rede Wi-Fi'><br>";
@@ -341,11 +480,21 @@ class ApiServer {
   }
 
   void handlePing() {
-    sendJson("{\"ok\":true,\"deviceId\":" + quoteJson(Config::deviceId) + "}");
+    String json = "{\"ok\":true,\"deviceId\":";
+    json += quoteJson(Config::deviceId);
+    json += "}";
+    sendJson(json);
   }
 
   void handleStatus() {
     sendJson(statusJson());
+  }
+
+  void handleScheduleGet() {
+    String json = "{\"ok\":true,\"schedules\":";
+    json += scheduler_.toJson();
+    json += "}";
+    sendJson(json);
   }
 
   void handleRelayGet() {
@@ -394,6 +543,59 @@ class ApiServer {
     sendJson(json);
   }
 
+  void handleChannelSchedulePost() {
+    const uint8_t channel = server_.arg("channel").toInt();
+    const int onMinute = parseTimeToMinute(server_.arg("on"));
+    const int offMinute = parseTimeToMinute(server_.arg("off"));
+    const int days = server_.hasArg("days") ? server_.arg("days").toInt() : 127;
+    String enabledValue = server_.arg("enabled");
+    enabledValue.toLowerCase();
+
+    if (!relay_.isValidChannel(channel)) {
+      sendJson("{\"ok\":false,\"error\":\"invalid_channel\"}", 400);
+      return;
+    }
+    if (onMinute < 0 || offMinute < 0) {
+      sendJson("{\"ok\":false,\"error\":\"invalid_time\"}", 400);
+      return;
+    }
+    if (days < 0 || days > 127) {
+      sendJson("{\"ok\":false,\"error\":\"invalid_days\"}", 400);
+      return;
+    }
+
+    ChannelSchedule schedule;
+    schedule.enabled =
+      enabledValue == "1" || enabledValue == "true" || enabledValue == "on";
+    schedule.onMinute = onMinute;
+    schedule.offMinute = offMinute;
+    schedule.daysMask = static_cast<uint8_t>(days);
+
+    const bool ok = scheduler_.set(channel, schedule);
+    String json = "{\"ok\":";
+    json += boolJson(ok);
+    json += ",\"cached\":true,\"schedule\":";
+    json += scheduler_.scheduleJson(channel, scheduler_.get(channel));
+    json += "}";
+    sendJson(json);
+  }
+
+  void handleTimePost() {
+    const time_t epoch = static_cast<time_t>(server_.arg("epoch").toInt());
+    if (epoch < 1700000000) {
+      sendJson("{\"ok\":false,\"error\":\"invalid_epoch\"}", 400);
+      return;
+    }
+    clock_.syncFromEpoch(epoch);
+    scheduler_.applyNow();
+    String json = "{\"ok\":true,\"timeValid\":";
+    json += boolJson(clock_.valid());
+    json += ",\"localTime\":";
+    json += quoteJson(clock_.localTimeText());
+    json += "}";
+    sendJson(json);
+  }
+
   void handleWifiPost() {
     const String ssid = server_.arg("ssid");
     const String password = server_.arg("password");
@@ -402,6 +604,7 @@ class ApiServer {
       return;
     }
     const bool connected = network_.saveAndReconnect(ssid, password);
+    if (connected) clock_.begin();
     String json = "{\"ok\":";
     json += boolJson(connected);
     json += ",\"wifiConnected\":";
@@ -428,13 +631,14 @@ class BluetoothBridge {
  public:
   BluetoothBridge(
     NetworkService& network,
-    ScaleService& scale,
-    RelayService& relay
-  ) : network_(network), scale_(scale), relay_(relay) {}
+    ClockService& clock,
+    RelayService& relay,
+    ScheduleService& scheduler
+  ) : network_(network), clock_(clock), relay_(relay), scheduler_(scheduler) {}
 
   void begin() {
     serial_.begin(Config::bluetoothName);
-    serial_.println("GRANJA SELETO ESP32 pronto. Digite HELP.");
+    serial_.println("GRANJA SELETO RELE pronto. Digite HELP.");
   }
 
   void loop() {
@@ -452,8 +656,9 @@ class BluetoothBridge {
  private:
   BluetoothSerial serial_;
   NetworkService& network_;
-  ScaleService& scale_;
+  ClockService& clock_;
   RelayService& relay_;
+  ScheduleService& scheduler_;
   String input_;
 
   void processLine(String line) {
@@ -465,8 +670,8 @@ class BluetoothBridge {
 
     if (command == "HELP") {
       serial_.println(
-        "Comandos: PING, STATUS, SCALE, RELAY 1 ON, RELAY 1 OFF, "
-        "PULSE 1, WIFI Nome da Rede|Senha"
+        "Comandos: PING, STATUS, RELAY 1 ON, RELAY 1 OFF, PULSE 1, "
+        "SCHEDULE 1 1 06:00 18:00 127, TIME 1735689600, WIFI Rede|Senha"
       );
       return;
     }
@@ -481,11 +686,6 @@ class BluetoothBridge {
       return;
     }
 
-    if (command == "SCALE") {
-      serial_.println(scale_.toJson());
-      return;
-    }
-
     if (command.startsWith("RELAY ")) {
       handleRelayCommand(command);
       return;
@@ -495,6 +695,22 @@ class BluetoothBridge {
       const uint8_t channel = command.substring(6).toInt();
       const bool ok = relay_.pulse(channel);
       serial_.println(relayResultJson(ok, channel));
+      return;
+    }
+
+    if (command.startsWith("SCHEDULE ")) {
+      handleScheduleCommand(command);
+      return;
+    }
+
+    if (command.startsWith("TIME ")) {
+      const time_t epoch = static_cast<time_t>(command.substring(5).toInt());
+      clock_.syncFromEpoch(epoch);
+      scheduler_.applyNow();
+      String json = "{\"ok\":true,\"timeValid\":";
+      json += boolJson(clock_.valid());
+      json += "}";
+      serial_.println(json);
       return;
     }
 
@@ -515,7 +731,10 @@ class BluetoothBridge {
     json += ",\"ip\":" + quoteJson(network_.localIp());
     json += ",\"setupApIp\":" + quoteJson(network_.setupIp());
     json += ",\"bluetoothName\":" + quoteJson(Config::bluetoothName);
+    json += ",\"timeValid\":" + boolJson(clock_.valid());
+    json += ",\"localTime\":" + quoteJson(clock_.localTimeText());
     json += ",\"relays\":" + relay_.toJson();
+    json += ",\"schedules\":" + scheduler_.toJson();
     json += "}";
     return json;
   }
@@ -544,6 +763,44 @@ class BluetoothBridge {
     serial_.println(relayResultJson(ok, channel));
   }
 
+  void handleScheduleCommand(const String& command) {
+    int positions[5] = {-1, -1, -1, -1, -1};
+    int found = 0;
+    for (int i = 0; i < command.length() && found < 5; i++) {
+      if (command.charAt(i) == ' ') positions[found++] = i;
+    }
+    if (found < 5) {
+      serial_.println("{\"ok\":false,\"error\":\"invalid_schedule_command\"}");
+      return;
+    }
+
+    const uint8_t channel = command.substring(positions[0] + 1, positions[1]).toInt();
+    const bool enabled = command.substring(positions[1] + 1, positions[2]).toInt() == 1;
+    const int onMinute = parseTimeToMinute(command.substring(positions[2] + 1, positions[3]));
+    const int offMinute = parseTimeToMinute(command.substring(positions[3] + 1, positions[4]));
+    const int days = command.substring(positions[4] + 1).toInt();
+
+    if (!relay_.isValidChannel(channel) || onMinute < 0 || offMinute < 0 ||
+        days < 0 || days > 127) {
+      serial_.println("{\"ok\":false,\"error\":\"invalid_schedule\"}");
+      return;
+    }
+
+    ChannelSchedule schedule;
+    schedule.enabled = enabled;
+    schedule.onMinute = onMinute;
+    schedule.offMinute = offMinute;
+    schedule.daysMask = static_cast<uint8_t>(days);
+
+    const bool ok = scheduler_.set(channel, schedule);
+    String json = "{\"ok\":";
+    json += boolJson(ok);
+    json += ",\"cached\":true,\"schedule\":";
+    json += scheduler_.scheduleJson(channel, scheduler_.get(channel));
+    json += "}";
+    serial_.println(json);
+  }
+
   void handleWifiCommand(String payload) {
     const int separator = payload.indexOf('|');
     if (separator < 0) {
@@ -553,6 +810,7 @@ class BluetoothBridge {
     const String ssid = payload.substring(0, separator);
     const String password = payload.substring(separator + 1);
     const bool connected = network_.saveAndReconnect(ssid, password);
+    if (connected) clock_.begin();
     String json = "{\"ok\":";
     json += boolJson(connected);
     json += ",\"wifiConnected\":";
@@ -576,23 +834,25 @@ class BluetoothBridge {
 };
 
 StorageService storage;
+ClockService clockService;
 NetworkService network(storage);
 RelayService relay;
-ScaleService scale;
-ApiServer api(network, scale, relay);
-BluetoothBridge bluetooth(network, scale, relay);
+ScheduleService scheduler(storage, clockService, relay);
+ApiServer api(network, clockService, relay, scheduler);
+BluetoothBridge bluetooth(network, clockService, relay, scheduler);
 
 void setup() {
   Serial.begin(115200);
   delay(400);
 
   Serial.println();
-  Serial.println("GRANJA SELETO - ESP32 Wi-Fi + Bluetooth");
+  Serial.println("GRANJA SELETO - ESP32 Rele 4 canais");
 
   storage.begin();
   relay.begin();
-  scale.begin();
   network.begin();
+  clockService.begin();
+  scheduler.begin();
   api.begin();
   bluetooth.begin();
 
@@ -615,4 +875,5 @@ void setup() {
 void loop() {
   api.loop();
   bluetooth.loop();
+  scheduler.loop();
 }

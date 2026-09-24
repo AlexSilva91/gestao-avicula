@@ -38,6 +38,22 @@ class EspRelayResult {
   final Map<String, Object?> payload;
 }
 
+class EspChannelSchedule {
+  const EspChannelSchedule({
+    required this.channel,
+    required this.enabled,
+    required this.onTime,
+    required this.offTime,
+    this.daysMask = 127,
+  });
+
+  final int channel;
+  final bool enabled;
+  final String onTime;
+  final String offTime;
+  final int daysMask;
+}
+
 class HardwareEspClient {
   const HardwareEspClient();
 
@@ -78,6 +94,21 @@ class HardwareEspClient {
   }) async {
     throw UnsupportedError(
       'Controle direto do ESP indisponivel nesta plataforma.',
+    );
+  }
+
+  Future<Map<String, Object?>> syncTime(String endpoint, DateTime now) async {
+    throw UnsupportedError(
+      'Sincronizacao direta do ESP indisponivel nesta plataforma.',
+    );
+  }
+
+  Future<Map<String, Object?>> setChannelSchedule({
+    required String endpoint,
+    required EspChannelSchedule schedule,
+  }) async {
+    throw UnsupportedError(
+      'Agenda direta do ESP indisponivel nesta plataforma.',
     );
   }
 }

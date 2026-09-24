@@ -75,9 +75,12 @@ class HardwareIntegrationSettings {
                 'Canal $i',
             pin:
                 values['hardware_lighting_channel_${i}_pin']?.trim() ??
-                (i == 1
-                    ? values['hardware_lighting_relay_pin']?.trim() ?? '23'
-                    : ''),
+                switch (i) {
+                  1 => values['hardware_lighting_relay_pin']?.trim() ?? '23',
+                  2 => '22',
+                  3 => '21',
+                  _ => '19',
+                },
             enabled:
                 values['hardware_lighting_channel_${i}_enabled'] != 'false',
           ),
@@ -131,6 +134,14 @@ class _HardwareIntegrationsPageState
     4,
     (index) => TextEditingController(),
   );
+  final lightingChannelOnTimes = List.generate(
+    4,
+    (index) => TextEditingController(text: '06:00'),
+  );
+  final lightingChannelOffTimes = List.generate(
+    4,
+    (index) => TextEditingController(text: '18:00'),
+  );
   final lightingChannelStatus = List.generate(
     4,
     (index) => 'Canal ${index + 1} aguardando teste',
@@ -180,12 +191,19 @@ class _HardwareIntegrationsPageState
     for (final controller in lightingChannelPins) {
       controller.dispose();
     }
+    for (final controller in lightingChannelOnTimes) {
+      controller.dispose();
+    }
+    for (final controller in lightingChannelOffTimes) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   void _hydrate(List<AppSetting> settings) {
     if (initialized) return;
     initialized = true;
+    final values = {for (final setting in settings) setting.key: setting.value};
     final config = HardwareIntegrationSettings.fromSettings(settings);
     scaleEnabled = config.scaleEnabled;
     scaleConnection = config.scaleConnection;
@@ -205,6 +223,14 @@ class _HardwareIntegrationsPageState
       lightingChannelNames[index].text = channel.name;
       lightingChannelPins[index].text = channel.pin;
       lightingChannelEnabled[index] = channel.enabled;
+      lightingChannelOnTimes[index].text =
+          values['hardware_lighting_channel_${channel.index}_on_time']
+              ?.trim() ??
+          '06:00';
+      lightingChannelOffTimes[index].text =
+          values['hardware_lighting_channel_${channel.index}_off_time']
+              ?.trim() ??
+          '18:00';
     }
   }
 
@@ -228,8 +254,6 @@ class _HardwareIntegrationsPageState
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _IntegrationHeader(
-                  scaleReady:
-                      scaleEnabled && scaleEndpoint.text.trim().isNotEmpty,
                   lightingReady:
                       lightingEnabled &&
                       lightingEndpoint.text.trim().isNotEmpty,
@@ -243,30 +267,14 @@ class _HardwareIntegrationsPageState
                   onTestEndpoint: () => _testSavedWifiEndpoint(),
                 ),
                 const SizedBox(height: 16),
-                LayoutBuilder(
-                  builder: (context, box) => box.maxWidth > 900
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: _scalePanel(context)),
-                            const SizedBox(width: 16),
-                            Expanded(child: _lightingPanel(context)),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            _scalePanel(context),
-                            const SizedBox(height: 16),
-                            _lightingPanel(context),
-                          ],
-                        ),
-                ),
+                _lightingPanel(context),
               ],
             );
           },
         ),
   );
 
+  // ignore: unused_element
   Widget _scalePanel(BuildContext context) => _IntegrationPanel(
     icon: Icons.scale_outlined,
     title: 'Balança',
@@ -536,6 +544,8 @@ class _HardwareIntegrationsPageState
               index: i,
               nameController: lightingChannelNames[i],
               pinController: lightingChannelPins[i],
+              onTimeController: lightingChannelOnTimes[i],
+              offTimeController: lightingChannelOffTimes[i],
               enabled: lightingChannelEnabled[i],
               on: lightingChannelOn[i],
               status: lightingChannelStatus[i],
@@ -554,7 +564,7 @@ class _HardwareIntegrationsPageState
       _InfoStrip(
         icon: Icons.event_available_outlined,
         text:
-            'Cada canal representa uma saída do módulo relé. O teste registra o resultado na tela antes de a automação do calendário assumir o acionamento.',
+            'Cada canal pode ser testado separadamente. A agenda enviada fica salva no ESP e roda pelo relógio NTP ou pela hora sincronizada pelo app.',
       ),
       const SizedBox(height: 12),
       Wrap(
@@ -577,6 +587,11 @@ class _HardwareIntegrationsPageState
                 : () => _testLightingConnection('BLUETOOTH'),
             icon: const Icon(Icons.bluetooth),
             label: const Text('Testar Bluetooth'),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: saving || espScanning ? null : _syncLightingSchedule,
+            icon: const Icon(Icons.event_repeat_outlined),
+            label: const Text('Sincronizar agenda'),
           ),
         ],
       ),
@@ -629,6 +644,10 @@ class _HardwareIntegrationsPageState
             lightingChannelPins[i].text.trim();
         updates['hardware_lighting_channel_${number}_enabled'] =
             lightingChannelEnabled[i].toString();
+        updates['hardware_lighting_channel_${number}_on_time'] =
+            lightingChannelOnTimes[i].text.trim();
+        updates['hardware_lighting_channel_${number}_off_time'] =
+            lightingChannelOffTimes[i].text.trim();
       }
       for (final entry in updates.entries) {
         await controller.saveSetting(entry.key, entry.value);
@@ -822,6 +841,88 @@ class _HardwareIntegrationsPageState
     _appendEspLog('BT> pareie com GRANJA_SELETO_ESP32 para terminal serial');
   }
 
+  Future<void> _syncLightingSchedule() async {
+    if (!lightingEnabled || lightingEndpoint.text.trim().isEmpty) {
+      setState(() {
+        lightingStatus = 'Falha: configure a conexão antes da agenda.';
+        lightingConnectionResult = 'FALHA: endpoint/IP ausente.';
+      });
+      return;
+    }
+    if (lightingConnection != 'WIFI') {
+      setState(() {
+        lightingStatus = 'Agenda automática requer Wi-Fi com o ESP.';
+        lightingConnectionResult = 'FALHA: selecione Wi-Fi para sincronizar.';
+      });
+      return;
+    }
+
+    for (var i = 0; i < 4; i++) {
+      final onTime = lightingChannelOnTimes[i].text.trim();
+      final offTime = lightingChannelOffTimes[i].text.trim();
+      if (!_validScheduleTime(onTime) || !_validScheduleTime(offTime)) {
+        setState(() {
+          lightingChannelStatus[i] =
+              'FALHA: use horário no formato HH:MM para a agenda.';
+          lightingStatus = 'Revise a agenda do canal ${i + 1}.';
+        });
+        return;
+      }
+    }
+
+    setState(() {
+      saving = true;
+      espTerminalTitle = 'SYNC AGENDA';
+    });
+    try {
+      final endpoint = lightingEndpoint.text.trim();
+      final timePayload = await espClient.syncTime(endpoint, DateTime.now());
+      _appendEspLog('ESP> relógio sincronizado pelo app');
+      _appendEspPayload(timePayload);
+
+      for (var i = 0; i < 4; i++) {
+        final channel = i + 1;
+        final payload = await espClient.setChannelSchedule(
+          endpoint: endpoint,
+          schedule: EspChannelSchedule(
+            channel: channel,
+            enabled: lightingChannelEnabled[i],
+            onTime: lightingChannelOnTimes[i].text.trim(),
+            offTime: lightingChannelOffTimes[i].text.trim(),
+          ),
+        );
+        _appendEspLog(
+          'ESP> agenda canal $channel salva em cache '
+          '${lightingChannelOnTimes[i].text.trim()}-${lightingChannelOffTimes[i].text.trim()}',
+        );
+        _appendEspPayload(payload);
+        if (!mounted) return;
+        setState(() {
+          lightingChannelStatus[i] = lightingChannelEnabled[i]
+              ? 'OK: agenda enviada e salva no ESP.'
+              : 'OK: agenda desativada e salva no ESP.';
+        });
+      }
+
+      await _saveLighting();
+      if (!mounted) return;
+      setState(() {
+        lightingStatus = 'Agenda sincronizada e cacheada no ESP.';
+        lightingConnectionResult = 'OK Wi-Fi: agenda confirmada pelo ESP.';
+      });
+      _snack('Agenda enviada para o ESP.');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        lightingStatus = 'Falha ao sincronizar agenda no ESP.';
+        lightingConnectionResult = 'FALHA Wi-Fi: agenda não confirmada.';
+      });
+      _appendEspLog('ERR> sync agenda falhou: $error');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
   Future<void> _testLightingChannel(int index, bool turnOn) async {
     if (!lightingEnabled || lightingEndpoint.text.trim().isEmpty) {
       setState(() {
@@ -934,6 +1035,11 @@ class _HardwareIntegrationsPageState
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  bool _validScheduleTime(String value) {
+    final match = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$').firstMatch(value);
+    return match != null;
   }
 
   Future<void> _discoverEsp({required bool auto}) async {
@@ -1328,6 +1434,8 @@ class _LightingChannelTile extends StatelessWidget {
     required this.index,
     required this.nameController,
     required this.pinController,
+    required this.onTimeController,
+    required this.offTimeController,
     required this.enabled,
     required this.on,
     required this.status,
@@ -1341,6 +1449,8 @@ class _LightingChannelTile extends StatelessWidget {
   final int index;
   final TextEditingController nameController;
   final TextEditingController pinController;
+  final TextEditingController onTimeController;
+  final TextEditingController offTimeController;
   final bool enabled;
   final bool on;
   final String status;
@@ -1402,6 +1512,24 @@ class _LightingChannelTile extends StatelessWidget {
                     ),
             ),
             const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, box) => box.maxWidth > 520
+                  ? Row(
+                      children: [
+                        Expanded(child: _onTimeField()),
+                        const SizedBox(width: 10),
+                        Expanded(child: _offTimeField()),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        _onTimeField(),
+                        const SizedBox(height: 10),
+                        _offTimeField(),
+                      ],
+                    ),
+            ),
+            const SizedBox(height: 10),
             Text(
               status,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1457,15 +1585,33 @@ class _LightingChannelTile extends StatelessWidget {
       prefixIcon: Icon(Icons.settings_input_component_outlined),
     ),
   );
+
+  Widget _onTimeField() => TextField(
+    controller: onTimeController,
+    enabled: !saving && enabled,
+    keyboardType: TextInputType.datetime,
+    decoration: const InputDecoration(
+      labelText: 'Liga às',
+      hintText: '06:00',
+      prefixIcon: Icon(Icons.wb_sunny_outlined),
+    ),
+  );
+
+  Widget _offTimeField() => TextField(
+    controller: offTimeController,
+    enabled: !saving && enabled,
+    keyboardType: TextInputType.datetime,
+    decoration: const InputDecoration(
+      labelText: 'Desliga às',
+      hintText: '18:00',
+      prefixIcon: Icon(Icons.nights_stay_outlined),
+    ),
+  );
 }
 
 class _IntegrationHeader extends StatelessWidget {
-  const _IntegrationHeader({
-    required this.scaleReady,
-    required this.lightingReady,
-  });
+  const _IntegrationHeader({required this.lightingReady});
 
-  final bool scaleReady;
   final bool lightingReady;
 
   @override
@@ -1487,11 +1633,6 @@ class _IntegrationHeader extends StatelessWidget {
             Text(
               'Bancada de integração',
               style: Theme.of(context).textTheme.titleLarge,
-            ),
-            _StatusChip(
-              icon: Icons.scale_outlined,
-              label: scaleReady ? 'Balança pronta' : 'Balança pendente',
-              positive: scaleReady,
             ),
             _StatusChip(
               icon: Icons.lightbulb_outline,

@@ -42,6 +42,22 @@ class EspRelayResult {
   final Map<String, Object?> payload;
 }
 
+class EspChannelSchedule {
+  const EspChannelSchedule({
+    required this.channel,
+    required this.enabled,
+    required this.onTime,
+    required this.offTime,
+    this.daysMask = 127,
+  });
+
+  final int channel;
+  final bool enabled;
+  final String onTime;
+  final String offTime;
+  final int daysMask;
+}
+
 class HardwareEspClient {
   const HardwareEspClient();
 
@@ -123,6 +139,26 @@ class HardwareEspClient {
     required int channel,
   }) async {
     return _sendRelay(endpoint: endpoint, channel: channel, state: 'pulse');
+  }
+
+  Future<Map<String, Object?>> syncTime(String endpoint, DateTime now) {
+    final normalized = _normalizeEndpoint(endpoint);
+    final epoch = now.millisecondsSinceEpoch ~/ 1000;
+    return _postForm('$normalized/api/time', {'epoch': '$epoch'});
+  }
+
+  Future<Map<String, Object?>> setChannelSchedule({
+    required String endpoint,
+    required EspChannelSchedule schedule,
+  }) {
+    final normalized = _normalizeEndpoint(endpoint);
+    return _postForm('$normalized/api/channel_schedule', {
+      'channel': '${schedule.channel}',
+      'enabled': schedule.enabled ? '1' : '0',
+      'on': schedule.onTime,
+      'off': schedule.offTime,
+      'days': '${schedule.daysMask}',
+    });
   }
 
   Future<EspRelayResult> _sendRelay({
