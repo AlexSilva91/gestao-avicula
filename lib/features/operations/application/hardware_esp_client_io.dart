@@ -107,11 +107,34 @@ class HardwareEspClient {
 
   Future<EspDeviceProbe> ping(String endpoint) async {
     final normalized = _normalizeEndpoint(endpoint);
+    Object? lastError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await _pingOnce(normalized);
+      } catch (error) {
+        lastError = error;
+        if (attempt == 3) break;
+        await Future<void>.delayed(Duration(milliseconds: 220 * attempt));
+      }
+    }
+    throw HttpException(
+      'ESP nao confirmou handshake em $normalized apos nova tentativa: $lastError',
+    );
+  }
+
+  Future<EspDeviceProbe> _pingOnce(String normalized) async {
     final payload = await _getJson('$normalized/api/status');
     final deviceId =
         (payload['deviceId'] ?? payload['id'] ?? 'GRANJA-SELETO-ESP32')
             .toString();
-    final ip = (payload['ip'] ?? normalized).toString();
+    final reportedIp = (payload['ip'] ?? '').toString().trim();
+    final setupIp = (payload['setupApIp'] ?? '').toString().trim();
+    final endpointHost = Uri.parse(normalized).host;
+    final ip = reportedIp.isNotEmpty
+        ? reportedIp
+        : setupIp.isNotEmpty
+        ? setupIp
+        : endpointHost;
     return EspDeviceProbe(
       endpoint: normalized,
       deviceId: deviceId,
@@ -166,18 +189,58 @@ class HardwareEspClient {
     final normalized = _normalizeEndpoint(endpoint);
     return _postForm('$normalized/api/channel_schedule', {
       'channel': '${schedule.channel}',
-      'enabled': schedule.enabled ? '1' : '0',
-      'en1': schedule.morningEnabled ? '1' : '0',
-      'on1': schedule.morningOnTime,
-      'off1': schedule.morningOffTime,
-      'en2': schedule.eveningEnabled ? '1' : '0',
-      'on2': schedule.eveningOnTime,
-      'off2': schedule.eveningOffTime,
-      'days': '${schedule.daysMask}',
+      ..._scheduleFields(schedule),
     });
   }
 
+  Future<Map<String, Object?>> setGroupSchedule({
+    required String endpoint,
+    required List<int> channels,
+    required EspChannelSchedule schedule,
+  }) {
+    final normalized = _normalizeEndpoint(endpoint);
+    return _postForm('$normalized/api/group_schedule', {
+      'channels': channels.join(','),
+      ..._scheduleFields(schedule),
+    });
+  }
+
+  Map<String, String> _scheduleFields(EspChannelSchedule schedule) => {
+    'enabled': schedule.enabled ? '1' : '0',
+    'en1': schedule.morningEnabled ? '1' : '0',
+    'on1': schedule.morningOnTime,
+    'off1': schedule.morningOffTime,
+    'en2': schedule.eveningEnabled ? '1' : '0',
+    'on2': schedule.eveningOnTime,
+    'off2': schedule.eveningOffTime,
+    'days': '${schedule.daysMask}',
+  };
+
   Future<EspRelayResult> _sendRelay({
+    required String endpoint,
+    required int channel,
+    required String state,
+  }) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await _sendRelayOnce(
+          endpoint: endpoint,
+          channel: channel,
+          state: state,
+        );
+      } catch (error) {
+        lastError = error;
+        if (attempt == 3) break;
+        await Future<void>.delayed(Duration(milliseconds: 180 * attempt));
+      }
+    }
+    throw HttpException(
+      'ESP nao confirmou o canal $channel apos nova tentativa: $lastError',
+    );
+  }
+
+  Future<EspRelayResult> _sendRelayOnce({
     required String endpoint,
     required int channel,
     required String state,

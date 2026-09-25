@@ -14,6 +14,7 @@
     GET  /api/relay?channel=1
     POST /api/relay             channel=1&state=on|off|pulse
     POST /api/channel_schedule  channel=1&enabled=1&on1=04:30&off1=06:10&en1=1&on2=17:40&off2=20:00&en2=1&days=127
+    POST /api/group_schedule    channels=1,2,4&enabled=1&on1=04:30&off1=06:10&en1=1&on2=17:40&off2=20:00&en2=1&days=127
     GET  /api/schedule
     POST /api/time              epoch=1735689600
     POST /api/wifi              ssid=NomeDaRede&password=SenhaDaRede
@@ -55,6 +56,7 @@ constexpr int daylightOffsetSeconds = 0;
 constexpr uint16_t httpPort = 80;
 constexpr uint32_t wifiConnectTimeoutMs = 15000;
 constexpr uint32_t scheduleCheckIntervalMs = 1000;
+constexpr uint32_t manualOverrideMs = 5UL * 60UL * 1000UL;
 
 constexpr bool relayActiveLow = true;
 constexpr uint8_t relayPins[] = {23, 22, 21, 19};
@@ -309,6 +311,7 @@ class ScheduleService {
   bool set(uint8_t channel, const ChannelSchedule& schedule) {
     if (!relay_.isValidChannel(channel)) return false;
     schedules_[channel - 1] = schedule;
+    clearManualOverride(channel);
     storage_.saveSchedule(channel, schedule);
     applyNow();
     return true;
@@ -335,6 +338,7 @@ class ScheduleService {
     const uint8_t dayBit = dayMaskFor(now.tm_wday);
 
     for (uint8_t channel = 1; channel <= Config::relayCount; channel++) {
+      if (manualOverrideActive(channel)) continue;
       const ChannelSchedule& schedule = schedules_[channel - 1];
       if (!schedule.enabled || (schedule.daysMask & dayBit) == 0) {
         relay_.set(channel, false);
@@ -373,11 +377,22 @@ class ScheduleService {
     return json;
   }
 
+  void holdManualOverride(uint8_t channel) {
+    if (!relay_.isValidChannel(channel)) return;
+    manualOverrideUntilMs_[channel - 1] = millis() + Config::manualOverrideMs;
+  }
+
+  void clearManualOverride(uint8_t channel) {
+    if (!relay_.isValidChannel(channel)) return;
+    manualOverrideUntilMs_[channel - 1] = 0;
+  }
+
  private:
   StorageService& storage_;
   ClockService& clock_;
   RelayService& relay_;
   ChannelSchedule schedules_[Config::relayCount];
+  uint32_t manualOverrideUntilMs_[Config::relayCount] = {0};
   uint32_t lastCheckMs_ = 0;
 
   uint8_t dayMaskFor(int tmWday) const {
@@ -399,6 +414,13 @@ class ScheduleService {
       }
     }
     return false;
+  }
+
+  bool manualOverrideActive(uint8_t channel) const {
+    if (!relay_.isValidChannel(channel)) return false;
+    const uint32_t until = manualOverrideUntilMs_[channel - 1];
+    if (until == 0) return false;
+    return static_cast<int32_t>(until - millis()) > 0;
   }
 };
 
@@ -440,7 +462,7 @@ class NetworkService {
   }
 
   String localIp() const {
-    return connected() ? WiFi.localIP().toString() : "";
+    return connected() ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   }
 
   String setupIp() const {
@@ -476,6 +498,9 @@ class ApiServer {
     server_.on("/api/relay", HTTP_POST, [this]() { handleRelayPost(); });
     server_.on("/api/channel_schedule", HTTP_POST, [this]() {
       handleChannelSchedulePost();
+    });
+    server_.on("/api/group_schedule", HTTP_POST, [this]() {
+      handleGroupSchedulePost();
     });
     server_.on("/api/schedule", HTTP_GET, [this]() { handleScheduleGet(); });
     server_.on("/api/time", HTTP_POST, [this]() { handleTimePost(); });
@@ -588,8 +613,10 @@ class ApiServer {
     bool ok = false;
     if (state == "on" || state == "1") {
       ok = relay_.set(channel, true);
+      if (ok) scheduler_.holdManualOverride(channel);
     } else if (state == "off" || state == "0") {
       ok = relay_.set(channel, false);
+      if (ok) scheduler_.holdManualOverride(channel);
     } else if (state == "pulse") {
       ok = relay_.pulse(channel);
     } else {
@@ -609,51 +636,58 @@ class ApiServer {
 
   void handleChannelSchedulePost() {
     const uint8_t channel = server_.arg("channel").toInt();
-    const int on1Minute = parseTimeToMinute(
-      server_.hasArg("on1") ? server_.arg("on1") : server_.arg("on")
-    );
-    const int off1Minute = parseTimeToMinute(
-      server_.hasArg("off1") ? server_.arg("off1") : server_.arg("off")
-    );
-    const int on2Minute = parseTimeToMinute(
-      server_.hasArg("on2") ? server_.arg("on2") : String("17:40")
-    );
-    const int off2Minute = parseTimeToMinute(
-      server_.hasArg("off2") ? server_.arg("off2") : String("20:00")
-    );
-    const int days = server_.hasArg("days") ? server_.arg("days").toInt() : 127;
-    String enabledValue = server_.arg("enabled");
-    String en1Value = server_.hasArg("en1") ? server_.arg("en1") : enabledValue;
-    String en2Value = server_.hasArg("en2") ? server_.arg("en2") : "0";
 
     if (!relay_.isValidChannel(channel)) {
       sendJson("{\"ok\":false,\"error\":\"invalid_channel\"}", 400);
       return;
     }
-    if (on1Minute < 0 || off1Minute < 0 || on2Minute < 0 || off2Minute < 0) {
-      sendJson("{\"ok\":false,\"error\":\"invalid_time\"}", 400);
-      return;
-    }
-    if (days < 0 || days > 127) {
-      sendJson("{\"ok\":false,\"error\":\"invalid_days\"}", 400);
-      return;
-    }
 
     ChannelSchedule schedule;
-    schedule.enabled = truthyText(enabledValue);
-    schedule.daysMask = static_cast<uint8_t>(days);
-    schedule.slots[0].enabled = truthyText(en1Value);
-    schedule.slots[0].onMinute = on1Minute;
-    schedule.slots[0].offMinute = off1Minute;
-    schedule.slots[1].enabled = truthyText(en2Value);
-    schedule.slots[1].onMinute = on2Minute;
-    schedule.slots[1].offMinute = off2Minute;
+    String error;
+    if (!readScheduleFromRequest(schedule, error)) {
+      sendJson("{\"ok\":false,\"error\":" + quoteJson(error) + "}", 400);
+      return;
+    }
 
     const bool ok = scheduler_.set(channel, schedule);
     String json = "{\"ok\":";
     json += boolJson(ok);
     json += ",\"cached\":true,\"schedule\":";
     json += scheduler_.scheduleJson(channel, scheduler_.get(channel));
+    json += "}";
+    sendJson(json);
+  }
+
+  void handleGroupSchedulePost() {
+    const uint8_t channelsMask = parseChannelsMask();
+    if (channelsMask == 0) {
+      sendJson("{\"ok\":false,\"error\":\"invalid_channels\"}", 400);
+      return;
+    }
+
+    ChannelSchedule schedule;
+    String error;
+    if (!readScheduleFromRequest(schedule, error)) {
+      sendJson("{\"ok\":false,\"error\":" + quoteJson(error) + "}", 400);
+      return;
+    }
+
+    String channelsJson = "[";
+    bool first = true;
+    for (uint8_t channel = 1; channel <= Config::relayCount; channel++) {
+      const uint8_t bit = 1 << (channel - 1);
+      if ((channelsMask & bit) == 0) continue;
+      scheduler_.set(channel, schedule);
+      if (!first) channelsJson += ",";
+      channelsJson += String(channel);
+      first = false;
+    }
+    channelsJson += "]";
+
+    String json = "{\"ok\":true,\"cached\":true,\"channels\":";
+    json += channelsJson;
+    json += ",\"schedules\":";
+    json += scheduler_.toJson();
     json += "}";
     sendJson(json);
   }
@@ -702,6 +736,75 @@ class ApiServer {
       return;
     }
     sendJson("{\"ok\":false,\"error\":\"not_found\"}", 404);
+  }
+
+  bool readScheduleFromRequest(ChannelSchedule& schedule, String& error) {
+    const int on1Minute = parseTimeToMinute(
+      server_.hasArg("on1") ? server_.arg("on1") : server_.arg("on")
+    );
+    const int off1Minute = parseTimeToMinute(
+      server_.hasArg("off1") ? server_.arg("off1") : server_.arg("off")
+    );
+    const int on2Minute = parseTimeToMinute(
+      server_.hasArg("on2") ? server_.arg("on2") : String("17:40")
+    );
+    const int off2Minute = parseTimeToMinute(
+      server_.hasArg("off2") ? server_.arg("off2") : String("20:00")
+    );
+    const int days = server_.hasArg("days") ? server_.arg("days").toInt() : 127;
+    String enabledValue = server_.arg("enabled");
+    String en1Value = server_.hasArg("en1") ? server_.arg("en1") : enabledValue;
+    String en2Value = server_.hasArg("en2") ? server_.arg("en2") : "0";
+
+    if (on1Minute < 0 || off1Minute < 0 || on2Minute < 0 || off2Minute < 0) {
+      error = "invalid_time";
+      return false;
+    }
+    if (days < 0 || days > 127) {
+      error = "invalid_days";
+      return false;
+    }
+
+    schedule.enabled = truthyText(enabledValue);
+    schedule.daysMask = static_cast<uint8_t>(days);
+    schedule.slots[0].enabled = truthyText(en1Value);
+    schedule.slots[0].onMinute = on1Minute;
+    schedule.slots[0].offMinute = off1Minute;
+    schedule.slots[1].enabled = truthyText(en2Value);
+    schedule.slots[1].onMinute = on2Minute;
+    schedule.slots[1].offMinute = off2Minute;
+    return true;
+  }
+
+  uint8_t parseChannelsMask() {
+    if (server_.hasArg("channelsMask")) {
+      const int numeric = server_.arg("channelsMask").toInt();
+      if (numeric >= 1 && numeric <= ((1 << Config::relayCount) - 1)) {
+        return static_cast<uint8_t>(numeric);
+      }
+      return 0;
+    }
+
+    String value = server_.hasArg("channels") ? server_.arg("channels") : "";
+    value.trim();
+    value.toLowerCase();
+    if (value == "all" || value == "todos") {
+      return (1 << Config::relayCount) - 1;
+    }
+
+    uint8_t mask = 0;
+    int start = 0;
+    while (start < value.length()) {
+      int end = value.indexOf(',', start);
+      if (end < 0) end = value.length();
+      String token = value.substring(start, end);
+      token.trim();
+      const uint8_t channel = token.toInt();
+      if (!relay_.isValidChannel(channel)) return 0;
+      mask |= 1 << (channel - 1);
+      start = end + 1;
+    }
+    return mask;
   }
 };
 
@@ -832,8 +935,10 @@ class BluetoothBridge {
 
     if (state == "ON" || state == "1") {
       ok = relay_.set(channel, true);
+      if (ok) scheduler_.holdManualOverride(channel);
     } else if (state == "OFF" || state == "0") {
       ok = relay_.set(channel, false);
+      if (ok) scheduler_.holdManualOverride(channel);
     } else {
       serial_.println("{\"ok\":false,\"error\":\"invalid_state\"}");
       return;

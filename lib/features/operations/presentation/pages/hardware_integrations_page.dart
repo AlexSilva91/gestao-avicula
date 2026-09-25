@@ -150,6 +150,10 @@ class _HardwareIntegrationsPageState
     4,
     (index) => TextEditingController(text: '20:00'),
   );
+  final generalMorningOnTime = TextEditingController(text: '04:30');
+  final generalMorningOffTime = TextEditingController(text: '06:10');
+  final generalEveningOnTime = TextEditingController(text: '17:40');
+  final generalEveningOffTime = TextEditingController(text: '20:00');
   final lightingChannelStatus = List.generate(
     4,
     (index) => 'Canal ${index + 1} aguardando teste',
@@ -158,6 +162,9 @@ class _HardwareIntegrationsPageState
   final lightingChannelEnabled = List.generate(4, (index) => true);
   final lightingChannelMorningEnabled = List.generate(4, (index) => true);
   final lightingChannelEveningEnabled = List.generate(4, (index) => true);
+  final generalScheduleChannels = List.generate(4, (index) => true);
+  bool generalMorningEnabled = true;
+  bool generalEveningEnabled = true;
   String scaleConnection = 'WIFI';
   String scaleMode = 'BOTH';
   String lightingConnection = 'WIFI';
@@ -213,6 +220,10 @@ class _HardwareIntegrationsPageState
     for (final controller in lightingChannelEveningOffTimes) {
       controller.dispose();
     }
+    generalMorningOnTime.dispose();
+    generalMorningOffTime.dispose();
+    generalEveningOnTime.dispose();
+    generalEveningOffTime.dispose();
     super.dispose();
   }
 
@@ -265,6 +276,23 @@ class _HardwareIntegrationsPageState
           values['hardware_lighting_channel_${channel.index}_evening_off_time']
               ?.trim() ??
           '20:00';
+    }
+    generalMorningEnabled =
+        values['hardware_lighting_general_morning_enabled'] != 'false';
+    generalEveningEnabled =
+        values['hardware_lighting_general_evening_enabled'] != 'false';
+    generalMorningOnTime.text =
+        values['hardware_lighting_general_morning_on_time']?.trim() ?? '04:30';
+    generalMorningOffTime.text =
+        values['hardware_lighting_general_morning_off_time']?.trim() ?? '06:10';
+    generalEveningOnTime.text =
+        values['hardware_lighting_general_evening_on_time']?.trim() ?? '17:40';
+    generalEveningOffTime.text =
+        values['hardware_lighting_general_evening_off_time']?.trim() ?? '20:00';
+    for (var i = 0; i < 4; i++) {
+      generalScheduleChannels[i] =
+          values['hardware_lighting_general_channel_${i + 1}_selected'] !=
+          'false';
     }
   }
 
@@ -571,6 +599,41 @@ class _HardwareIntegrationsPageState
         ],
       ),
       const SizedBox(height: 12),
+      _GeneralLightingSchedulePanel(
+        selectedChannels: generalScheduleChannels,
+        channelLabels: [
+          for (var i = 0; i < lightingChannelNames.length; i++)
+            lightingChannelNames[i].text.trim().isEmpty
+                ? 'Canal ${i + 1}'
+                : lightingChannelNames[i].text.trim(),
+        ],
+        morningEnabled: generalMorningEnabled,
+        eveningEnabled: generalEveningEnabled,
+        morningOnController: generalMorningOnTime,
+        morningOffController: generalMorningOffTime,
+        eveningOnController: generalEveningOnTime,
+        eveningOffController: generalEveningOffTime,
+        saving: saving,
+        onChannelChanged: (index, value) =>
+            setState(() => generalScheduleChannels[index] = value),
+        onSelectAll: () => setState(() {
+          for (var i = 0; i < generalScheduleChannels.length; i++) {
+            generalScheduleChannels[i] = true;
+          }
+        }),
+        onClearSelection: () => setState(() {
+          for (var i = 0; i < generalScheduleChannels.length; i++) {
+            generalScheduleChannels[i] = false;
+          }
+        }),
+        onMorningEnabledChanged: (value) =>
+            setState(() => generalMorningEnabled = value),
+        onEveningEnabledChanged: (value) =>
+            setState(() => generalEveningEnabled = value),
+        onApply: () => _applyGeneralLightingSchedule(syncAfter: false),
+        onApplyAndSync: () => _applyGeneralLightingSchedule(syncAfter: true),
+      ),
+      const SizedBox(height: 12),
       Column(
         children: [
           for (var i = 0; i < 4; i++) ...[
@@ -675,7 +738,23 @@ class _HardwareIntegrationsPageState
         'hardware_lighting_connection': lightingConnection,
         'hardware_lighting_endpoint': lightingEndpoint.text.trim(),
         'hardware_lighting_relay_pin': lightingRelayPin.text.trim(),
+        'hardware_lighting_general_morning_enabled': generalMorningEnabled
+            .toString(),
+        'hardware_lighting_general_morning_on_time': generalMorningOnTime.text
+            .trim(),
+        'hardware_lighting_general_morning_off_time': generalMorningOffTime.text
+            .trim(),
+        'hardware_lighting_general_evening_enabled': generalEveningEnabled
+            .toString(),
+        'hardware_lighting_general_evening_on_time': generalEveningOnTime.text
+            .trim(),
+        'hardware_lighting_general_evening_off_time': generalEveningOffTime.text
+            .trim(),
       };
+      for (var i = 0; i < 4; i++) {
+        updates['hardware_lighting_general_channel_${i + 1}_selected'] =
+            generalScheduleChannels[i].toString();
+      }
       for (var i = 0; i < 4; i++) {
         final number = i + 1;
         updates['hardware_lighting_channel_${number}_name'] =
@@ -712,6 +791,165 @@ class _HardwareIntegrationsPageState
       }
     } catch (error) {
       if (mounted) await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _applyGeneralLightingSchedule({required bool syncAfter}) async {
+    final selectedIndexes = [
+      for (var i = 0; i < 4; i++)
+        if (generalScheduleChannels[i]) i,
+    ];
+    if (selectedIndexes.isEmpty) {
+      setState(() {
+        lightingStatus = 'Selecione pelo menos um canal na agenda geral.';
+      });
+      return;
+    }
+    if (!generalMorningEnabled && !generalEveningEnabled) {
+      setState(() {
+        lightingStatus = 'Ative pelo menos um período na agenda geral.';
+      });
+      return;
+    }
+
+    final invalidMorning =
+        generalMorningEnabled &&
+        (!_validScheduleTime(generalMorningOnTime.text.trim()) ||
+            !_validScheduleTime(generalMorningOffTime.text.trim()));
+    final invalidEvening =
+        generalEveningEnabled &&
+        (!_validScheduleTime(generalEveningOnTime.text.trim()) ||
+            !_validScheduleTime(generalEveningOffTime.text.trim()));
+    if (invalidMorning || invalidEvening) {
+      setState(() {
+        lightingStatus = 'Revise a agenda geral. Use horários em HH:MM.';
+      });
+      return;
+    }
+
+    setState(() {
+      for (final index in selectedIndexes) {
+        lightingChannelEnabled[index] = true;
+        lightingChannelMorningEnabled[index] = generalMorningEnabled;
+        lightingChannelEveningEnabled[index] = generalEveningEnabled;
+        lightingChannelOnTimes[index].text = generalMorningOnTime.text.trim();
+        lightingChannelOffTimes[index].text = generalMorningOffTime.text.trim();
+        lightingChannelEveningOnTimes[index].text = generalEveningOnTime.text
+            .trim();
+        lightingChannelEveningOffTimes[index].text = generalEveningOffTime.text
+            .trim();
+        lightingChannelStatus[index] =
+            'OK: agenda geral aplicada ao canal ${index + 1}.';
+      }
+      lightingStatus =
+          'Agenda geral aplicada em ${selectedIndexes.length} canal(is).';
+    });
+
+    if (syncAfter) {
+      await _syncGeneralLightingSchedule(selectedIndexes);
+      return;
+    }
+    await _saveLighting();
+    if (!mounted) return;
+    setState(() {
+      lightingStatus =
+          'Agenda geral aplicada em ${selectedIndexes.length} canal(is).';
+    });
+  }
+
+  Future<void> _syncGeneralLightingSchedule(List<int> selectedIndexes) async {
+    if (!lightingEnabled || lightingEndpoint.text.trim().isEmpty) {
+      setState(() {
+        lightingStatus = 'Falha: configure a conexão antes da agenda geral.';
+        lightingConnectionResult = 'FALHA: endpoint/IP ausente.';
+      });
+      return;
+    }
+    if (lightingConnection != 'WIFI') {
+      setState(() {
+        lightingStatus = 'Agenda geral requer Wi-Fi com o ESP.';
+        lightingConnectionResult = 'FALHA: selecione Wi-Fi para sincronizar.';
+      });
+      return;
+    }
+
+    setState(() {
+      saving = true;
+      espTerminalTitle = 'SYNC AGENDA GERAL';
+    });
+    try {
+      final endpoint = lightingEndpoint.text.trim();
+      final channels = [for (final index in selectedIndexes) index + 1];
+      final schedule = EspChannelSchedule(
+        channel: channels.first,
+        enabled: true,
+        morningEnabled: generalMorningEnabled,
+        morningOnTime: generalMorningOnTime.text.trim(),
+        morningOffTime: generalMorningOffTime.text.trim(),
+        eveningEnabled: generalEveningEnabled,
+        eveningOnTime: generalEveningOnTime.text.trim(),
+        eveningOffTime: generalEveningOffTime.text.trim(),
+      );
+
+      final timePayload = await espClient.syncTime(endpoint, DateTime.now());
+      _appendEspLog('ESP> relógio sincronizado pelo app');
+      _appendEspPayload(timePayload);
+
+      try {
+        final payload = await espClient.setGroupSchedule(
+          endpoint: endpoint,
+          channels: channels,
+          schedule: schedule,
+        );
+        _appendEspLog(
+          'ESP> agenda geral salva nos canais ${channels.join(',')}',
+        );
+        _appendEspPayload(payload);
+      } catch (error) {
+        _appendEspLog('WARN> agenda geral em lote falhou: $error');
+        _appendEspLog('SYS> usando envio individual por compatibilidade');
+        for (final index in selectedIndexes) {
+          final channel = index + 1;
+          final payload = await espClient.setChannelSchedule(
+            endpoint: endpoint,
+            schedule: EspChannelSchedule(
+              channel: channel,
+              enabled: lightingChannelEnabled[index],
+              morningEnabled: lightingChannelMorningEnabled[index],
+              morningOnTime: lightingChannelOnTimes[index].text.trim(),
+              morningOffTime: lightingChannelOffTimes[index].text.trim(),
+              eveningEnabled: lightingChannelEveningEnabled[index],
+              eveningOnTime: lightingChannelEveningOnTimes[index].text.trim(),
+              eveningOffTime: lightingChannelEveningOffTimes[index].text.trim(),
+            ),
+          );
+          _appendEspLog('ESP> agenda canal $channel salva por fallback');
+          _appendEspPayload(payload);
+        }
+      }
+
+      await _saveLighting();
+      if (!mounted) return;
+      setState(() {
+        for (final index in selectedIndexes) {
+          lightingChannelStatus[index] =
+              'OK: agenda geral enviada e salva no ESP.';
+        }
+        lightingStatus =
+            'Agenda geral sincronizada em ${channels.length} canal(is).';
+        lightingConnectionResult =
+            'OK Wi-Fi: agenda geral confirmada pelo ESP.';
+      });
+      _snack('Agenda geral enviada para o ESP.');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        lightingStatus = 'Falha ao sincronizar agenda geral no ESP.';
+        lightingConnectionResult = 'FALHA Wi-Fi: agenda geral não confirmada.';
+      });
+      _appendEspLog('ERR> sync agenda geral falhou: $error');
     } finally {
       if (mounted) setState(() => saving = false);
     }
@@ -1002,12 +1240,6 @@ class _HardwareIntegrationsPageState
       });
       return;
     }
-    if (!lightingChannelEnabled[index]) {
-      setState(() {
-        lightingChannelStatus[index] = 'FALHA: canal desativado.';
-      });
-      return;
-    }
     if (lightingChannelPins[index].text.trim().isEmpty) {
       setState(() {
         lightingChannelStatus[index] = 'FALHA: informe o GPIO do canal.';
@@ -1042,6 +1274,13 @@ class _HardwareIntegrationsPageState
         });
       }
     } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        lightingChannelStatus[index] =
+            'FALHA: ESP nao confirmou o canal ${index + 1}.';
+        lightingStatus = 'Falha ao acionar canal ${index + 1}.';
+      });
+      _appendEspLog('ERR> canal ${index + 1} falhou: $error');
       if (mounted) await showOperationError(context, error);
     } finally {
       if (mounted) setState(() => saving = false);
@@ -1227,12 +1466,12 @@ class _HardwareIntegrationsPageState
   }
 
   String _currentWifiEndpoint() {
-    if (scaleConnection == 'WIFI' && scaleEndpoint.text.trim().isNotEmpty) {
-      return scaleEndpoint.text.trim();
-    }
     if (lightingConnection == 'WIFI' &&
         lightingEndpoint.text.trim().isNotEmpty) {
       return lightingEndpoint.text.trim();
+    }
+    if (scaleConnection == 'WIFI' && scaleEndpoint.text.trim().isNotEmpty) {
+      return scaleEndpoint.text.trim();
     }
     return '';
   }
@@ -1500,6 +1739,159 @@ class _ResultLine extends StatelessWidget {
   }
 }
 
+class _GeneralLightingSchedulePanel extends StatelessWidget {
+  const _GeneralLightingSchedulePanel({
+    required this.selectedChannels,
+    required this.channelLabels,
+    required this.morningEnabled,
+    required this.eveningEnabled,
+    required this.morningOnController,
+    required this.morningOffController,
+    required this.eveningOnController,
+    required this.eveningOffController,
+    required this.saving,
+    required this.onChannelChanged,
+    required this.onSelectAll,
+    required this.onClearSelection,
+    required this.onMorningEnabledChanged,
+    required this.onEveningEnabledChanged,
+    required this.onApply,
+    required this.onApplyAndSync,
+  });
+
+  final List<bool> selectedChannels;
+  final List<String> channelLabels;
+  final bool morningEnabled;
+  final bool eveningEnabled;
+  final TextEditingController morningOnController;
+  final TextEditingController morningOffController;
+  final TextEditingController eveningOnController;
+  final TextEditingController eveningOffController;
+  final bool saving;
+  final void Function(int index, bool value) onChannelChanged;
+  final VoidCallback onSelectAll;
+  final VoidCallback onClearSelection;
+  final ValueChanged<bool> onMorningEnabledChanged;
+  final ValueChanged<bool> onEveningEnabledChanged;
+  final VoidCallback onApply;
+  final VoidCallback onApplyAndSync;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final selectedCount = selectedChannels.where((selected) => selected).length;
+    return Material(
+      color: colors.surface.withValues(alpha: .88),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.tune_outlined, color: colors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Agenda geral',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Text(
+                  '$selectedCount/4',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: saving ? null : onSelectAll,
+                  icon: const Icon(Icons.done_all_outlined),
+                  label: const Text('Todos'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: saving ? null : onClearSelection,
+                  icon: const Icon(Icons.remove_done_outlined),
+                  label: const Text('Nenhum'),
+                ),
+                for (var i = 0; i < selectedChannels.length; i++)
+                  FilterChip(
+                    selected: selectedChannels[i],
+                    onSelected: saving
+                        ? null
+                        : (value) => onChannelChanged(i, value),
+                    avatar: Icon(
+                      selectedChannels[i]
+                          ? Icons.check_circle_outline
+                          : Icons.circle_outlined,
+                      size: 18,
+                    ),
+                    label: Text(
+                      i < channelLabels.length
+                          ? channelLabels[i]
+                          : 'Canal ${i + 1}',
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _ScheduleWindowFields(
+              title: 'Manhã geral',
+              enabled: morningEnabled,
+              switchValue: morningEnabled,
+              saving: saving,
+              onEnabledChanged: onMorningEnabledChanged,
+              onController: morningOnController,
+              offController: morningOffController,
+              icon: Icons.wb_twilight_outlined,
+            ),
+            const SizedBox(height: 10),
+            _ScheduleWindowFields(
+              title: 'Tarde/noite geral',
+              enabled: eveningEnabled,
+              switchValue: eveningEnabled,
+              saving: saving,
+              onEnabledChanged: onEveningEnabledChanged,
+              onController: eveningOnController,
+              offController: eveningOffController,
+              icon: Icons.nights_stay_outlined,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: saving ? null : onApply,
+                  icon: const Icon(Icons.playlist_add_check_outlined),
+                  label: const Text('Aplicar aos canais'),
+                ),
+                FilledButton.icon(
+                  onPressed: saving ? null : onApplyAndSync,
+                  icon: const Icon(Icons.sync_outlined),
+                  label: const Text('Aplicar e sincronizar'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _LightingChannelTile extends StatelessWidget {
   const _LightingChannelTile({
     required this.index,
@@ -1632,17 +2024,17 @@ class _LightingChannelTile extends StatelessWidget {
               runSpacing: 8,
               children: [
                 FilledButton.tonalIcon(
-                  onPressed: saving || !enabled ? null : onTurnOn,
+                  onPressed: saving ? null : onTurnOn,
                   icon: const Icon(Icons.light_mode_outlined),
                   label: const Text('Ligar'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: saving || !enabled ? null : onTurnOff,
+                  onPressed: saving ? null : onTurnOff,
                   icon: const Icon(Icons.dark_mode_outlined),
                   label: const Text('Desligar'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: saving || !enabled ? null : onPulse,
+                  onPressed: saving ? null : onPulse,
                   icon: const Icon(Icons.bolt_outlined),
                   label: const Text('Pulso'),
                 ),

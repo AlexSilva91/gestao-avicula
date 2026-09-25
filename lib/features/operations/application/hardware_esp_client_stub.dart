@@ -119,4 +119,14 @@ class HardwareEspClient {
       'Agenda direta do ESP indisponivel nesta plataforma.',
     );
   }
+
+  Future<Map<String, Object?>> setGroupSchedule({
+    required String endpoint,
+    required List<int> channels,
+    required EspChannelSchedule schedule,
+  }) async {
+    throw UnsupportedError(
+      'Agenda geral direta do ESP indisponivel nesta plataforma.',
+    );
+  }
 }
