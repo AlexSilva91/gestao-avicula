@@ -131,7 +131,6 @@ class CriticalAlarmService : Service() {
             .setPriority(Notification.PRIORITY_MAX)
             .setCategory(Notification.CATEGORY_ALARM)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setFullScreenIntent(pendingIntent, true)
             .build()
     }
 

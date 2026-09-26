@@ -136,6 +136,13 @@ class _ScheduledAlertsCard extends StatelessWidget {
                                   onPressed: () =>
                                       _toggleAlert(context, event, !active),
                                 ),
+                                if (active)
+                                  IconButton(
+                                    tooltip: 'Cancelar e não repetir',
+                                    icon: const Icon(Icons.event_busy_outlined),
+                                    onPressed: () =>
+                                        _confirmCancel(context, event),
+                                  ),
                               ],
                             ),
                           );
@@ -189,6 +196,31 @@ class _ScheduledAlertsCard extends StatelessWidget {
     } catch (e) {
       if (context.mounted) await showOperationError(context, e);
     }
+  }
+
+  Future<void> _confirmCancel(BuildContext context, CalendarEvent event) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancelar alerta?'),
+        content: Text(
+          'O alerta "${event.title}" será desativado e não tocará novamente.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Voltar'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.event_busy_outlined),
+            label: const Text('Cancelar alerta'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    await _toggleAlert(context, event, false);
   }
 }
 

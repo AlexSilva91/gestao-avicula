@@ -3528,7 +3528,9 @@ extension OperationsRepository on AppDatabase {
         (e) =>
             e.startsAt.isSmallerOrEqualValue(last) &
             (e.startsAt.isBiggerOrEqualValue(first) |
-                e.repeatUntil.isBiggerOrEqualValue(first)),
+                e.repeatUntil.isBiggerOrEqualValue(first) |
+                (e.repeatUntil.isNull() &
+                    e.recurrence.isIn(['DAILY', 'WEEKLY', 'MONTHLY']))),
       )
       ..orderBy([(e) => OrderingTerm.asc(e.startsAt)]);
     if (tenantId != null) {

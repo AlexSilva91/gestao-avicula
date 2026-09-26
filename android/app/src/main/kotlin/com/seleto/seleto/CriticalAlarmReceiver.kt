@@ -145,7 +145,6 @@ class CriticalAlarmReceiver : BroadcastReceiver() {
             .setPriority(Notification.PRIORITY_MAX)
             .setCategory(Notification.CATEGORY_ALARM)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setFullScreenIntent(pendingIntent, true)
             .build()
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         runCatching { manager.notify(id, notification) }

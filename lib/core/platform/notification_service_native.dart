@@ -88,7 +88,6 @@ class NotificationService {
         >();
     await android?.requestNotificationsPermission();
     await android?.requestExactAlarmsPermission();
-    await android?.requestFullScreenIntentPermission();
 
     final hasPolicyAccess =
         await android?.hasNotificationPolicyAccess() ?? false;
@@ -229,6 +228,7 @@ class NotificationService {
         at: at,
         alarmDuration: _safeAlarmDuration(alarmDuration),
       );
+      return;
     }
     await _plugin.zonedSchedule(
       id: id,
@@ -245,7 +245,7 @@ class NotificationService {
           channelBypassDnd: true,
           playSound: true,
           enableVibration: true,
-          fullScreenIntent: true,
+          fullScreenIntent: false,
           category: AndroidNotificationCategory.alarm,
           visibility: NotificationVisibility.public,
           audioAttributesUsage: AudioAttributesUsage.alarm,

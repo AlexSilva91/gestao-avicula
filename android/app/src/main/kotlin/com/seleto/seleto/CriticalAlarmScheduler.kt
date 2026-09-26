@@ -22,16 +22,21 @@ object CriticalAlarmScheduler {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
             throw SecurityException("Permissao de alarmes exatos nao concedida.")
         }
-        val showPendingIntent = PendingIntent.getActivity(
-            context,
-            safeAlarm.id,
-            launchIntent(context),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager.setAlarmClock(
-            AlarmManager.AlarmClockInfo(safeAlarm.triggerAtMillis, showPendingIntent),
-            pendingIntent(context, safeAlarm)
-        )
+        val operation = pendingIntent(context, safeAlarm)
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ->
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    safeAlarm.triggerAtMillis,
+                    operation
+                )
+            else ->
+                alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP,
+                    safeAlarm.triggerAtMillis,
+                    operation
+                )
+        }
         if (persist) save(context, safeAlarm)
     }
 
@@ -91,13 +96,6 @@ object CriticalAlarmScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
-
-    private fun launchIntent(context: Context): Intent =
-        context.packageManager.getLaunchIntentForPackage(context.packageName)
-            ?.apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            ?: Intent(context, MainActivity::class.java)
 
     private fun prefs(context: Context) =
         context.getSharedPreferences("seleto_critical_alarms", Context.MODE_PRIVATE)
