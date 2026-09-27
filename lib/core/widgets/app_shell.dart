@@ -7,7 +7,7 @@ import '../constants/app_version.dart';
 import '../constants/design_tokens.dart';
 import '../database/app_database.dart';
 import '../database/operations_repository.dart';
-import '../sync/firebase_backup_service.dart';
+import '../sync/seleto_sync_service.dart';
 import 'app_background.dart';
 import 'brand_mark.dart';
 
@@ -319,7 +319,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final width = MediaQuery.sizeOf(context).width;
     final path = GoRouterState.of(context).uri.path;
     final session = ref.watch(authControllerProvider).session;
-    final syncService = ref.watch(firebaseBackupServiceProvider);
+    final syncService = ref.watch(seletoSyncServiceProvider);
     final activeUsers =
         ref.watch(_runtimeActiveUsersProvider).asData?.value ?? const <User>[];
     final updateNotice = ref.watch(_appUpdateNoticeProvider).asData?.value;

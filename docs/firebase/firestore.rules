@@ -8,6 +8,7 @@ service cloud.firestore {
 
     function seletoTable(table) {
       return table in [
+        'tenants',
         'users',
         'user_permissions',
         'audit_logs',

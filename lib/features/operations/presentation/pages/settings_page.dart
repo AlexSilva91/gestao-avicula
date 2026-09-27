@@ -9,7 +9,7 @@ import '../../../../core/constants/app_version.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/platform/file_export_service.dart';
 import '../../../../core/platform/notification_service.dart';
-import '../../../../core/sync/firebase_backup_service.dart';
+import '../../../../core/sync/seleto_sync_service.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
@@ -362,7 +362,7 @@ class _BackupCard extends StatelessWidget {
             'Exporte uma cópia JSON completa do banco operacional ou importe dados iniciais sem alterar usuários e permissões.',
           ),
           const SizedBox(height: 12),
-          _FirebaseBackupPanel(ref: ref),
+          _SyncServerPanel(ref: ref),
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: () async {
@@ -586,15 +586,15 @@ class _BackupCard extends StatelessWidget {
   }
 }
 
-class _FirebaseBackupPanel extends StatefulWidget {
-  const _FirebaseBackupPanel({required this.ref});
+class _SyncServerPanel extends StatefulWidget {
+  const _SyncServerPanel({required this.ref});
   final WidgetRef ref;
 
   @override
-  State<_FirebaseBackupPanel> createState() => _FirebaseBackupPanelState();
+  State<_SyncServerPanel> createState() => _SyncServerPanelState();
 }
 
-class _FirebaseBackupPanelState extends State<_FirebaseBackupPanel> {
+class _SyncServerPanelState extends State<_SyncServerPanel> {
   static const _encoder = JsonEncoder.withIndent('  ');
   Map<String, dynamic>? _result;
   bool _testing = false;
@@ -621,7 +621,7 @@ class _FirebaseBackupPanelState extends State<_FirebaseBackupPanel> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Backup Firebase',
+                    'Servidor SELETO Sync',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -629,7 +629,7 @@ class _FirebaseBackupPanelState extends State<_FirebaseBackupPanel> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Destino remoto: coleções do Firestore com os nomes das tabelas locais.',
+              'Destino remoto: coleções do servidor PostgreSQL com os nomes das tabelas locais.',
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
@@ -690,14 +690,14 @@ class _FirebaseBackupPanelState extends State<_FirebaseBackupPanel> {
     setState(() => _testing = true);
     try {
       final result = await widget.ref
-          .read(firebaseBackupServiceProvider)
+          .read(seletoSyncServiceProvider)
           .testConfiguration();
       if (mounted) setState(() => _result = result);
     } catch (error) {
       if (mounted) {
         setState(
           () => _result = {
-            'servico': 'Firebase Firestore',
+            'servico': 'Servidor SELETO Sync',
             'status': 'erro',
             'erro': {'mensagem': error.toString()},
           },
@@ -712,12 +712,12 @@ class _FirebaseBackupPanelState extends State<_FirebaseBackupPanel> {
     setState(() => _syncing = true);
     try {
       final result = await widget.ref
-          .read(firebaseBackupServiceProvider)
+          .read(seletoSyncServiceProvider)
           .syncNow(reason: 'settings', force: true);
       if (mounted) {
         setState(
           () => _result = {
-            'servico': 'Firebase Firestore',
+            'servico': 'Servidor SELETO Sync',
             'status': result.changed || result.status == SyncStatus.idle
                 ? 'sucesso'
                 : 'erro',
@@ -731,7 +731,7 @@ class _FirebaseBackupPanelState extends State<_FirebaseBackupPanel> {
       if (mounted) {
         setState(
           () => _result = {
-            'servico': 'Firebase Firestore',
+            'servico': 'Servidor SELETO Sync',
             'status': 'erro',
             'erro': {'mensagem': error.toString()},
           },
@@ -746,9 +746,9 @@ class _FirebaseBackupPanelState extends State<_FirebaseBackupPanel> {
     SyncStatus.idle => 'Sem alterações',
     SyncStatus.syncing => 'Sincronizando',
     SyncStatus.skipped => 'Ignorado',
-    SyncStatus.uploaded => 'Enviado para o Firebase',
-    SyncStatus.downloaded => 'Baixado do Firebase',
-    SyncStatus.merged => 'Mesclado com o Firebase',
+    SyncStatus.uploaded => 'Enviado para o servidor',
+    SyncStatus.downloaded => 'Baixado do servidor',
+    SyncStatus.merged => 'Mesclado com o servidor',
     SyncStatus.offline => 'Sem conexão',
     SyncStatus.failed => 'Falha',
   };

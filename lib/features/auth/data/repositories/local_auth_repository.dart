@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/app_failures.dart';
-import '../../../../core/sync/firebase_backup_service.dart';
+import '../../../../core/sync/seleto_sync_service.dart';
 import '../../../../core/utils/password_hasher.dart';
 import '../../domain/entities/auth_session.dart';
 import '../../domain/repositories/auth_repository.dart';
@@ -19,7 +19,7 @@ class AccountCreationResult {
 class LocalAuthRepository implements AuthRepository {
   LocalAuthRepository(this._database, {this.syncService});
   final AppDatabase _database;
-  final FirebaseBackupService? syncService;
+  final SeletoSyncService? syncService;
   static const _rememberedUserIdKey = 'seleto.remembered_user_id';
   static const _rememberedUsernameKey = 'seleto.remembered_username';
 
@@ -72,9 +72,9 @@ class LocalAuthRepository implements AuthRepository {
               remoteSync.status == SyncStatus.skipped)) {
         final message =
             remoteSync.message ??
-            'Verifique a conexão e a configuração do Firebase.';
+            'Verifique a conexão e a configuração do servidor de sincronização.';
         throw AuthenticationFailure(
-          'Usuário não encontrado no banco local e a consulta ao Firebase '
+          'Usuário não encontrado no banco local e a consulta ao servidor de sincronização '
           'não foi concluída. $message',
         );
       }

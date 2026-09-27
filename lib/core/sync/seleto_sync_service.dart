@@ -1,14 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart' hide Order;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -38,17 +36,32 @@ class SyncResult {
       status == SyncStatus.merged;
 }
 
-class FirebaseBackupService extends ChangeNotifier {
-  FirebaseBackupService(
+class SyncServerException implements Exception {
+  const SyncServerException(this.message, {this.statusCode});
+
+  final String message;
+  final int? statusCode;
+
+  @override
+  String toString() => message;
+}
+
+class SeletoSyncService extends ChangeNotifier {
+  SeletoSyncService(
     this._database, {
-    FirebaseFirestore? firestore,
-    firebase_auth.FirebaseAuth? auth,
-  }) : _firestoreOverride = firestore,
-       _authOverride = auth;
+    http.Client? httpClient,
+    String? baseUrl,
+    String? token,
+  }) : _httpClient = httpClient ?? http.Client(),
+       _ownsHttpClient = httpClient == null,
+       _baseUri = Uri.parse(baseUrl ?? _defaultBaseUrl),
+       _syncToken = token ?? _defaultSyncToken;
 
   final AppDatabase _database;
-  final FirebaseFirestore? _firestoreOverride;
-  final firebase_auth.FirebaseAuth? _authOverride;
+  final http.Client _httpClient;
+  final bool _ownsHttpClient;
+  final Uri _baseUri;
+  final String _syncToken;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   Future<SyncResult>? _activeSync;
   _SyncScope? _scope;
@@ -63,16 +76,12 @@ class FirebaseBackupService extends ChangeNotifier {
   static const _lastRemoteHashKey = 'seleto.sync.last_remote_hash';
   static const _minimumSyncInterval = Duration(minutes: 5);
   static const _networkTimeout = Duration(seconds: 10);
-  static const _configTestCollection = 'seleto_config_tests';
-  static const _legacyBackupCollection = 'seleto_backups';
-  static const _legacyBackupDocument = 'operacional';
+  static const _defaultBaseUrl = String.fromEnvironment(
+    'SELETO_SYNC_BASE_URL',
+    defaultValue: 'http://solveontecnology.com.br:5005',
+  );
+  static const _defaultSyncToken = String.fromEnvironment('SELETO_SYNC_TOKEN');
 
-  FirebaseFirestore get _firestore =>
-      _firestoreOverride ?? FirebaseFirestore.instance;
-  firebase_auth.FirebaseAuth get _auth =>
-      _authOverride ?? firebase_auth.FirebaseAuth.instance;
-  DocumentReference<Map<String, dynamic>> get _legacyDocument =>
-      _firestore.collection(_legacyBackupCollection).doc(_legacyBackupDocument);
   SyncResult get lastResult => _lastResult;
   bool get isSynced => _hasSuccessfulSync;
 
@@ -147,56 +156,48 @@ class FirebaseBackupService extends ChangeNotifier {
     if (normalizedUsername.isEmpty) {
       return const SyncResult(SyncStatus.skipped);
     }
+    if (!_isConfigured) {
+      return const SyncResult(
+        SyncStatus.skipped,
+        message:
+            'Servidor de sincronização sem token no app. Configure SELETO_SYNC_TOKEN no build.',
+      );
+    }
     try {
-      if (!_canUseFirebase()) {
-        return const SyncResult(
-          SyncStatus.skipped,
-          message: 'Firebase não inicializado neste ambiente.',
-        );
-      }
       if (!await _hasConnection()) {
         return const SyncResult(
           SyncStatus.offline,
-          message: 'Sem conexão para consultar o Firebase.',
+          message: 'Sem conexão para consultar o servidor de sincronização.',
         );
       }
-      await _ensureAuthenticated();
-      final usersSnapshot = await _firestore
-          .collection('users')
-          .where('username', isEqualTo: normalizedUsername)
-          .limit(1)
-          .get()
-          .timeout(_networkTimeout);
-      if (usersSnapshot.docs.isEmpty) {
+      final response = await _postJson('/sync/v1/login', {
+        'username': normalizedUsername,
+        'deviceId': await _deviceId(),
+      });
+      if (response['exists'] != true) {
         return const SyncResult(SyncStatus.idle);
       }
-      final user = _toLocalRow(usersSnapshot.docs.first.data());
-      final userId = user['id']?.toString();
-      final tenantId = user['tenantId']?.toString() ?? defaultTenantId;
-      if (userId == null || userId.isEmpty) {
+      final userId = response['userId']?.toString();
+      final tenantId = response['tenantId']?.toString() ?? defaultTenantId;
+      final payload = _payloadFromResponse(response);
+      if (userId == null || userId.isEmpty || payload == null) {
         return const SyncResult(SyncStatus.idle);
       }
-      final permissionsSnapshot = await _firestore
-          .collection('user_permissions')
-          .where('user_id', isEqualTo: userId)
-          .get()
-          .timeout(_networkTimeout);
-      final isSuperAdmin = permissionsSnapshot.docs
-          .map((doc) => _toLocalRow(doc.data())['permission'])
-          .contains('system.super_admin');
       final scope = _SyncScope(
         userId: userId,
         tenantId: tenantId,
-        isSuperAdmin: isSuperAdmin,
+        isSuperAdmin: response['isSuperAdmin'] == true,
       );
-      final result = await _sync('login_missing_user', scope);
+      await _restoreLocalPayload(payload, scope);
+      final payloadHash =
+          response['payloadHash']?.toString() ?? _hashPayload(payload);
+      final preferences = await SharedPreferences.getInstance();
+      await _rememberHashes(preferences, scope, payloadHash, payloadHash);
+      final result = const SyncResult(SyncStatus.downloaded);
       _setResult(result);
       return result;
-    } on FirebaseException catch (error) {
-      return SyncResult(
-        SyncStatus.failed,
-        message: '${error.code}: ${error.message ?? 'erro do Firebase'}',
-      );
+    } on SyncServerException catch (error) {
+      return SyncResult(SyncStatus.failed, message: error.message);
     } catch (error) {
       return SyncResult(SyncStatus.failed, message: error.toString());
     }
@@ -206,6 +207,7 @@ class FirebaseBackupService extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     unawaited(_connectivitySubscription?.cancel());
+    if (_ownsHttpClient) _httpClient.close();
     super.dispose();
   }
 
@@ -226,86 +228,64 @@ class FirebaseBackupService extends ChangeNotifier {
 
   Future<SyncResult> _sync(String reason, _SyncScope scope) async {
     try {
-      if (!_canUseFirebase()) {
-        return const SyncResult(SyncStatus.skipped);
+      if (!_isConfigured) {
+        return const SyncResult(
+          SyncStatus.skipped,
+          message:
+              'Servidor de sincronização sem token no app. Configure SELETO_SYNC_TOKEN no build.',
+        );
       }
       if (!await _hasConnection()) {
         return const SyncResult(SyncStatus.offline);
       }
-      await _ensureAuthenticated();
 
       final preferences = await SharedPreferences.getInstance();
       final localPayload = await _localPayload(scope);
       final localHash = _hashPayload(localPayload);
-      final remotePayload = await _remotePayload(scope);
-      final remoteHash = remotePayload == null
-          ? null
-          : _hashPayload(remotePayload);
-      final lastLocalHash = preferences.getString(
-        _scopedPreferenceKey(_lastLocalHashKey, scope),
-      );
       final lastRemoteHash = preferences.getString(
         _scopedPreferenceKey(_lastRemoteHashKey, scope),
       );
+      final response = await _postJson('/sync/v1/sync', {
+        'scopeKey': scope.key,
+        'tenantId': scope.tenantId,
+        'userId': scope.userId,
+        'isSuperAdmin': scope.isSuperAdmin,
+        'deviceId': await _deviceId(),
+        'reason': reason,
+        'lastRemoteHash': lastRemoteHash,
+        'preferLocalOnFirstSync': lastRemoteHash == null,
+        'payload': localPayload,
+      });
+      final status = response['status']?.toString() ?? 'idle';
+      final remotePayload = _payloadFromResponse(response);
+      final remoteHash = response['payloadHash']?.toString();
 
-      if (remotePayload == null) {
-        if (!_hasRows(localPayload)) return const SyncResult(SyncStatus.idle);
-        await _upload(localPayload, scope);
-        await _rememberHashes(preferences, scope, localHash, localHash);
-        return const SyncResult(SyncStatus.uploaded);
-      }
-
-      if (localHash == remoteHash) {
-        await _rememberHashes(preferences, scope, localHash, remoteHash!);
-        return const SyncResult(SyncStatus.idle);
-      }
-
-      if (!_hasLocalUsers(localPayload) && _hasLocalUsers(remotePayload)) {
+      if ((status == 'downloaded' || status == 'merged') &&
+          remotePayload != null) {
         await _restoreLocalPayload(remotePayload, scope);
-        await _rememberHashes(preferences, scope, remoteHash!, remoteHash);
-        return const SyncResult(SyncStatus.downloaded);
+        final restoredHash = _hashPayload(_normalizePayload(remotePayload));
+        await _rememberHashes(
+          preferences,
+          scope,
+          restoredHash,
+          remoteHash ?? restoredHash,
+        );
+      } else if (status == 'uploaded') {
+        await _rememberHashes(
+          preferences,
+          scope,
+          localHash,
+          remoteHash ?? localHash,
+        );
+      } else if (remoteHash != null) {
+        await _rememberHashes(preferences, scope, localHash, remoteHash);
       }
 
-      if (lastLocalHash == localHash && lastRemoteHash != remoteHash) {
-        final mergedPayload = _mergePayloads(localPayload, remotePayload);
-        final mergedHash = _hashPayload(mergedPayload);
-        await _restoreLocalPayload(mergedPayload, scope);
-        await _upload(mergedPayload, scope);
-        await _rememberHashes(preferences, scope, mergedHash, mergedHash);
-        return const SyncResult(SyncStatus.merged);
-      }
-
-      if (lastRemoteHash == remoteHash && lastLocalHash != localHash) {
-        await _upload(localPayload, scope);
-        await _rememberHashes(preferences, scope, localHash, localHash);
-        return const SyncResult(SyncStatus.uploaded);
-      }
-
-      final mergedPayload = _mergePayloads(localPayload, remotePayload);
-      final mergedHash = _hashPayload(mergedPayload);
-      await _restoreLocalPayload(mergedPayload, scope);
-      await _upload(mergedPayload, scope);
-      await _rememberHashes(preferences, scope, mergedHash, mergedHash);
-      return const SyncResult(SyncStatus.merged);
-    } on FirebaseException catch (error) {
-      return SyncResult(
-        SyncStatus.failed,
-        message: '${error.code}: ${error.message ?? 'erro do Firebase'}',
-      );
+      return SyncResult(_statusFromServer(status));
+    } on SyncServerException catch (error) {
+      return SyncResult(SyncStatus.failed, message: error.message);
     } catch (error) {
       return SyncResult(SyncStatus.failed, message: error.toString());
-    }
-  }
-
-  bool _canUseFirebase() {
-    if (_firestoreOverride != null && _authOverride != null) return true;
-    if (Firebase.apps.isEmpty) return false;
-    try {
-      FirebaseFirestore.instance;
-      firebase_auth.FirebaseAuth.instance;
-      return true;
-    } catch (_) {
-      return false;
     }
   }
 
@@ -314,245 +294,42 @@ class FirebaseBackupService extends ChangeNotifier {
     return connectivity.any((result) => result != ConnectivityResult.none);
   }
 
-  Future<Map<String, dynamic>?> _remotePayload(_SyncScope scope) async {
-    final payload = <String, dynamic>{'format': 'SELETO_SYNC_V1'};
-    if (!scope.isSuperAdmin) {
-      return _remoteTenantPayload(scope);
-    }
-    for (final spec in _syncTables) {
-      final snapshot = await _firestore
-          .collection(spec.remoteTable)
-          .get()
-          .timeout(_networkTimeout);
-      payload[spec.collectionKey] = snapshot.docs
-          .map((doc) => _toLocalRow(doc.data()))
-          .toList();
-    }
-    return _hasRows(payload) ? _normalizePayload(payload) : null;
-  }
-
-  Future<Map<String, dynamic>?> _remoteTenantPayload(_SyncScope scope) async {
-    final payload = <String, dynamic>{'format': 'SELETO_SYNC_V1'};
-    final tenantSnapshot = await _firestore
-        .collection('tenants')
-        .where('id', isEqualTo: scope.tenantId)
-        .get()
-        .timeout(_networkTimeout);
-    payload['tenants'] = tenantSnapshot.docs
-        .map((doc) => _toLocalRow(doc.data()))
-        .toList();
-
-    final userSnapshot = await _firestore
-        .collection('users')
-        .where('tenant_id', isEqualTo: scope.tenantId)
-        .get()
-        .timeout(_networkTimeout);
-    final userRows = userSnapshot.docs
-        .map((doc) => _toLocalRow(doc.data()))
-        .toList();
-    payload['users'] = userRows;
-    final userIds = userRows
-        .map((row) => row['id']?.toString())
-        .whereType<String>()
-        .where((id) => id.isNotEmpty)
-        .toSet();
-
-    payload['userPermissions'] = await _queryRowsWhereIn(
-      remoteTable: 'user_permissions',
-      field: 'user_id',
-      values: userIds,
-    );
-    payload['auditLogs'] = await _queryRowsWhereIn(
-      remoteTable: 'audit_logs',
-      field: 'user_id',
-      values: userIds,
-    );
-
-    for (final key in _createdByCollectionKeys) {
-      payload[key] = await _queryTenantScopedRows(
-        remoteTable: _specFor(key).remoteTable,
-        tenantId: scope.tenantId,
-        createdByUserIds: userIds,
-      );
-    }
-
-    for (final entry in _childCollectionParents.entries) {
-      final parentIds = _rows(payload, entry.value.parentCollectionKey)
-          .map((row) => row[entry.value.parentJsonKey]?.toString())
-          .whereType<String>()
-          .where((id) => id.isNotEmpty)
-          .toSet();
-      payload[entry.key] = await _queryRowsWhereIn(
-        remoteTable: _specFor(entry.key).remoteTable,
-        field: entry.value.remoteField,
-        values: parentIds,
-      );
-    }
-
-    return _hasRows(payload) ? _normalizePayload(payload) : null;
-  }
-
-  Future<List<Map<String, dynamic>>> _queryRowsWhereIn({
-    required String remoteTable,
-    required String field,
-    required Set<String> values,
-  }) async {
-    if (values.isEmpty) return const [];
-    final rows = <Map<String, dynamic>>[];
-    for (final chunk in _chunks(values.toList()..sort(), 30)) {
-      final snapshot = await _firestore
-          .collection(remoteTable)
-          .where(field, whereIn: chunk)
-          .get()
-          .timeout(_networkTimeout);
-      rows.addAll(snapshot.docs.map((doc) => _toLocalRow(doc.data())));
-    }
-    return rows;
-  }
-
-  Future<List<Map<String, dynamic>>> _queryTenantScopedRows({
-    required String remoteTable,
-    required String tenantId,
-    required Set<String> createdByUserIds,
-  }) async {
-    final byId = <String, Map<String, dynamic>>{};
-    final scopedSnapshot = await _firestore
-        .collection(remoteTable)
-        .where('tenant_scope', isEqualTo: tenantId)
-        .get()
-        .timeout(_networkTimeout);
-    for (final doc in scopedSnapshot.docs) {
-      final row = _toLocalRow(doc.data());
-      byId[(row['id'] ?? doc.id).toString()] = row;
-    }
-    for (final row in await _queryRowsWhereIn(
-      remoteTable: remoteTable,
-      field: 'created_by',
-      values: createdByUserIds,
-    )) {
-      byId[(row['id'] ?? _hashPayload(row)).toString()] = row;
-    }
-    return byId.values.toList();
-  }
-
-  Future<void> _upload(Map<String, dynamic> payload, _SyncScope scope) async {
-    await _ensureAuthenticated();
-    final normalized = _normalizePayload(payload);
-    if (scope.isSuperAdmin) await _deleteLegacyBackup();
-    final tenantByUserId = {
-      for (final user in _rows(normalized, 'users'))
-        if (user['id'] != null)
-          user['id'].toString():
-              user['tenantId']?.toString() ?? defaultTenantId,
-    };
-
-    var batch = _firestore.batch();
-    var pendingWrites = 0;
-
-    Future<void> flush() async {
-      if (pendingWrites == 0) return;
-      await batch.commit().timeout(_networkTimeout);
-      batch = _firestore.batch();
-      pendingWrites = 0;
-    }
-
-    Future<void> queue(void Function(WriteBatch batch) write) async {
-      if (pendingWrites >= 450) await flush();
-      write(batch);
-      pendingWrites++;
-    }
-
-    for (final spec in _syncTables) {
-      final collection = _firestore.collection(spec.remoteTable);
-      final rows = _rows(normalized, spec.collectionKey).map((row) {
-        final rowTenantScope =
-            _tenantScopeForRow(spec.collectionKey, row, tenantByUserId) ??
-            (scope.isSuperAdmin ? 'global' : scope.tenantId);
-        return _toRemoteRow({...row, 'tenantScope': rowTenantScope});
-      });
-      final localIds = <String>{};
-      for (final row in rows) {
-        final id = _documentIdFor(row, spec);
-        localIds.add(id);
-        await queue((batch) {
-          batch.set(collection.doc(id), row);
-        });
-      }
-
-      final existing = scope.isSuperAdmin
-          ? await collection.get().timeout(_networkTimeout)
-          : await collection
-                .where('tenant_scope', isEqualTo: scope.tenantId)
-                .get()
-                .timeout(_networkTimeout);
-      for (final document in existing.docs) {
-        if (!localIds.contains(document.id)) {
-          await queue((batch) => batch.delete(document.reference));
-        }
-      }
-    }
-
-    await flush();
-  }
+  bool get _isConfigured =>
+      _syncToken.isNotEmpty && _baseUri.hasScheme && _baseUri.host.isNotEmpty;
 
   Future<Map<String, dynamic>> testConfiguration() async {
     final checkedAt = DateTime.now().toIso8601String();
-    final app = Firebase.apps.isEmpty ? null : Firebase.app();
     final result = <String, dynamic>{
-      'servico': 'Firebase Firestore',
+      'servico': 'Servidor SELETO Sync',
       'status': 'erro',
       'verificadoEm': checkedAt,
-      'firebaseInicializado': app != null,
-      'projeto': app?.options.projectId,
-      'appId': app?.options.appId,
+      'endpoint': _baseUri.toString(),
+      'tokenConfiguradoNoApp': _syncToken.isNotEmpty,
       'backup': {
-        'modelo': 'colecao_por_tabela',
-        'tabelas': _syncTables.map((spec) => spec.remoteTable).toList(),
+        'modelo': 'snapshot_json_postgresql',
+        'colecoes': _syncCollectionKeys,
       },
     };
-    if (!_canUseFirebase()) {
-      result['erro'] = {
-        'codigo': 'firebase-nao-inicializado',
-        'mensagem': 'O Firebase não foi inicializado neste ambiente.',
-      };
-      return result;
-    }
     try {
-      final uid = await _ensureAuthenticated();
       final deviceId = await _deviceId();
-      final probe = _firestore.collection(_configTestCollection).doc(deviceId);
-      await probe
-          .set({
-            'format': 'SELETO_FIREBASE_TEST_V1',
-            'deviceId': deviceId,
-            'firebaseUid': uid,
-            'testedAt': FieldValue.serverTimestamp(),
-            'testedAtLocal': checkedAt,
-          })
-          .timeout(_networkTimeout);
-      final snapshot = await probe.get().timeout(_networkTimeout);
+      final health = await _getJson('/health');
+      final status = await _postJson('/sync/v1/status', {
+        'scopeKey': _scope?.key ?? 'tenant_$defaultTenantId',
+        'tenantId': _scope?.tenantId ?? defaultTenantId,
+        'userId': _scope?.userId,
+        'isSuperAdmin': _scope?.isSuperAdmin ?? false,
+        'deviceId': deviceId,
+      });
       result
         ..['status'] = 'sucesso'
-        ..['autenticacao'] = {'tipo': 'anonima', 'uid': uid}
-        ..['firestore'] = {
-          'leitura': snapshot.exists,
-          'escrita': true,
-          'caminhoTeste': probe.path,
-          'tabelas': _syncTables.map((spec) => spec.remoteTable).toList(),
-        };
+        ..['health'] = health
+        ..['snapshot'] = status;
       return result;
-    } on FirebaseException catch (error) {
+    } on SyncServerException catch (error) {
       result['erro'] = {
-        'codigo': error.code,
-        'mensagem': error.message ?? 'Erro retornado pelo Firebase.',
+        'codigo': 'http-${error.statusCode ?? 'erro'}',
+        'mensagem': error.message,
       };
-      if (error.code == 'permission-denied') {
-        result['correcaoSugerida'] =
-            'No console do Firebase, libere o Firestore para usuários autenticados ou publique as regras do arquivo docs/firebase/firestore.rules.';
-      } else if (error.code == 'operation-not-allowed') {
-        result['correcaoSugerida'] =
-            'Ative o provedor Anônimo em Firebase Authentication > Sign-in method.';
-      }
       return result;
     } catch (error) {
       result['erro'] = {
@@ -563,13 +340,6 @@ class FirebaseBackupService extends ChangeNotifier {
     }
   }
 
-  Future<String?> _ensureAuthenticated() async {
-    final currentUser = _auth.currentUser;
-    if (currentUser != null) return currentUser.uid;
-    final credential = await _auth.signInAnonymously().timeout(_networkTimeout);
-    return credential.user?.uid;
-  }
-
   Future<String> _deviceId() async {
     final preferences = await SharedPreferences.getInstance();
     final current = preferences.getString(_deviceIdKey);
@@ -578,6 +348,66 @@ class FirebaseBackupService extends ChangeNotifier {
     await preferences.setString(_deviceIdKey, created);
     return created;
   }
+
+  Future<Map<String, dynamic>> _getJson(String path) async {
+    final response = await _httpClient
+        .get(_endpoint(path), headers: _headers())
+        .timeout(_networkTimeout);
+    return _decodeResponse(response);
+  }
+
+  Future<Map<String, dynamic>> _postJson(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final response = await _httpClient
+        .post(_endpoint(path), headers: _headers(), body: jsonEncode(body))
+        .timeout(_networkTimeout);
+    return _decodeResponse(response);
+  }
+
+  Uri _endpoint(String path) {
+    final normalizedBasePath = _baseUri.path.endsWith('/')
+        ? _baseUri.path.substring(0, _baseUri.path.length - 1)
+        : _baseUri.path;
+    final normalizedPath = path.startsWith('/') ? path : '/$path';
+    return _baseUri.replace(path: '$normalizedBasePath$normalizedPath');
+  }
+
+  Map<String, String> _headers() => {
+    'accept': 'application/json',
+    'content-type': 'application/json; charset=utf-8',
+    if (_syncToken.isNotEmpty) 'authorization': 'Bearer $_syncToken',
+  };
+
+  Map<String, dynamic> _decodeResponse(http.Response response) {
+    final decoded = response.body.isEmpty
+        ? <String, dynamic>{}
+        : (jsonDecode(response.body) as Map).cast<String, dynamic>();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final message =
+          decoded['message']?.toString() ??
+          'Servidor de sincronização retornou HTTP ${response.statusCode}.';
+      throw SyncServerException(message, statusCode: response.statusCode);
+    }
+    return decoded;
+  }
+
+  Map<String, dynamic>? _payloadFromResponse(Map<String, dynamic> response) {
+    final payload = response['payload'];
+    if (payload is Map) return payload.cast<String, dynamic>();
+    return null;
+  }
+
+  SyncStatus _statusFromServer(String status) => switch (status) {
+    'uploaded' => SyncStatus.uploaded,
+    'downloaded' => SyncStatus.downloaded,
+    'merged' => SyncStatus.merged,
+    'offline' => SyncStatus.offline,
+    'skipped' => SyncStatus.skipped,
+    'failed' || 'erro' || 'error' => SyncStatus.failed,
+    _ => SyncStatus.idle,
+  };
 
   Future<Map<String, dynamic>> _localPayload(_SyncScope scope) async {
     final backup = jsonDecode(
@@ -727,9 +557,9 @@ class FirebaseBackupService extends ChangeNotifier {
             .into(_database.eggStockMovements)
             .insertOnConflictUpdate(EggStockMovement.fromJson(row));
       }
-      // Insumos e formulações são localmente autoritativos (_localAuthoritativeOnMerge).
+      // Insumos e formulações são localmente autoritativos.
       // Usar insertOrIgnore para que dados apagados localmente NÃO sejam reinseridos
-      // pela sincronização. O próximo upload removerá os itens do Firestore também.
+      // pela sincronização. O próximo upload removerá os itens do servidor também.
       for (final row in _rows(payload, 'ingredients')) {
         await _database
             .into(_database.ingredients)
@@ -894,80 +724,6 @@ class FirebaseBackupService extends ChangeNotifier {
   String _scopedPreferenceKey(String baseKey, _SyncScope scope) =>
       '$baseKey.${scope.key}';
 
-  Map<String, dynamic> _mergePayloads(
-    Map<String, dynamic> local,
-    Map<String, dynamic> remote,
-  ) {
-    final merged = <String, dynamic>{'format': 'SELETO_SYNC_V1'};
-    for (final key in _syncCollectionKeys) {
-      merged[key] = _localAuthoritativeOnMerge.contains(key)
-          ? _rows(local, key)
-          : _mergeRows(_rows(local, key), _rows(remote, key), key);
-    }
-    return _normalizePayload(merged);
-  }
-
-  List<Map<String, dynamic>> _mergeRows(
-    List<Map<String, dynamic>> localRows,
-    List<Map<String, dynamic>> remoteRows,
-    String collectionKey,
-  ) {
-    final primaryKey = _specFor(collectionKey).jsonPrimaryKey;
-    final byId = <String, Map<String, dynamic>>{};
-    for (final row in remoteRows) {
-      final id = row[primaryKey]?.toString();
-      if (id != null && id.isNotEmpty) byId[id] = row;
-    }
-    for (final localRow in localRows) {
-      final id = localRow[primaryKey]?.toString();
-      if (id == null || id.isEmpty) continue;
-      final remoteRow = byId[id];
-      byId[id] = remoteRow == null
-          ? localRow
-          : _newerOrRemote(localRow, remoteRow);
-    }
-    final rows = byId.values.toList();
-    rows.sort((a, b) {
-      final left = (a[primaryKey] ?? '').toString();
-      final right = (b[primaryKey] ?? '').toString();
-      return left.compareTo(right);
-    });
-    return rows;
-  }
-
-  Map<String, dynamic> _newerOrRemote(
-    Map<String, dynamic> local,
-    Map<String, dynamic> remote,
-  ) {
-    if (_canonicalJson(local) == _canonicalJson(remote)) return remote;
-    final localDate = _rowDate(local);
-    final remoteDate = _rowDate(remote);
-    if (localDate != null && remoteDate != null) {
-      return localDate.isAfter(remoteDate) ? local : remote;
-    }
-    if (localDate != null && remoteDate == null) return local;
-    return remote;
-  }
-
-  DateTime? _rowDate(Map<String, dynamic> row) {
-    for (final key in _timestampKeys) {
-      final value = row[key];
-      if (value == null) continue;
-      if (value is DateTime) return value;
-      if (value is int) {
-        return DateTime.fromMillisecondsSinceEpoch(value, isUtc: true);
-      }
-      if (value is String) return DateTime.tryParse(value);
-    }
-    return null;
-  }
-
-  bool _hasRows(Map<String, dynamic> payload) =>
-      _syncCollectionKeys.any((key) => _rows(payload, key).isNotEmpty);
-
-  bool _hasLocalUsers(Map<String, dynamic> payload) =>
-      _rows(payload, 'users').isNotEmpty;
-
   List<Map<String, dynamic>> _rows(Map<String, dynamic> payload, String key) =>
       (payload[key] as List? ?? const [])
           .whereType<Map>()
@@ -1017,91 +773,6 @@ class FirebaseBackupService extends ChangeNotifier {
     return normalized;
   }
 
-  Future<void> _deleteLegacyBackup() async {
-    try {
-      final chunks = await _legacyDocument
-          .collection('chunks')
-          .get()
-          .timeout(_networkTimeout);
-      var batch = _firestore.batch();
-      var pendingWrites = 0;
-      Future<void> flush() async {
-        if (pendingWrites == 0) return;
-        await batch.commit().timeout(_networkTimeout);
-        batch = _firestore.batch();
-        pendingWrites = 0;
-      }
-
-      for (final chunk in chunks.docs) {
-        if (pendingWrites >= 450) await flush();
-        batch.delete(chunk.reference);
-        pendingWrites++;
-      }
-      if (pendingWrites >= 450) await flush();
-      batch.delete(_legacyDocument);
-      pendingWrites++;
-      await flush();
-    } catch (_) {
-      // Best effort: old chunk-based backup should not block the correct mirror.
-    }
-  }
-
-  String _documentIdFor(Map<String, dynamic> row, _SyncTableSpec spec) {
-    final id = row[spec.primaryKey]?.toString();
-    if (id != null && id.isNotEmpty && !id.contains('/')) return id;
-    return _hashPayload({'row': row});
-  }
-
-  Map<String, dynamic> _toRemoteRow(Map<String, dynamic> localRow) {
-    final remoteRow = <String, dynamic>{};
-    for (final entry in localRow.entries) {
-      remoteRow[_camelToSnake(entry.key)] = _toFirestoreValue(entry.value);
-    }
-    return remoteRow;
-  }
-
-  Map<String, dynamic> _toLocalRow(Map<String, dynamic> remoteRow) {
-    final localRow = <String, dynamic>{};
-    for (final entry in remoteRow.entries) {
-      localRow[_snakeToCamel(entry.key)] = _fromFirestoreValue(entry.value);
-    }
-    return localRow;
-  }
-
-  Object? _toFirestoreValue(Object? value) {
-    if (value is DateTime) return value.toIso8601String();
-    if (value is Map) {
-      return {
-        for (final entry in value.entries)
-          entry.key.toString(): _toFirestoreValue(entry.value),
-      };
-    }
-    if (value is Iterable) return value.map(_toFirestoreValue).toList();
-    return value;
-  }
-
-  Object? _fromFirestoreValue(Object? value) {
-    if (value is Timestamp) return value.toDate().toIso8601String();
-    if (value is Map) {
-      return {
-        for (final entry in value.entries)
-          entry.key.toString(): _fromFirestoreValue(entry.value),
-      };
-    }
-    if (value is Iterable) return value.map(_fromFirestoreValue).toList();
-    return value;
-  }
-
-  String _camelToSnake(String value) => value.replaceAllMapped(
-    RegExp(r'(?<=[a-z0-9])[A-Z]'),
-    (match) => '_${match.group(0)!.toLowerCase()}',
-  );
-
-  String _snakeToCamel(String value) => value.replaceAllMapped(
-    RegExp(r'_([a-z0-9])'),
-    (match) => match.group(1)!.toUpperCase(),
-  );
-
   _SyncTableSpec _specFor(String collectionKey) =>
       _syncTables.firstWhere((spec) => spec.collectionKey == collectionKey);
 }
@@ -1145,32 +816,6 @@ Map<String, dynamic> _eventJson(Map<String, dynamic> json) => {
   'alertTime': json['alertTime'] ?? '08:00',
   'recurrence': json['recurrence'] ?? 'ONCE',
 };
-
-Iterable<List<T>> _chunks<T>(List<T> values, int size) sync* {
-  for (var index = 0; index < values.length; index += size) {
-    final end = index + size > values.length ? values.length : index + size;
-    yield values.sublist(index, end);
-  }
-}
-
-String? _tenantScopeForRow(
-  String collectionKey,
-  Map<String, dynamic> row,
-  Map<String, String> tenantByUserId,
-) {
-  if (collectionKey == 'tenants') return row['id']?.toString();
-  if (collectionKey == 'users') {
-    return row['tenantId']?.toString() ?? defaultTenantId;
-  }
-  final userId = switch (collectionKey) {
-    'userPermissions' => row['userId']?.toString(),
-    'auditLogs' => row['userId']?.toString(),
-    'orderStatusHistory' => row['changedBy']?.toString(),
-    _ => row['createdBy']?.toString(),
-  };
-  if (userId == null || userId.isEmpty || userId == 'system') return null;
-  return tenantByUserId[userId] ?? defaultTenantId;
-}
 
 class _SyncTableSpec {
   const _SyncTableSpec(
@@ -1255,106 +900,9 @@ const _globalOnlyCollectionKeys = {
   'appSettings',
 };
 
-const _localAuthoritativeOnMerge = {
-  'ingredients',
-  'prices',
-  'ingredientLots',
-  'ingredientStockMovements',
-  'formulas',
-  'formulaItems',
-};
-
-const _createdByCollectionKeys = {
-  'lots',
-  'birdMovements',
-  'eggCollections',
-  'eggStockMovements',
-  'ingredients',
-  'prices',
-  'ingredientLots',
-  'ingredientStockMovements',
-  'formulas',
-  'feedBatches',
-  'feedStock',
-  'feedings',
-  'customers',
-  'orders',
-  'packagingItems',
-  'packagingLots',
-  'packagingStockMovements',
-  'eggTrayBatches',
-  'eggTrayStockMovements',
-  'sales',
-  'finance',
-  'investments',
-  'lightingPrograms',
-  'lotLighting',
-  'calendarEvents',
-};
-
-const _childCollectionParents = {
-  'formulaItems': _ChildCollectionParent(
-    'formulas',
-    parentJsonKey: 'id',
-    remoteField: 'formula_id',
-  ),
-  'feedBatchItems': _ChildCollectionParent(
-    'feedBatches',
-    parentJsonKey: 'id',
-    remoteField: 'batch_id',
-  ),
-  'orderItems': _ChildCollectionParent(
-    'orders',
-    parentJsonKey: 'id',
-    remoteField: 'order_id',
-  ),
-  'orderStatusHistory': _ChildCollectionParent(
-    'orders',
-    parentJsonKey: 'id',
-    remoteField: 'order_id',
-  ),
-  'lightingSteps': _ChildCollectionParent(
-    'lightingPrograms',
-    parentJsonKey: 'id',
-    remoteField: 'program_id',
-  ),
-};
-
-class _ChildCollectionParent {
-  const _ChildCollectionParent(
-    this.parentCollectionKey, {
-    required this.parentJsonKey,
-    required this.remoteField,
-  });
-
-  final String parentCollectionKey;
-  final String parentJsonKey;
-  final String remoteField;
-}
-
-const _timestampKeys = [
-  'updatedAt',
-  'createdAt',
-  'timestamp',
-  'occurredAt',
-  'collectedOn',
-  'effectiveDate',
-  'entryDate',
-  'validFrom',
-  'producedAt',
-  'feedingDate',
-  'requestedDate',
-  'purchasedAt',
-  'assembledAt',
-  'soldAt',
-  'investmentDate',
-  'startsAt',
-  'assignedAt',
-  'changedAt',
-];
-
-final firebaseBackupServiceProvider =
-    ChangeNotifierProvider<FirebaseBackupService>((ref) {
-      final service = FirebaseBackupService(ref.watch(databaseProvider));
-      return service;
-    });
+final seletoSyncServiceProvider = ChangeNotifierProvider<SeletoSyncService>((
+  ref,
+) {
+  final service = SeletoSyncService(ref.watch(databaseProvider));
+  return service;
+});
