@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <style>
+      .bg{fill:#f3f6fa}.card{fill:#fff;stroke:#cbd5e1;stroke-width:2}.title{font:800 38px Arial;fill:#102033}.sub{font:18px Arial;fill:#526173}.h{font:800 23px Arial;fill:#102033}.t{font:16px Arial;fill:#334155}.s{font:13px Arial;fill:#526173}.pin{font:800 15px Arial;fill:#172033}.cam{fill:#e8f3ff;stroke:#2563eb;stroke-width:3}.net{fill:#e9f9ef;stroke:#16803c;stroke-width:3}.proc{fill:#fff0c7;stroke:#b1720f;stroke-width:3}.phone{fill:#172033;stroke:#0f172a;stroke-width:3}.event{fill:#fff0f0;stroke:#dc2626;stroke-width:3}.wire{fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}.thin{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}.blue{stroke:#2563eb}.green{stroke:#16803c}.orange{stroke:#ea580c}.red{stroke:#dc2626}.gray{stroke:#64748b}.dash{stroke-dasharray:8 8}
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1,1 L11,6 L1,11 Z" fill="#64748b"/></marker>
+  </defs>
+  <rect class="bg" width="1600" height="1000"/>
+  <text class="title" x="54" y="58">Circuito/arquitetura - cameras e visao computacional</text>
+  <text class="sub" x="54" y="92">Sem servidor dedicado na nuvem: processamento e gravacao ficam localmente na granja.</text>
+
+  <rect class="card" x="64" y="136" width="1472" height="688" rx="18"/>
+
+  <g transform="translate(118 230)">
+    <rect class="cam" x="0" y="0" width="260" height="118" rx="18"/>
+    <circle cx="72" cy="58" r="34" fill="#dbeafe" stroke="#2563eb" stroke-width="3"/>
+    <circle cx="72" cy="58" r="14" fill="#102033"/>
+    <text class="pin" x="126" y="48">Camera IP</text>
+    <text class="s" x="126" y="74">RTSP / ONVIF</text>
+  </g>
+  <g transform="translate(118 406)">
+    <rect class="cam" x="0" y="0" width="260" height="118" rx="18"/>
+    <circle cx="72" cy="58" r="34" fill="#dbeafe" stroke="#2563eb" stroke-width="3"/>
+    <circle cx="72" cy="58" r="14" fill="#102033"/>
+    <text class="pin" x="126" y="48">Camera IP</text>
+    <text class="s" x="126" y="74">corredor/portao</text>
+  </g>
+
+  <rect class="net" x="512" y="290" width="250" height="210" rx="22"/>
+  <text class="h" x="574" y="340">Switch PoE</text>
+  <text class="t" x="558" y="384">rede local</text>
+  <text class="s" x="558" y="416">alimenta cameras</text>
+  <text class="s" x="558" y="444">envia video RTSP</text>
+
+  <rect class="proc" x="892" y="230" width="330" height="318" rx="22"/>
+  <text class="h" x="954" y="278">Processador local</text>
+  <text class="t" x="932" y="320">Mini PC / Raspberry Pi / NVR</text>
+  <text class="s" x="932" y="360">buffer circular 10 min antes</text>
+  <text class="s" x="932" y="390">deteccao por OpenCV/YOLO</text>
+  <text class="s" x="932" y="420">snapshot do evento</text>
+  <text class="s" x="932" y="450">video ate 30 min</text>
+  <text class="s" x="932" y="480">API local para o app</text>
+
+  <rect class="event" x="914" y="622" width="286" height="124" rx="18"/>
+  <text class="h" x="970" y="662">Evento anormal</text>
+  <text class="s" x="946" y="696">snapshot.webp</text>
+  <text class="s" x="946" y="724">evento.mp4 + metadata.json</text>
+
+  <rect class="net" x="1320" y="278" width="150" height="150" rx="22"/>
+  <text class="pin" x="1360" y="344">Router</text>
+  <text class="s" x="1354" y="372">Wi-Fi local</text>
+
+  <rect class="phone" x="1330" y="568" width="130" height="210" rx="24"/>
+  <rect x="1344" y="600" width="102" height="138" rx="12" fill="#e0f6e9"/>
+  <text class="pin" x="1362" y="676">APP</text>
+
+  <path class="wire blue" d="M378 288H512"/>
+  <path class="wire blue" d="M378 464H512"/>
+  <path class="wire green" d="M762 394H892"/>
+  <path class="wire green" d="M1222 352H1320"/>
+  <path class="wire orange" d="M1057 548V622"/>
+  <path class="thin gray" d="M1320 408C1220 560 1210 664 1330 674" marker-end="url(#arrow)"/>
+  <path class="thin red dash" d="M1200 684C1260 704 1290 706 1330 698" marker-end="url(#arrow)"/>
+  <text class="s" x="1238" y="732">alerta + snapshot</text>
+
+  <rect class="card" x="64" y="858" width="1472" height="92" rx="16"/>
+  <text class="h" x="96" y="894">Fluxo recomendado</text>
+  <text class="t" x="96" y="924">Camera -> rede local -> processador local. O celular visualiza ao vivo e recebe alerta; o banco guarda metadados, nao o video bruto.</text>
+</svg>
+

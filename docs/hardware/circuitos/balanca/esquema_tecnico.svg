@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <style>
+      .bg{fill:#f4f7f5}.card{fill:#fff;stroke:#cbd8d1;stroke-width:2}.title{font:800 38px Arial;fill:#12382d}.sub{font:18px Arial;fill:#53665c}.h{font:800 24px Arial;fill:#12382d}.t{font:16px Arial;fill:#31483e}.s{font:13px Arial;fill:#53665c}.pin{font:800 15px Arial;fill:#122b24}.esp{fill:#dff4ec;stroke:#1c7a5a;stroke-width:3}.hx{fill:#fff0c7;stroke:#b1720f;stroke-width:3}.cell{fill:#e9eef3;stroke:#5b6e7b;stroke-width:2}.btn{fill:#eef2f7;stroke:#6d7c8a;stroke-width:2}.note{fill:#fff8e7;stroke:#c98218;stroke-width:2}.ok{fill:#ecf8f1;stroke:#2a8f5d;stroke-width:2}.wire{fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}.thin{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}.red{stroke:#d72638}.black{stroke:#111827}.blue{stroke:#2563eb}.yellow{stroke:#d69400}.green{stroke:#16803c}.white{stroke:#cfd8dc}.gray{stroke:#718096}.dash{stroke-dasharray:8 8}
+    </style>
+  </defs>
+  <rect class="bg" width="1600" height="1000"/>
+  <text class="title" x="54" y="58">Circuito da balanca - ESP32 + HX711 + sensor 50 kg</text>
+  <text class="sub" x="54" y="92">Pinagem alinhada ao firmware atual do GRANJA SELETO. Sensor escolhido: celula de carga 50 kg com 3 fios.</text>
+
+  <rect class="card" x="54" y="128" width="702" height="492" rx="16"/>
+  <text class="h" x="84" y="168">Eletronica principal</text>
+
+  <rect class="esp" x="94" y="220" width="260" height="310" rx="18"/>
+  <text class="h" x="180" y="258">ESP32</text>
+  <text class="s" x="154" y="282">DevKit / 3.3 V logico</text>
+  <text class="pin" x="124" y="338">3V3</text>
+  <text class="pin" x="124" y="382">GND</text>
+  <text class="pin" x="124" y="426">GPIO32</text>
+  <text class="pin" x="124" y="470">GPIO33</text>
+
+  <rect class="hx" x="454" y="220" width="250" height="310" rx="18"/>
+  <text class="h" x="538" y="258">HX711</text>
+  <text class="s" x="512" y="282">amplificador da balanca</text>
+  <text class="pin" x="486" y="338">VCC</text>
+  <text class="pin" x="486" y="382">GND</text>
+  <text class="pin" x="486" y="426">DT / DOUT</text>
+  <text class="pin" x="486" y="470">SCK / CLK</text>
+  <text class="pin" x="628" y="330">E+</text>
+  <text class="pin" x="628" y="366">E-</text>
+  <text class="pin" x="628" y="402">A+</text>
+  <text class="pin" x="628" y="438">A-</text>
+
+  <path class="wire red" d="M178 333H454"/>
+  <path class="wire black" d="M178 377H454"/>
+  <path class="wire blue" d="M198 421H454"/>
+  <path class="wire yellow" d="M198 465H454"/>
+  <text class="s" x="274" y="324">3.3 V</text>
+  <text class="s" x="274" y="368">GND comum</text>
+  <text class="s" x="274" y="412">dados</text>
+  <text class="s" x="274" y="456">clock</text>
+
+  <rect class="card" x="812" y="128" width="734" height="492" rx="16"/>
+  <text class="h" x="842" y="168">Celula de carga 50 kg de 3 fios</text>
+  <text class="t" x="842" y="198">O modelo da imagem enviada normalmente e meia ponte.</text>
+
+  <rect class="cell" x="880" y="250" width="180" height="126" rx="24"/>
+  <circle cx="924" cy="313" r="18" fill="#fff" stroke="#8ca0af" stroke-width="3"/>
+  <circle cx="1016" cy="313" r="18" fill="#fff" stroke="#8ca0af" stroke-width="3"/>
+  <text class="pin" x="916" y="408">Sensor 50 kg</text>
+  <path class="wire red" d="M1060 286C1150 250 1212 242 1298 264"/>
+  <path class="wire white" d="M1060 314C1152 314 1210 318 1298 316"/>
+  <path class="wire black" d="M1060 342C1150 382 1212 388 1298 364"/>
+  <text class="pin" x="1318" y="270">vermelho</text>
+  <text class="pin" x="1318" y="322">branco</text>
+  <text class="pin" x="1318" y="370">preto</text>
+
+  <rect class="note" x="842" y="456" width="658" height="110" rx="14"/>
+  <text class="h" x="864" y="490">Importante</text>
+  <text class="t" x="864" y="522">Para balanca estavel com HX711, use 4 celulas de 3 fios</text>
+  <text class="t" x="864" y="548">em placa combinadora, ou complete a ponte conforme o datasheet.</text>
+
+  <rect class="card" x="54" y="660" width="1492" height="250" rx="16"/>
+  <text class="h" x="84" y="700">Botoes fisicos da balanca</text>
+  <text class="t" x="84" y="730">Cada botao liga o GPIO ao GND. O firmware usa INPUT_PULLUP interno.</text>
+
+  <g transform="translate(90 770)">
+    <rect class="btn" x="0" y="0" width="260" height="82" rx="16"/>
+    <text class="pin" x="26" y="34">TARA</text>
+    <text class="t" x="26" y="60">GPIO13 -> botao -> GND</text>
+    <path class="wire green" d="M260 40H390"/>
+    <path class="wire black" d="M390 40V84"/>
+  </g>
+  <g transform="translate(500 770)">
+    <rect class="btn" x="0" y="0" width="300" height="82" rx="16"/>
+    <text class="pin" x="26" y="34">CALIBRACAO</text>
+    <text class="t" x="26" y="60">GPIO14 -> botao -> GND</text>
+    <path class="wire green" d="M300 40H430"/>
+    <path class="wire black" d="M430 40V84"/>
+  </g>
+  <g transform="translate(958 770)">
+    <rect class="btn" x="0" y="0" width="300" height="82" rx="16"/>
+    <text class="pin" x="26" y="34">TAXA 10/80 Hz</text>
+    <text class="t" x="26" y="60">GPIO26 -> botao -> GND</text>
+    <path class="wire green" d="M300 40H430"/>
+    <path class="wire black" d="M430 40V84"/>
+  </g>
+
+  <rect class="ok" x="84" y="930" width="1430" height="42" rx="10"/>
+  <text class="t" x="104" y="957">No app: Sensores > Balanca. Endpoint do ESP e leitura em tempo real usam /api/scale.</text>
+</svg>
+

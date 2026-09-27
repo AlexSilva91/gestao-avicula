@@ -2,7 +2,7 @@
 
 Este manual usa o firmware:
 
-`docs/hardware/esp32_granja_seleto/granja_seleto_wifi_bluetooth.ino`
+`docs/hardware/firmware/esp32-granja-seleto/granja_seleto_wifi_bluetooth.ino`
 
 O firmware permite controlar o ESP32 de duas formas:
 

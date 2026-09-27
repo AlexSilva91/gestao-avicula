@@ -548,7 +548,7 @@ class FirebaseBackupService extends ChangeNotifier {
       };
       if (error.code == 'permission-denied') {
         result['correcaoSugerida'] =
-            'No console do Firebase, libere o Firestore para usuários autenticados ou publique as regras do arquivo docs/firestore.rules.';
+            'No console do Firebase, libere o Firestore para usuários autenticados ou publique as regras do arquivo docs/firebase/firestore.rules.';
       } else if (error.code == 'operation-not-allowed') {
         result['correcaoSugerida'] =
             'Ative o provedor Anônimo em Firebase Authentication > Sign-in method.';

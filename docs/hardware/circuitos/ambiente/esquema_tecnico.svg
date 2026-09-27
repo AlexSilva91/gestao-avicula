@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <style>
+      .bg{fill:#f2f7f6}.card{fill:#fff;stroke:#cbd8d1;stroke-width:2}.title{font:800 38px Arial;fill:#12382d}.sub{font:18px Arial;fill:#53665c}.h{font:800 24px Arial;fill:#12382d}.t{font:16px Arial;fill:#31483e}.s{font:13px Arial;fill:#53665c}.pin{font:800 15px Arial;fill:#122b24}.esp{fill:#dff4ec;stroke:#1c7a5a;stroke-width:3}.dht{fill:#e8f3ff;stroke:#2d6cdf;stroke-width:3}.house{fill:#f7fbff;stroke:#7aa7d9;stroke-width:2}.wire{fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}.thin{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}.red{stroke:#d72638}.black{stroke:#111827}.green{stroke:#16803c}.gray{stroke:#718096}
+    </style>
+  </defs>
+  <rect class="bg" width="1600" height="1000"/>
+  <text class="title" x="54" y="58">Circuito ambiente - temperatura e umidade do ar</text>
+  <text class="sub" x="54" y="92">DHT22/AM2302 ligado ao ESP32 para alimentar a tela Ambiente do app.</text>
+
+  <rect class="card" x="72" y="142" width="658" height="650" rx="18"/>
+  <text class="h" x="104" y="184">ESP32</text>
+  <rect class="esp" x="144" y="244" width="330" height="360" rx="22"/>
+  <text class="h" x="270" y="286">ESP32</text>
+  <text class="pin" x="186" y="360">3V3</text>
+  <text class="pin" x="186" y="424">GND</text>
+  <text class="pin" x="186" y="488">GPIO27</text>
+  <text class="s" x="276" y="360">alimentacao</text>
+  <text class="s" x="276" y="424">terra comum</text>
+  <text class="s" x="276" y="488">dados DHT22</text>
+
+  <rect class="card" x="824" y="142" width="704" height="650" rx="18"/>
+  <text class="h" x="856" y="184">Sensor DHT22 / AM2302</text>
+  <g transform="translate(984 250)">
+    <rect class="dht" x="0" y="0" width="280" height="310" rx="22"/>
+    <circle cx="78" cy="84" r="16" fill="#fff" stroke="#7aa7d9" stroke-width="2"/>
+    <circle cx="140" cy="84" r="16" fill="#fff" stroke="#7aa7d9" stroke-width="2"/>
+    <circle cx="202" cy="84" r="16" fill="#fff" stroke="#7aa7d9" stroke-width="2"/>
+    <path d="M70 156c30-36 110-36 140 0 28 34 8 92-70 92s-98-58-70-92z" fill="#d6ecff" stroke="#2d6cdf" stroke-width="2"/>
+    <text class="h" x="92" y="285">DHT22</text>
+  </g>
+  <text class="pin" x="876" y="340">VCC</text>
+  <text class="pin" x="876" y="424">DATA</text>
+  <text class="pin" x="876" y="508">GND</text>
+
+  <path class="wire red" d="M242 356 C560 330 660 330 876 336"/>
+  <path class="wire green" d="M250 484 C560 462 662 432 876 420"/>
+  <path class="wire black" d="M242 420 C548 552 662 536 876 504"/>
+
+  <rect class="card" x="72" y="830" width="1456" height="92" rx="16"/>
+  <text class="h" x="104" y="866">Resistor pull-up</text>
+  <text class="t" x="104" y="896">Use resistor de 10 kOhm entre DATA e 3V3 se o modulo DHT22 nao tiver pull-up integrado.</text>
+  <path class="thin gray" d="M1010 336V420"/>
+  <text class="s" x="1026" y="382">10 kOhm</text>
+
+  <g transform="translate(1200 602) scale(.72)">
+    <path class="house" d="M0 80 L110 0 L220 80 V220 H0 Z"/>
+    <rect x="78" y="125" width="64" height="95" fill="#dff4ec" stroke="#7aa7d9" stroke-width="2"/>
+    <text class="s" x="32" y="252">galpao / casa tecnica</text>
+  </g>
+</svg>

@@ -52,7 +52,7 @@ for table in "${tables[@]}"; do
 
   if [[ "$status" == "404" ]]; then
     echo "ERRO: a tabela public.$table ainda não existe."
-    echo "Execute primeiro o SQL em docs/supabase_sync_setup.sql no Supabase SQL Editor."
+    echo "Execute primeiro o SQL em docs/supabase/supabase_sync_setup.sql no Supabase SQL Editor."
     cat "$response_file"
     exit 1
   fi

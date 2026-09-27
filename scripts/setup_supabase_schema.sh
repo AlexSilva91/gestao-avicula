@@ -13,6 +13,6 @@ repo_root="$(cd "$script_dir/.." && pwd)"
 
 psql "$SUPABASE_DB_URL" \
   --set=ON_ERROR_STOP=1 \
-  --file="$repo_root/docs/supabase_sync_setup.sql"
+  --file="$repo_root/docs/supabase/supabase_sync_setup.sql"
 
 echo "OK: schema Supabase configurado com as tabelas do banco local."
