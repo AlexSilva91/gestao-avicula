@@ -126,6 +126,9 @@ class _HardwareIntegrationsPageState
   final scaleTolerance = TextEditingController(text: '0,05');
   final lightingEndpoint = TextEditingController();
   final lightingRelayPin = TextEditingController(text: '23');
+  final wifiProvisionEndpoint = TextEditingController(text: '192.168.4.1');
+  final wifiProvisionSsid = TextEditingController();
+  final wifiProvisionPassword = TextEditingController();
   final lightingChannelNames = List.generate(
     4,
     (index) => TextEditingController(text: 'Canal ${index + 1}'),
@@ -202,6 +205,9 @@ class _HardwareIntegrationsPageState
     scaleTolerance.dispose();
     lightingEndpoint.dispose();
     lightingRelayPin.dispose();
+    wifiProvisionEndpoint.dispose();
+    wifiProvisionSsid.dispose();
+    wifiProvisionPassword.dispose();
     for (final controller in lightingChannelNames) {
       controller.dispose();
     }
@@ -244,6 +250,9 @@ class _HardwareIntegrationsPageState
     lightingConnection = config.lightingConnection;
     lightingEndpoint.text = config.lightingEndpoint;
     lightingRelayPin.text = config.lightingRelayPin;
+    wifiProvisionEndpoint.text =
+        values['hardware_esp_setup_endpoint']?.trim() ?? '192.168.4.1';
+    wifiProvisionSsid.text = values['hardware_esp_wifi_ssid']?.trim() ?? '';
     for (final channel in config.lightingChannels) {
       final index = channel.index - 1;
       if (index < 0 || index >= 4) continue;
@@ -298,7 +307,7 @@ class _HardwareIntegrationsPageState
 
   @override
   Widget build(BuildContext context) => AppShell(
-    title: 'Integrações',
+    title: 'Iluminação',
     child: ref
         .watch(appSettingsProvider)
         .when(
@@ -327,6 +336,15 @@ class _HardwareIntegrationsPageState
                   scanning: espScanning,
                   onDiscover: () => _discoverEsp(auto: false),
                   onTestEndpoint: () => _testSavedWifiEndpoint(),
+                ),
+                const SizedBox(height: 12),
+                _EspWifiProvisionPanel(
+                  endpointController: wifiProvisionEndpoint,
+                  ssidController: wifiProvisionSsid,
+                  passwordController: wifiProvisionPassword,
+                  busy: saving || espScanning,
+                  onConfigure: _configureEspWifi,
+                  onHelp: _showEspWifiHelp,
                 ),
                 const SizedBox(height: 16),
                 _lightingPanel(context),
@@ -520,188 +538,517 @@ class _HardwareIntegrationsPageState
     ],
   );
 
-  Widget _lightingPanel(BuildContext context) => _IntegrationPanel(
-    icon: Icons.lightbulb_outline,
-    title: 'Iluminação',
-    status: lightingStatus,
-    children: [
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        secondary: const Icon(Icons.tungsten_outlined),
-        title: const Text('Ativar automação de luz'),
-        subtitle: const Text('ESP32 acionando o programa de iluminação'),
-        value: lightingEnabled,
-        onChanged: saving
-            ? null
-            : (value) => setState(() => lightingEnabled = value),
-      ),
-      const SizedBox(height: 8),
-      SegmentedButton<String>(
-        segments: const [
-          ButtonSegment(
-            value: 'WIFI',
-            icon: Icon(Icons.wifi),
-            label: Text('Wi-Fi'),
-          ),
-          ButtonSegment(
-            value: 'BLUETOOTH',
-            icon: Icon(Icons.bluetooth),
-            label: Text('Bluetooth'),
-          ),
-        ],
-        selected: {lightingConnection},
-        onSelectionChanged: saving
-            ? null
-            : (value) => setState(() => lightingConnection = value.first),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: lightingEndpoint,
-        enabled: !saving,
-        decoration: InputDecoration(
-          labelText: lightingConnection == 'WIFI'
-              ? 'Endpoint/IP do controlador'
-              : 'Identificador Bluetooth',
-          prefixIcon: const Icon(Icons.router_outlined),
-        ),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: lightingRelayPin,
-        enabled: !saving,
-        keyboardType: TextInputType.number,
-        decoration: const InputDecoration(
-          labelText: 'GPIO padrão do relé',
-          prefixIcon: Icon(Icons.electrical_services),
-        ),
-      ),
-      const SizedBox(height: 12),
-      _ResultPanel(
-        title: 'Resultado dos testes de iluminação',
-        items: [
-          _ResultLine(
-            icon: Icons.cable_outlined,
-            label: 'Conexão',
-            value: lightingConnectionResult ?? 'Ainda não testada',
-            ok: lightingConnectionResult?.contains('OK') == true,
-          ),
-          for (var i = 0; i < 4; i++)
-            _ResultLine(
-              icon: lightingChannelOn[i]
-                  ? Icons.lightbulb
-                  : Icons.lightbulb_outline,
-              label: lightingChannelNames[i].text.trim().isEmpty
-                  ? 'Canal ${i + 1}'
-                  : lightingChannelNames[i].text.trim(),
-              value: lightingChannelStatus[i],
-              ok: lightingChannelStatus[i].contains('OK'),
-            ),
-        ],
-      ),
-      const SizedBox(height: 12),
-      _GeneralLightingSchedulePanel(
-        selectedChannels: generalScheduleChannels,
-        channelLabels: [
-          for (var i = 0; i < lightingChannelNames.length; i++)
-            lightingChannelNames[i].text.trim().isEmpty
-                ? 'Canal ${i + 1}'
-                : lightingChannelNames[i].text.trim(),
-        ],
-        morningEnabled: generalMorningEnabled,
-        eveningEnabled: generalEveningEnabled,
-        morningOnController: generalMorningOnTime,
-        morningOffController: generalMorningOffTime,
-        eveningOnController: generalEveningOnTime,
-        eveningOffController: generalEveningOffTime,
-        saving: saving,
-        onChannelChanged: (index, value) =>
-            setState(() => generalScheduleChannels[index] = value),
-        onSelectAll: () => setState(() {
-          for (var i = 0; i < generalScheduleChannels.length; i++) {
-            generalScheduleChannels[i] = true;
-          }
-        }),
-        onClearSelection: () => setState(() {
-          for (var i = 0; i < generalScheduleChannels.length; i++) {
-            generalScheduleChannels[i] = false;
-          }
-        }),
-        onMorningEnabledChanged: (value) =>
-            setState(() => generalMorningEnabled = value),
-        onEveningEnabledChanged: (value) =>
-            setState(() => generalEveningEnabled = value),
-        onApply: () => _applyGeneralLightingSchedule(syncAfter: false),
-        onApplyAndSync: () => _applyGeneralLightingSchedule(syncAfter: true),
-      ),
-      const SizedBox(height: 12),
-      Column(
-        children: [
-          for (var i = 0; i < 4; i++) ...[
-            _LightingChannelTile(
-              index: i,
-              nameController: lightingChannelNames[i],
-              pinController: lightingChannelPins[i],
-              onTimeController: lightingChannelOnTimes[i],
-              offTimeController: lightingChannelOffTimes[i],
-              eveningOnTimeController: lightingChannelEveningOnTimes[i],
-              eveningOffTimeController: lightingChannelEveningOffTimes[i],
-              enabled: lightingChannelEnabled[i],
-              morningEnabled: lightingChannelMorningEnabled[i],
-              eveningEnabled: lightingChannelEveningEnabled[i],
-              on: lightingChannelOn[i],
-              status: lightingChannelStatus[i],
-              saving: saving,
-              onEnabledChanged: (value) =>
-                  setState(() => lightingChannelEnabled[i] = value),
-              onMorningEnabledChanged: (value) =>
-                  setState(() => lightingChannelMorningEnabled[i] = value),
-              onEveningEnabledChanged: (value) =>
-                  setState(() => lightingChannelEveningEnabled[i] = value),
-              onTurnOn: () => _testLightingChannel(i, true),
-              onTurnOff: () => _testLightingChannel(i, false),
-              onPulse: () => _pulseLightingChannel(i),
-            ),
-            if (i < 3) const SizedBox(height: 10),
+  Widget _lightingPanel(BuildContext context) {
+    final channelLabels = [
+      for (var i = 0; i < lightingChannelNames.length; i++)
+        lightingChannelNames[i].text.trim().isEmpty
+            ? 'Canal ${i + 1}'
+            : lightingChannelNames[i].text.trim(),
+    ];
+    final enabledCount = lightingChannelEnabled.where((value) => value).length;
+    final onCount = lightingChannelOn.where((value) => value).length;
+
+    return _IntegrationPanel(
+      icon: Icons.lightbulb_outline,
+      title: 'Iluminação',
+      status: lightingStatus,
+      children: [
+        _LightingControlInstrument(
+          enabled: lightingEnabled,
+          channelLabels: channelLabels,
+          pins: [
+            for (final controller in lightingChannelPins)
+              controller.text.trim().isEmpty ? '-' : controller.text.trim(),
           ],
-        ],
+          channelEnabled: lightingChannelEnabled,
+          channelOn: lightingChannelOn,
+          morningEnabled: lightingChannelMorningEnabled,
+          eveningEnabled: lightingChannelEveningEnabled,
+          connection: lightingConnection,
+          connectionOk: lightingConnectionResult?.contains('OK') == true,
+          enabledCount: enabledCount,
+          onCount: onCount,
+        ),
+        const SizedBox(height: 12),
+        _LightingConnectionPanel(
+          enabled: lightingEnabled,
+          connection: lightingConnection,
+          connectionResult: lightingConnectionResult ?? 'Ainda não testada',
+          endpointController: lightingEndpoint,
+          relayPinController: lightingRelayPin,
+          saving: saving,
+          onEnabledChanged: (value) => setState(() => lightingEnabled = value),
+          onConnectionChanged: (value) =>
+              setState(() => lightingConnection = value),
+          enabledCount: enabledCount,
+          onCount: onCount,
+        ),
+        const SizedBox(height: 12),
+        _LightingChannelBoard(
+          labels: channelLabels,
+          pins: [
+            for (final controller in lightingChannelPins)
+              controller.text.trim().isEmpty ? '-' : controller.text.trim(),
+          ],
+          enabled: lightingChannelEnabled,
+          on: lightingChannelOn,
+          morningEnabled: lightingChannelMorningEnabled,
+          eveningEnabled: lightingChannelEveningEnabled,
+          morningOnTimes: [
+            for (final controller in lightingChannelOnTimes)
+              controller.text.trim(),
+          ],
+          morningOffTimes: [
+            for (final controller in lightingChannelOffTimes)
+              controller.text.trim(),
+          ],
+          eveningOnTimes: [
+            for (final controller in lightingChannelEveningOnTimes)
+              controller.text.trim(),
+          ],
+          eveningOffTimes: [
+            for (final controller in lightingChannelEveningOffTimes)
+              controller.text.trim(),
+          ],
+          onOpen: _openLightingChannelSheet,
+        ),
+        const SizedBox(height: 12),
+        _GeneralLightingSchedulePanel(
+          selectedChannels: generalScheduleChannels,
+          channelLabels: channelLabels,
+          morningEnabled: generalMorningEnabled,
+          eveningEnabled: generalEveningEnabled,
+          saving: saving,
+          morningTime:
+              '${generalMorningOnTime.text.trim()}-${generalMorningOffTime.text.trim()}',
+          eveningTime:
+              '${generalEveningOnTime.text.trim()}-${generalEveningOffTime.text.trim()}',
+          onOpen: () => _openGeneralLightingScheduleSheet(channelLabels),
+        ),
+        const SizedBox(height: 12),
+        _InfoStrip(
+          icon: Icons.event_available_outlined,
+          text:
+              'Cada canal pode ser testado separadamente. A agenda enviada fica salva no ESP e roda pelo relógio NTP ou pela hora sincronizada pelo app.',
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed: saving ? null : _saveLighting,
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('Salvar'),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: saving ? null : () => _testLightingConnection('WIFI'),
+              icon: const Icon(Icons.wifi),
+              label: const Text('Testar Wi-Fi'),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: saving
+                  ? null
+                  : () => _testLightingConnection('BLUETOOTH'),
+              icon: const Icon(Icons.bluetooth),
+              label: const Text('Testar Bluetooth'),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: saving || espScanning ? null : _syncLightingSchedule,
+              icon: const Icon(Icons.event_repeat_outlined),
+              label: const Text('Sincronizar agenda'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openLightingChannelSheet(int index) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          void updateSheet(VoidCallback update) {
+            setState(update);
+            setSheetState(() {});
+          }
+
+          final label = lightingChannelNames[index].text.trim().isEmpty
+              ? 'Canal ${index + 1}'
+              : lightingChannelNames[index].text.trim();
+          final colors = Theme.of(sheetContext).colorScheme;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              12,
+              16,
+              MediaQuery.viewInsetsOf(sheetContext).bottom + 16,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colors.outlineVariant,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Icon(
+                        lightingChannelOn[index]
+                            ? Icons.lightbulb
+                            : Icons.lightbulb_outline,
+                        color: lightingChannelOn[index]
+                            ? colors.primary
+                            : colors.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: Theme.of(sheetContext).textTheme.titleLarge,
+                        ),
+                      ),
+                      Switch(
+                        value: lightingChannelEnabled[index],
+                        onChanged: saving
+                            ? null
+                            : (value) => updateSheet(
+                                () => lightingChannelEnabled[index] = value,
+                              ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _InfoStrip(
+                    icon: lightingChannelStatus[index].contains('FALHA')
+                        ? Icons.error_outline
+                        : Icons.info_outline,
+                    text: lightingChannelStatus[index],
+                  ),
+                  const SizedBox(height: 12),
+                  LayoutBuilder(
+                    builder: (context, box) => box.maxWidth > 520
+                        ? Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: lightingChannelNames[index],
+                                  enabled: !saving,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Nome do canal',
+                                    prefixIcon: Icon(Icons.label_outline),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: 150,
+                                child: TextField(
+                                  controller: lightingChannelPins[index],
+                                  enabled: !saving,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'GPIO',
+                                    prefixIcon: Icon(
+                                      Icons.settings_input_component_outlined,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            children: [
+                              TextField(
+                                controller: lightingChannelNames[index],
+                                enabled: !saving,
+                                decoration: const InputDecoration(
+                                  labelText: 'Nome do canal',
+                                  prefixIcon: Icon(Icons.label_outline),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: lightingChannelPins[index],
+                                enabled: !saving,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'GPIO',
+                                  prefixIcon: Icon(
+                                    Icons.settings_input_component_outlined,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                  const SizedBox(height: 10),
+                  _ScheduleWindowFields(
+                    title: 'Manhã',
+                    enabled:
+                        lightingChannelEnabled[index] &&
+                        lightingChannelMorningEnabled[index],
+                    switchValue: lightingChannelMorningEnabled[index],
+                    saving: saving,
+                    onEnabledChanged: lightingChannelEnabled[index]
+                        ? (value) => updateSheet(
+                            () => lightingChannelMorningEnabled[index] = value,
+                          )
+                        : null,
+                    onController: lightingChannelOnTimes[index],
+                    offController: lightingChannelOffTimes[index],
+                    icon: Icons.wb_twilight_outlined,
+                  ),
+                  const SizedBox(height: 10),
+                  _ScheduleWindowFields(
+                    title: 'Tarde/noite',
+                    enabled:
+                        lightingChannelEnabled[index] &&
+                        lightingChannelEveningEnabled[index],
+                    switchValue: lightingChannelEveningEnabled[index],
+                    saving: saving,
+                    onEnabledChanged: lightingChannelEnabled[index]
+                        ? (value) => updateSheet(
+                            () => lightingChannelEveningEnabled[index] = value,
+                          )
+                        : null,
+                    onController: lightingChannelEveningOnTimes[index],
+                    offController: lightingChannelEveningOffTimes[index],
+                    icon: Icons.nights_stay_outlined,
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: saving
+                            ? null
+                            : () =>
+                                  unawaited(_testLightingChannel(index, true)),
+                        icon: const Icon(Icons.light_mode_outlined),
+                        label: const Text('Ligar'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: saving
+                            ? null
+                            : () =>
+                                  unawaited(_testLightingChannel(index, false)),
+                        icon: const Icon(Icons.dark_mode_outlined),
+                        label: const Text('Desligar'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: saving
+                            ? null
+                            : () => unawaited(_pulseLightingChannel(index)),
+                        icon: const Icon(Icons.bolt_outlined),
+                        label: const Text('Pulso'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: saving
+                            ? null
+                            : () => unawaited(_saveLighting()),
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('Salvar'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
-      const SizedBox(height: 12),
-      _InfoStrip(
-        icon: Icons.event_available_outlined,
-        text:
-            'Cada canal pode ser testado separadamente. A agenda enviada fica salva no ESP e roda pelo relógio NTP ou pela hora sincronizada pelo app.',
+    );
+  }
+
+  Future<void> _openGeneralLightingScheduleSheet(
+    List<String> channelLabels,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          void updateSheet(VoidCallback update) {
+            setState(update);
+            setSheetState(() {});
+          }
+
+          final colors = Theme.of(sheetContext).colorScheme;
+          final selectedCount = generalScheduleChannels
+              .where((selected) => selected)
+              .length;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              12,
+              16,
+              MediaQuery.viewInsetsOf(sheetContext).bottom + 16,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colors.outlineVariant,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Icon(Icons.tune_outlined, color: colors.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Agenda geral',
+                          style: Theme.of(sheetContext).textTheme.titleLarge,
+                        ),
+                      ),
+                      Text(
+                        '$selectedCount/4',
+                        style: Theme.of(sheetContext).textTheme.labelLarge
+                            ?.copyWith(
+                              color: colors.onSurfaceVariant,
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: saving
+                            ? null
+                            : () => updateSheet(() {
+                                for (
+                                  var i = 0;
+                                  i < generalScheduleChannels.length;
+                                  i++
+                                ) {
+                                  generalScheduleChannels[i] = true;
+                                }
+                              }),
+                        icon: const Icon(Icons.done_all_outlined),
+                        label: const Text('Todos'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: saving
+                            ? null
+                            : () => updateSheet(() {
+                                for (
+                                  var i = 0;
+                                  i < generalScheduleChannels.length;
+                                  i++
+                                ) {
+                                  generalScheduleChannels[i] = false;
+                                }
+                              }),
+                        icon: const Icon(Icons.remove_done_outlined),
+                        label: const Text('Nenhum'),
+                      ),
+                      for (var i = 0; i < generalScheduleChannels.length; i++)
+                        FilterChip(
+                          selected: generalScheduleChannels[i],
+                          onSelected: saving
+                              ? null
+                              : (value) => updateSheet(
+                                  () => generalScheduleChannels[i] = value,
+                                ),
+                          avatar: Icon(
+                            generalScheduleChannels[i]
+                                ? Icons.check_circle_outline
+                                : Icons.circle_outlined,
+                            size: 18,
+                          ),
+                          label: Text(
+                            i < channelLabels.length
+                                ? channelLabels[i]
+                                : 'Canal ${i + 1}',
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _ScheduleWindowFields(
+                    title: 'Manhã geral',
+                    enabled: generalMorningEnabled,
+                    switchValue: generalMorningEnabled,
+                    saving: saving,
+                    onEnabledChanged: (value) =>
+                        updateSheet(() => generalMorningEnabled = value),
+                    onController: generalMorningOnTime,
+                    offController: generalMorningOffTime,
+                    icon: Icons.wb_twilight_outlined,
+                  ),
+                  const SizedBox(height: 10),
+                  _ScheduleWindowFields(
+                    title: 'Tarde/noite geral',
+                    enabled: generalEveningEnabled,
+                    switchValue: generalEveningEnabled,
+                    saving: saving,
+                    onEnabledChanged: (value) =>
+                        updateSheet(() => generalEveningEnabled = value),
+                    onController: generalEveningOnTime,
+                    offController: generalEveningOffTime,
+                    icon: Icons.nights_stay_outlined,
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: saving
+                            ? null
+                            : () => unawaited(
+                                _applyGeneralLightingSchedule(syncAfter: false),
+                              ),
+                        icon: const Icon(Icons.playlist_add_check_outlined),
+                        label: const Text('Aplicar'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: saving
+                            ? null
+                            : () => unawaited(
+                                _applyGeneralLightingSchedule(syncAfter: true),
+                              ),
+                        icon: const Icon(Icons.sync_outlined),
+                        label: const Text('Aplicar e sincronizar'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          FilledButton.icon(
-            onPressed: saving ? null : _saveLighting,
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('Salvar'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: saving ? null : () => _testLightingConnection('WIFI'),
-            icon: const Icon(Icons.wifi),
-            label: const Text('Testar Wi-Fi'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: saving
-                ? null
-                : () => _testLightingConnection('BLUETOOTH'),
-            icon: const Icon(Icons.bluetooth),
-            label: const Text('Testar Bluetooth'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: saving || espScanning ? null : _syncLightingSchedule,
-            icon: const Icon(Icons.event_repeat_outlined),
-            label: const Text('Sincronizar agenda'),
-          ),
-        ],
-      ),
-    ],
-  );
+    );
+  }
 
   Future<void> _saveScale() async {
     setState(() => saving = true);
@@ -1352,6 +1699,125 @@ class _HardwareIntegrationsPageState
     return match != null;
   }
 
+  Future<void> _configureEspWifi() async {
+    final endpoint = wifiProvisionEndpoint.text.trim().isEmpty
+        ? '192.168.4.1'
+        : wifiProvisionEndpoint.text.trim();
+    final ssid = wifiProvisionSsid.text.trim();
+    final password = wifiProvisionPassword.text;
+    if (ssid.isEmpty) {
+      setState(() => espTerminalTitle = 'WIFI DO ESP');
+      _appendEspLog('ERR> informe o nome da rede Wi-Fi');
+      _snack('Informe o nome da rede Wi-Fi.');
+      return;
+    }
+
+    setState(() {
+      saving = true;
+      espTerminalTitle = 'CONFIG WIFI ESP';
+    });
+    _appendEspLog('APP> enviando rede "$ssid" para $endpoint');
+
+    try {
+      final payload = await espClient.configureWifi(
+        endpoint: endpoint,
+        ssid: ssid,
+        password: password,
+      );
+      if (!mounted) return;
+
+      _appendEspPayload(payload);
+      final connected =
+          payload['wifiConnected'] == true || payload['ok'] == true;
+      final ip = (payload['ip'] ?? '').toString().trim();
+      final setupApIp = (payload['setupApIp'] ?? '').toString().trim();
+      final normalizedIp = ip.isEmpty
+          ? ''
+          : ip.startsWith('http')
+          ? ip
+          : 'http://$ip';
+      final controller = ref.read(operationsControllerProvider);
+      await controller.saveSetting('hardware_esp_setup_endpoint', endpoint);
+      await controller.saveSetting('hardware_esp_wifi_ssid', ssid);
+
+      var statusMessage =
+          'Credenciais enviadas; aguardando confirmação de rede.';
+      var resultMessage =
+          'Wi-Fi enviado para o ESP. Conecte na rede e detecte o endpoint.';
+      if (connected && normalizedIp.isNotEmpty) {
+        scaleEndpoint.text = normalizedIp;
+        lightingEndpoint.text = normalizedIp;
+        scaleConnection = 'WIFI';
+        lightingConnection = 'WIFI';
+        scaleEnabled = true;
+        lightingEnabled = true;
+        await controller.saveSetting('hardware_scale_endpoint', normalizedIp);
+        await controller.saveSetting(
+          'hardware_lighting_endpoint',
+          normalizedIp,
+        );
+        await controller.saveSetting('hardware_scale_connection', 'WIFI');
+        await controller.saveSetting('hardware_lighting_connection', 'WIFI');
+        await controller.saveSetting('hardware_scale_enabled', 'true');
+        await controller.saveSetting('hardware_lighting_enabled', 'true');
+        statusMessage = 'ESP conectado em $normalizedIp.';
+        resultMessage = 'OK Wi-Fi: ESP conectado em $normalizedIp.';
+      }
+
+      wifiProvisionPassword.clear();
+      if (!mounted) return;
+      setState(() {
+        espTerminalTitle = connected ? 'WIFI CONFIGURADO' : 'WIFI SALVO NO ESP';
+        scaleConnectionResult = resultMessage;
+        lightingConnectionResult = resultMessage;
+        scaleStatus = statusMessage;
+        lightingStatus = statusMessage;
+      });
+      _appendEspLog(
+        connected
+            ? 'ESP> Wi-Fi conectado em ${normalizedIp.isEmpty ? ip : normalizedIp}'
+            : 'ESP> credenciais salvas; conexao ainda nao confirmada',
+      );
+      if (setupApIp.isNotEmpty) {
+        _appendEspLog('ESP> AP backup continua em $setupApIp');
+      }
+      _snack(connected ? 'Wi-Fi do ESP configurado.' : 'Credenciais enviadas.');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        espTerminalTitle = 'FALHA WIFI ESP';
+        scaleConnectionResult = 'FALHA Wi-Fi: nao foi possivel configurar.';
+        lightingConnectionResult = 'FALHA Wi-Fi: nao foi possivel configurar.';
+        scaleStatus = 'Falha ao enviar credenciais para o ESP.';
+        lightingStatus = 'Falha ao enviar credenciais para o ESP.';
+      });
+      _appendEspLog('ERR> Wi-Fi do ESP falhou: $error');
+      await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _showEspWifiHelp() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Conectar o ESP no Wi-Fi'),
+        content: const Text(
+          'Conecte o celular na rede GRANJA-SELETO-SETUP, senha seleto1234. '
+          'Depois informe o Wi-Fi da propriedade aqui no app e toque em Enviar. '
+          'A tela web do ESP continua disponivel apenas como backup.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Entendi'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _discoverEsp({required bool auto}) async {
     if (espScanning) return;
     setState(() {
@@ -1663,6 +2129,152 @@ class _EspTerminalPanel extends StatelessWidget {
   }
 }
 
+class _EspWifiProvisionPanel extends StatelessWidget {
+  const _EspWifiProvisionPanel({
+    required this.endpointController,
+    required this.ssidController,
+    required this.passwordController,
+    required this.busy,
+    required this.onConfigure,
+    required this.onHelp,
+  });
+
+  final TextEditingController endpointController;
+  final TextEditingController ssidController;
+  final TextEditingController passwordController;
+  final bool busy;
+  final VoidCallback onConfigure;
+  final VoidCallback onHelp;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .42),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.primary.withValues(alpha: .20)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: colors.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.wifi_tethering_outlined,
+                    color: colors.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Wi-Fi do ESP',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        'Conecta o controlador na rede da propriedade',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: endpointController,
+              enabled: !busy,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                labelText: 'Endpoint do AP do ESP',
+                hintText: '192.168.4.1',
+                prefixIcon: Icon(Icons.router_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 520;
+                final ssidField = TextField(
+                  controller: ssidController,
+                  enabled: !busy,
+                  decoration: const InputDecoration(
+                    labelText: 'Rede Wi-Fi',
+                    prefixIcon: Icon(Icons.wifi_outlined),
+                  ),
+                );
+                final passwordField = TextField(
+                  controller: passwordController,
+                  enabled: !busy,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Senha',
+                    prefixIcon: Icon(Icons.lock_outline),
+                  ),
+                );
+                if (compact) {
+                  return Column(
+                    children: [
+                      ssidField,
+                      const SizedBox(height: 10),
+                      passwordField,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: ssidField),
+                    const SizedBox(width: 10),
+                    Expanded(child: passwordField),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            _InfoStrip(
+              icon: Icons.security_outlined,
+              text:
+                  'Use com o celular conectado ao AP GRANJA-SELETO-SETUP. A senha nao fica salva no app.',
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: busy ? null : onConfigure,
+                  icon: const Icon(Icons.send_to_mobile_outlined),
+                  label: const Text('Enviar Wi-Fi'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: busy ? null : onHelp,
+                  icon: const Icon(Icons.help_outline),
+                  label: const Text('Como conectar'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ResultPanel extends StatelessWidget {
   const _ResultPanel({required this.title, required this.items});
 
@@ -1739,151 +2351,164 @@ class _ResultLine extends StatelessWidget {
   }
 }
 
-class _GeneralLightingSchedulePanel extends StatelessWidget {
-  const _GeneralLightingSchedulePanel({
-    required this.selectedChannels,
+class _LightingControlInstrument extends StatelessWidget {
+  const _LightingControlInstrument({
+    required this.enabled,
     required this.channelLabels,
+    required this.pins,
+    required this.channelEnabled,
+    required this.channelOn,
     required this.morningEnabled,
     required this.eveningEnabled,
-    required this.morningOnController,
-    required this.morningOffController,
-    required this.eveningOnController,
-    required this.eveningOffController,
-    required this.saving,
-    required this.onChannelChanged,
-    required this.onSelectAll,
-    required this.onClearSelection,
-    required this.onMorningEnabledChanged,
-    required this.onEveningEnabledChanged,
-    required this.onApply,
-    required this.onApplyAndSync,
+    required this.connection,
+    required this.connectionOk,
+    required this.enabledCount,
+    required this.onCount,
   });
 
-  final List<bool> selectedChannels;
+  final bool enabled;
   final List<String> channelLabels;
-  final bool morningEnabled;
-  final bool eveningEnabled;
-  final TextEditingController morningOnController;
-  final TextEditingController morningOffController;
-  final TextEditingController eveningOnController;
-  final TextEditingController eveningOffController;
-  final bool saving;
-  final void Function(int index, bool value) onChannelChanged;
-  final VoidCallback onSelectAll;
-  final VoidCallback onClearSelection;
-  final ValueChanged<bool> onMorningEnabledChanged;
-  final ValueChanged<bool> onEveningEnabledChanged;
-  final VoidCallback onApply;
-  final VoidCallback onApplyAndSync;
+  final List<String> pins;
+  final List<bool> channelEnabled;
+  final List<bool> channelOn;
+  final List<bool> morningEnabled;
+  final List<bool> eveningEnabled;
+  final String connection;
+  final bool connectionOk;
+  final int enabledCount;
+  final int onCount;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final selectedCount = selectedChannels.where((selected) => selected).length;
-    return Material(
-      color: colors.surface.withValues(alpha: .88),
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: colors.outlineVariant),
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .30),
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                Icon(Icons.tune_outlined, color: colors.primary),
-                const SizedBox(width: 8),
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: colors.primary.withValues(alpha: .10),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: colors.primary.withValues(alpha: .22),
+                    ),
+                  ),
+                  child: Icon(
+                    enabled ? Icons.light_mode : Icons.light_mode_outlined,
+                    color: colors.primary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 9),
                 Expanded(
-                  child: Text(
-                    'Agenda geral',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Painel de luz do galpão',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      Text(
+                        'Relés ESP32, horários e acionamento manual',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  '$selectedCount/4',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: colors.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                  ),
+                const SizedBox(width: 8),
+                _SmallStatusPill(
+                  icon: connection == 'WIFI' ? Icons.wifi : Icons.bluetooth,
+                  label: connectionOk ? 'sincronizado' : connection,
+                  positive: connectionOk,
                 ),
               ],
             ),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: saving ? null : onSelectAll,
-                  icon: const Icon(Icons.done_all_outlined),
-                  label: const Text('Todos'),
+            SizedBox(
+              height: 188,
+              child: CustomPaint(
+                painter: _LightingInstrumentPainter(
+                  color: colors.primary,
+                  outline: colors.outlineVariant,
+                  enabled: enabled,
+                  channelOn: channelOn,
+                  channelEnabled: channelEnabled,
                 ),
-                OutlinedButton.icon(
-                  onPressed: saving ? null : onClearSelection,
-                  icon: const Icon(Icons.remove_done_outlined),
-                  label: const Text('Nenhum'),
-                ),
-                for (var i = 0; i < selectedChannels.length; i++)
-                  FilterChip(
-                    selected: selectedChannels[i],
-                    onSelected: saving
-                        ? null
-                        : (value) => onChannelChanged(i, value),
-                    avatar: Icon(
-                      selectedChannels[i]
-                          ? Icons.check_circle_outline
-                          : Icons.circle_outlined,
-                      size: 18,
-                    ),
-                    label: Text(
-                      i < channelLabels.length
-                          ? channelLabels[i]
-                          : 'Canal ${i + 1}',
-                    ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          _LightingHudChip(
+                            icon: Icons.power_settings_new,
+                            label: enabled ? 'Automação ativa' : 'Desativada',
+                            positive: enabled,
+                          ),
+                          const SizedBox(width: 8),
+                          _LightingHudChip(
+                            icon: Icons.tungsten_outlined,
+                            label: '$onCount ligados',
+                            positive: onCount > 0,
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Row(
+                        children: [
+                          for (var i = 0; i < 4; i++) ...[
+                            Expanded(
+                              child: _LightingLampNode(
+                                label: i < channelLabels.length
+                                    ? channelLabels[i]
+                                    : 'Canal ${i + 1}',
+                                pin: i < pins.length ? pins[i] : '-',
+                                enabled: i < channelEnabled.length
+                                    ? channelEnabled[i]
+                                    : false,
+                                on: i < channelOn.length ? channelOn[i] : false,
+                                morning: i < morningEnabled.length
+                                    ? morningEnabled[i]
+                                    : false,
+                                evening: i < eveningEnabled.length
+                                    ? eveningEnabled[i]
+                                    : false,
+                              ),
+                            ),
+                            if (i < 3) const SizedBox(width: 6),
+                          ],
+                        ],
+                      ),
+                    ],
                   ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _ScheduleWindowFields(
-              title: 'Manhã geral',
-              enabled: morningEnabled,
-              switchValue: morningEnabled,
-              saving: saving,
-              onEnabledChanged: onMorningEnabledChanged,
-              onController: morningOnController,
-              offController: morningOffController,
-              icon: Icons.wb_twilight_outlined,
-            ),
-            const SizedBox(height: 10),
-            _ScheduleWindowFields(
-              title: 'Tarde/noite geral',
-              enabled: eveningEnabled,
-              switchValue: eveningEnabled,
-              saving: saving,
-              onEnabledChanged: onEveningEnabledChanged,
-              onController: eveningOnController,
-              offController: eveningOffController,
-              icon: Icons.nights_stay_outlined,
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.tonalIcon(
-                  onPressed: saving ? null : onApply,
-                  icon: const Icon(Icons.playlist_add_check_outlined),
-                  label: const Text('Aplicar aos canais'),
                 ),
-                FilledButton.icon(
-                  onPressed: saving ? null : onApplyAndSync,
-                  icon: const Icon(Icons.sync_outlined),
-                  label: const Text('Aplicar e sincronizar'),
-                ),
-              ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            _LightingMetricRail(
+              enabledCount: enabledCount,
+              onCount: onCount,
+              connection: connection,
+              connectionOk: connectionOk,
+              enabled: enabled,
             ),
           ],
         ),
@@ -1892,54 +2517,367 @@ class _GeneralLightingSchedulePanel extends StatelessWidget {
   }
 }
 
-class _LightingChannelTile extends StatelessWidget {
-  const _LightingChannelTile({
-    required this.index,
-    required this.nameController,
-    required this.pinController,
-    required this.onTimeController,
-    required this.offTimeController,
-    required this.eveningOnTimeController,
-    required this.eveningOffTimeController,
-    required this.enabled,
-    required this.morningEnabled,
-    required this.eveningEnabled,
-    required this.on,
-    required this.status,
-    required this.saving,
-    required this.onEnabledChanged,
-    required this.onMorningEnabledChanged,
-    required this.onEveningEnabledChanged,
-    required this.onTurnOn,
-    required this.onTurnOff,
-    required this.onPulse,
+class _LightingHudChip extends StatelessWidget {
+  const _LightingHudChip({
+    required this.icon,
+    required this.label,
+    required this.positive,
   });
 
-  final int index;
-  final TextEditingController nameController;
-  final TextEditingController pinController;
-  final TextEditingController onTimeController;
-  final TextEditingController offTimeController;
-  final TextEditingController eveningOnTimeController;
-  final TextEditingController eveningOffTimeController;
+  final IconData icon;
+  final String label;
+  final bool positive;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = positive ? colors.primary : colors.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: .86),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: .20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LightingLampNode extends StatelessWidget {
+  const _LightingLampNode({
+    required this.label,
+    required this.pin,
+    required this.enabled,
+    required this.on,
+    required this.morning,
+    required this.evening,
+  });
+
+  final String label;
+  final String pin;
   final bool enabled;
-  final bool morningEnabled;
-  final bool eveningEnabled;
   final bool on;
-  final String status;
+  final bool morning;
+  final bool evening;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = on
+        ? colors.primary
+        : enabled
+        ? colors.onSurface
+        : colors.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: on ? .92 : .74),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: on
+              ? colors.primary.withValues(alpha: .42)
+              : colors.outlineVariant,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            on ? Icons.lightbulb : Icons.lightbulb_outline,
+            size: 22,
+            color: color,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'G$pin',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colors.onSurfaceVariant,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.wb_twilight_outlined,
+                size: 12,
+                color: morning ? colors.primary : colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.nights_stay_outlined,
+                size: 12,
+                color: evening ? colors.primary : colors.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LightingMetricRail extends StatelessWidget {
+  const _LightingMetricRail({
+    required this.enabledCount,
+    required this.onCount,
+    required this.connection,
+    required this.connectionOk,
+    required this.enabled,
+  });
+
+  final int enabledCount;
+  final int onCount;
+  final String connection;
+  final bool connectionOk;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        final wide = box.maxWidth > 620;
+        final items = [
+          _LightingMetricData(
+            Icons.power_settings_new,
+            'Modo',
+            enabled ? 'Ativo' : 'Off',
+            enabled,
+          ),
+          _LightingMetricData(
+            Icons.tungsten_outlined,
+            'Canais',
+            '$enabledCount/4',
+            enabledCount > 0,
+          ),
+          _LightingMetricData(
+            Icons.light_mode_outlined,
+            'Ligados',
+            '$onCount/4',
+            onCount > 0,
+          ),
+          _LightingMetricData(
+            connection == 'WIFI' ? Icons.wifi : Icons.bluetooth,
+            'Conexão',
+            connectionOk ? 'OK' : connection,
+            connectionOk,
+          ),
+        ];
+        return GridView.builder(
+          itemCount: items.length,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: wide ? 4 : 2,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: wide ? 2.7 : 2.35,
+          ),
+          itemBuilder: (context, index) =>
+              _LightingMetricTile(data: items[index]),
+        );
+      },
+    );
+  }
+}
+
+class _LightingMetricData {
+  const _LightingMetricData(this.icon, this.label, this.value, this.positive);
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool positive;
+}
+
+class _LightingMetricTile extends StatelessWidget {
+  const _LightingMetricTile({required this.data});
+
+  final _LightingMetricData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = data.positive ? colors.primary : colors.onSurfaceVariant;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: .78),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: data.positive
+              ? colors.primary.withValues(alpha: .28)
+              : colors.outlineVariant,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          children: [
+            Icon(data.icon, size: 18, color: color),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    data.value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LightingInstrumentPainter extends CustomPainter {
+  const _LightingInstrumentPainter({
+    required this.color,
+    required this.outline,
+    required this.enabled,
+    required this.channelOn,
+    required this.channelEnabled,
+  });
+
+  final Color color;
+  final Color outline;
+  final bool enabled;
+  final List<bool> channelOn;
+  final List<bool> channelEnabled;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = outline
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3;
+    final glow = Paint()
+      ..color = color.withValues(alpha: enabled ? .14 : .06)
+      ..style = PaintingStyle.fill;
+    final board = RRect.fromRectAndRadius(
+      Rect.fromLTWH(size.width * .20, size.height * .25, size.width * .60, 58),
+      const Radius.circular(12),
+    );
+    canvas.drawRRect(board, glow);
+    canvas.drawRRect(board, line);
+    final busY = size.height * .58;
+    canvas.drawLine(
+      Offset(size.width * .18, busY),
+      Offset(size.width * .82, busY),
+      line,
+    );
+    for (var i = 0; i < 4; i++) {
+      final x = size.width * (.18 + i * .213);
+      final on = i < channelOn.length && channelOn[i];
+      final active = i < channelEnabled.length && channelEnabled[i];
+      final lampPaint = Paint()
+        ..color = color.withValues(
+          alpha: on
+              ? .70
+              : active
+              ? .28
+              : .12,
+        )
+        ..style = PaintingStyle.fill;
+      final beamPaint = Paint()
+        ..color = color.withValues(alpha: on ? .12 : .03)
+        ..style = PaintingStyle.fill;
+      final beam = Path()
+        ..moveTo(x - 22, busY + 12)
+        ..lineTo(x + 22, busY + 12)
+        ..lineTo(x + 34, size.height * .93)
+        ..lineTo(x - 34, size.height * .93)
+        ..close();
+      canvas.drawPath(beam, beamPaint);
+      canvas.drawLine(Offset(x, size.height * .48), Offset(x, busY), line);
+      canvas.drawCircle(Offset(x, busY), on ? 7 : 5, lampPaint);
+      canvas.drawCircle(Offset(x, busY), on ? 8.5 : 6, line);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LightingInstrumentPainter oldDelegate) =>
+      oldDelegate.enabled != enabled ||
+      oldDelegate.color != color ||
+      oldDelegate.outline != outline ||
+      oldDelegate.channelOn != channelOn ||
+      oldDelegate.channelEnabled != channelEnabled;
+}
+
+class _LightingConnectionPanel extends StatelessWidget {
+  const _LightingConnectionPanel({
+    required this.enabled,
+    required this.connection,
+    required this.connectionResult,
+    required this.endpointController,
+    required this.relayPinController,
+    required this.saving,
+    required this.onEnabledChanged,
+    required this.onConnectionChanged,
+    required this.enabledCount,
+    required this.onCount,
+  });
+
+  final bool enabled;
+  final String connection;
+  final String connectionResult;
+  final TextEditingController endpointController;
+  final TextEditingController relayPinController;
   final bool saving;
   final ValueChanged<bool> onEnabledChanged;
-  final ValueChanged<bool> onMorningEnabledChanged;
-  final ValueChanged<bool> onEveningEnabledChanged;
-  final VoidCallback onTurnOn;
-  final VoidCallback onTurnOff;
-  final VoidCallback onPulse;
+  final ValueChanged<String> onConnectionChanged;
+  final int enabledCount;
+  final int onCount;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Material(
-      color: colors.surface.withValues(alpha: .88),
+      color: colors.surfaceContainerHighest.withValues(alpha: .40),
       shape: RoundedRectangleBorder(
         side: BorderSide(color: colors.outlineVariant),
         borderRadius: BorderRadius.circular(8),
@@ -1952,13 +2890,13 @@ class _LightingChannelTile extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  on ? Icons.lightbulb : Icons.lightbulb_outline,
-                  color: on ? colors.primary : colors.onSurfaceVariant,
+                  enabled ? Icons.power_settings_new : Icons.power_off_outlined,
+                  color: enabled ? colors.primary : colors.onSurfaceVariant,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Canal ${index + 1}',
+                    'Controlador ESP32',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -1968,102 +2906,483 @@ class _LightingChannelTile extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            LayoutBuilder(
-              builder: (context, box) => box.maxWidth > 520
-                  ? Row(
-                      children: [
-                        Expanded(child: _nameField()),
-                        const SizedBox(width: 10),
-                        SizedBox(width: 150, child: _pinField()),
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        _nameField(),
-                        const SizedBox(height: 10),
-                        _pinField(),
-                      ],
-                    ),
-            ),
-            const SizedBox(height: 10),
-            _ScheduleWindowFields(
-              title: 'Manhã',
-              enabled: enabled && morningEnabled,
-              switchValue: morningEnabled,
-              saving: saving,
-              onEnabledChanged: enabled ? onMorningEnabledChanged : null,
-              onController: onTimeController,
-              offController: offTimeController,
-              icon: Icons.wb_twilight_outlined,
-            ),
-            const SizedBox(height: 10),
-            _ScheduleWindowFields(
-              title: 'Tarde/noite',
-              enabled: enabled && eveningEnabled,
-              switchValue: eveningEnabled,
-              saving: saving,
-              onEnabledChanged: enabled ? onEveningEnabledChanged : null,
-              onController: eveningOnTimeController,
-              offController: eveningOffTimeController,
-              icon: Icons.nights_stay_outlined,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              status,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: status.contains('FALHA')
-                    ? colors.error
-                    : colors.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                FilledButton.tonalIcon(
-                  onPressed: saving ? null : onTurnOn,
-                  icon: const Icon(Icons.light_mode_outlined),
-                  label: const Text('Ligar'),
+                _SmallStatusPill(
+                  icon: Icons.cable_outlined,
+                  label: connectionResult.contains('OK')
+                      ? 'Conectado'
+                      : 'Pendente',
+                  positive: connectionResult.contains('OK'),
                 ),
-                OutlinedButton.icon(
-                  onPressed: saving ? null : onTurnOff,
-                  icon: const Icon(Icons.dark_mode_outlined),
-                  label: const Text('Desligar'),
+                _SmallStatusPill(
+                  icon: Icons.tungsten_outlined,
+                  label: '$enabledCount/4 ativos',
+                  positive: enabledCount > 0,
                 ),
-                OutlinedButton.icon(
-                  onPressed: saving ? null : onPulse,
-                  icon: const Icon(Icons.bolt_outlined),
-                  label: const Text('Pulso'),
+                _SmallStatusPill(
+                  icon: Icons.light_mode_outlined,
+                  label: '$onCount/4 ligados',
+                  positive: onCount > 0,
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, box) {
+                Widget connectionControl() => SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 'WIFI',
+                      icon: Icon(Icons.wifi),
+                      label: Text('Wi-Fi'),
+                    ),
+                    ButtonSegment(
+                      value: 'BLUETOOTH',
+                      icon: Icon(Icons.bluetooth),
+                      label: Text('Bluetooth'),
+                    ),
+                  ],
+                  selected: {connection},
+                  onSelectionChanged: saving
+                      ? null
+                      : (value) => onConnectionChanged(value.first),
+                );
+                Widget endpointField() => TextField(
+                  controller: endpointController,
+                  enabled: !saving,
+                  decoration: InputDecoration(
+                    labelText: connection == 'WIFI'
+                        ? 'Endpoint/IP'
+                        : 'Identificador Bluetooth',
+                    prefixIcon: const Icon(Icons.router_outlined),
+                  ),
+                );
+                Widget relayPinField() => TextField(
+                  controller: relayPinController,
+                  enabled: !saving,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'GPIO padrão',
+                    prefixIcon: Icon(Icons.electrical_services),
+                  ),
+                );
+                if (box.maxWidth > 760) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      connectionControl(),
+                      const SizedBox(width: 10),
+                      Expanded(child: endpointField()),
+                      const SizedBox(width: 10),
+                      SizedBox(width: 150, child: relayPinField()),
+                    ],
+                  );
+                }
+                return Column(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: connectionControl(),
+                    ),
+                    const SizedBox(height: 10),
+                    endpointField(),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(width: 150, child: relayPinField()),
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _nameField() => TextField(
-    controller: nameController,
-    enabled: !saving,
-    decoration: const InputDecoration(
-      labelText: 'Nome do canal',
-      prefixIcon: Icon(Icons.label_outline),
-    ),
-  );
+class _SmallStatusPill extends StatelessWidget {
+  const _SmallStatusPill({
+    required this.icon,
+    required this.label,
+    required this.positive,
+  });
 
-  Widget _pinField() => TextField(
-    controller: pinController,
-    enabled: !saving,
-    keyboardType: TextInputType.number,
-    decoration: const InputDecoration(
-      labelText: 'GPIO',
-      prefixIcon: Icon(Icons.settings_input_component_outlined),
-    ),
-  );
+  final IconData icon;
+  final String label;
+  final bool positive;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = positive ? colors.primary : colors.onSurfaceVariant;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: .18)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LightingChannelBoard extends StatelessWidget {
+  const _LightingChannelBoard({
+    required this.labels,
+    required this.pins,
+    required this.enabled,
+    required this.on,
+    required this.morningEnabled,
+    required this.eveningEnabled,
+    required this.morningOnTimes,
+    required this.morningOffTimes,
+    required this.eveningOnTimes,
+    required this.eveningOffTimes,
+    required this.onOpen,
+  });
+
+  final List<String> labels;
+  final List<String> pins;
+  final List<bool> enabled;
+  final List<bool> on;
+  final List<bool> morningEnabled;
+  final List<bool> eveningEnabled;
+  final List<String> morningOnTimes;
+  final List<String> morningOffTimes;
+  final List<String> eveningOnTimes;
+  final List<String> eveningOffTimes;
+  final ValueChanged<int> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.dashboard_customize_outlined, color: colors.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Canais',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        LayoutBuilder(
+          builder: (context, box) => GridView.builder(
+            itemCount: 4,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: box.maxWidth < 520
+                  ? 1.62
+                  : box.maxWidth < 760
+                  ? 1.95
+                  : 2.25,
+            ),
+            itemBuilder: (context, index) => _LightingChannelCard(
+              index: index,
+              label: labels[index],
+              pin: pins[index],
+              enabled: enabled[index],
+              on: on[index],
+              morningEnabled: morningEnabled[index],
+              eveningEnabled: eveningEnabled[index],
+              morningTime: '${morningOnTimes[index]}-${morningOffTimes[index]}',
+              eveningTime: '${eveningOnTimes[index]}-${eveningOffTimes[index]}',
+              onOpen: () => onOpen(index),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LightingChannelCard extends StatelessWidget {
+  const _LightingChannelCard({
+    required this.index,
+    required this.label,
+    required this.pin,
+    required this.enabled,
+    required this.on,
+    required this.morningEnabled,
+    required this.eveningEnabled,
+    required this.morningTime,
+    required this.eveningTime,
+    required this.onOpen,
+  });
+
+  final int index;
+  final String label;
+  final String pin;
+  final bool enabled;
+  final bool on;
+  final bool morningEnabled;
+  final bool eveningEnabled;
+  final String morningTime;
+  final String eveningTime;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final activeColor = on ? colors.primary : colors.onSurfaceVariant;
+    return Material(
+      color: colors.surface.withValues(alpha: .94),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(
+          color: on
+              ? colors.primary.withValues(alpha: .60)
+              : colors.outlineVariant,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    on ? Icons.lightbulb : Icons.lightbulb_outline,
+                    size: 19,
+                    color: activeColor,
+                  ),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'G$pin',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  Icon(
+                    enabled
+                        ? Icons.check_circle_outline
+                        : Icons.pause_circle_outline,
+                    size: 14,
+                    color: enabled ? colors.primary : colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    enabled ? 'Ativo' : 'Inativo',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: enabled ? colors.primary : colors.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    on ? 'ON' : 'OFF',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: activeColor,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              _CompactScheduleLine(
+                icon: Icons.wb_twilight_outlined,
+                label: morningEnabled ? 'M $morningTime' : 'M OFF',
+              ),
+              const SizedBox(height: 1),
+              _CompactScheduleLine(
+                icon: Icons.nights_stay_outlined,
+                label: eveningEnabled ? 'N $eveningTime' : 'N OFF',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompactScheduleLine extends StatelessWidget {
+  const _CompactScheduleLine({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: colors.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GeneralLightingSchedulePanel extends StatelessWidget {
+  const _GeneralLightingSchedulePanel({
+    required this.selectedChannels,
+    required this.channelLabels,
+    required this.morningEnabled,
+    required this.eveningEnabled,
+    required this.saving,
+    required this.morningTime,
+    required this.eveningTime,
+    required this.onOpen,
+  });
+
+  final List<bool> selectedChannels;
+  final List<String> channelLabels;
+  final bool morningEnabled;
+  final bool eveningEnabled;
+  final bool saving;
+  final String morningTime;
+  final String eveningTime;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final selectedCount = selectedChannels.where((selected) => selected).length;
+    final selectedLabels = [
+      for (var i = 0; i < selectedChannels.length; i++)
+        if (selectedChannels[i])
+          i < channelLabels.length ? channelLabels[i] : 'Canal ${i + 1}',
+    ];
+    return Material(
+      color: colors.surfaceContainerHighest.withValues(alpha: .34),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: saving ? null : onOpen,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.tune_outlined, size: 20, color: colors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Agenda geral',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '$selectedCount/4',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                selectedLabels.isEmpty
+                    ? 'Nenhum canal selecionado'
+                    : selectedLabels.join(', '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Row(
+                children: [
+                  Expanded(
+                    child: _CompactScheduleLine(
+                      icon: Icons.wb_twilight_outlined,
+                      label: morningEnabled ? 'M $morningTime' : 'M OFF',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _CompactScheduleLine(
+                      icon: Icons.nights_stay_outlined,
+                      label: eveningEnabled ? 'N $eveningTime' : 'N OFF',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ScheduleWindowFields extends StatelessWidget {
@@ -2177,7 +3496,7 @@ class _IntegrationHeader extends StatelessWidget {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(
-              'Bancada de integração',
+              'Controle de iluminação',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             _StatusChip(

@@ -37,6 +37,9 @@ class DashboardPage extends ConsumerWidget {
         ref.watch(dashboardLotPerformanceProvider).asData?.value ?? const [];
     final dailySeries =
         ref.watch(dashboardDailySeriesProvider).asData?.value ?? const [];
+    final appSettings =
+        ref.watch(appSettingsProvider).asData?.value ?? const [];
+    final sensorSnapshot = _HomeSensorSnapshot.fromSettings(appSettings);
     final phaseLots = lots
         .where((summary) => summary.lot.status == 'ACTIVE')
         .map(_LotPhaseSnapshot.fromSummary)
@@ -48,6 +51,8 @@ class DashboardPage extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _FarmPulsePanel(metrics: metrics, eggs: eggs),
+          const SizedBox(height: 14),
+          _HomeSensorDeck(snapshot: sensorSnapshot),
           const SizedBox(height: 14),
           _DashboardChartGrid(
             children: [
@@ -234,6 +239,654 @@ class _MetricGrid extends StatelessWidget {
       );
     },
   );
+}
+
+class _HomeSensorSnapshot {
+  const _HomeSensorSnapshot({
+    required this.scaleWeightKg,
+    required this.scaleReady,
+    required this.environmentTemperatureC,
+    required this.environmentHumidityPercent,
+    required this.environmentReady,
+    required this.waterLevelPercent,
+    required this.waterTemperatureC,
+    required this.waterPh,
+    required this.waterTdsPpm,
+    required this.waterReady,
+    required this.lightingEnabled,
+    required this.lightingReady,
+    required this.lightingEnabledCount,
+    required this.lightingOnCount,
+  });
+
+  final double? scaleWeightKg;
+  final bool scaleReady;
+  final double? environmentTemperatureC;
+  final double? environmentHumidityPercent;
+  final bool environmentReady;
+  final double? waterLevelPercent;
+  final double? waterTemperatureC;
+  final double? waterPh;
+  final double? waterTdsPpm;
+  final bool waterReady;
+  final bool lightingEnabled;
+  final bool lightingReady;
+  final int lightingEnabledCount;
+  final int lightingOnCount;
+
+  factory _HomeSensorSnapshot.fromSettings(List<AppSetting> settings) {
+    final values = {for (final setting in settings) setting.key: setting.value};
+    final lightingEnabled = values['hardware_lighting_enabled'] == 'true';
+    var enabledCount = 0;
+    var onCount = 0;
+    for (var i = 1; i <= 4; i++) {
+      if (values['hardware_lighting_channel_${i}_enabled'] != 'false') {
+        enabledCount++;
+      }
+      if (values['hardware_lighting_channel_${i}_last_test_state'] == 'ON') {
+        onCount++;
+      }
+    }
+    return _HomeSensorSnapshot(
+      scaleWeightKg: _settingDouble(values, 'hardware_scale_last_weight_kg'),
+      scaleReady: (values['hardware_scale_endpoint'] ?? '').trim().isNotEmpty,
+      environmentTemperatureC: _settingDouble(
+        values,
+        'hardware_environment_last_temperature_c',
+      ),
+      environmentHumidityPercent: _settingDouble(
+        values,
+        'hardware_environment_last_humidity_percent',
+      ),
+      environmentReady: (values['hardware_environment_endpoint'] ?? '')
+          .trim()
+          .isNotEmpty,
+      waterLevelPercent: _settingDouble(
+        values,
+        'hardware_water_last_level_percent',
+      ),
+      waterTemperatureC: _settingDouble(
+        values,
+        'hardware_water_last_temperature_c',
+      ),
+      waterPh: _settingDouble(values, 'hardware_water_last_ph'),
+      waterTdsPpm: _settingDouble(values, 'hardware_water_last_tds_ppm'),
+      waterReady: (values['hardware_water_endpoint'] ?? '').trim().isNotEmpty,
+      lightingEnabled: lightingEnabled,
+      lightingReady:
+          lightingEnabled &&
+          (values['hardware_lighting_endpoint'] ?? '').trim().isNotEmpty,
+      lightingEnabledCount: enabledCount,
+      lightingOnCount: onCount,
+    );
+  }
+}
+
+double? _settingDouble(Map<String, String> values, String key) {
+  final raw = values[key]?.trim() ?? '';
+  if (raw.isEmpty) return null;
+  return parseDecimal(raw);
+}
+
+class _HomeSensorDeck extends StatelessWidget {
+  const _HomeSensorDeck({required this.snapshot});
+
+  final _HomeSensorSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest.withValues(alpha: .94),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .72)),
+        borderRadius: BorderRadius.circular(SeletoTokens.radiusMd),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.sensors_outlined, color: scheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Sensores e automações',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 920 ? 4 : 2;
+              const gap = 10.0;
+              final width =
+                  (constraints.maxWidth - (gap * (columns - 1))) / columns;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  SizedBox(
+                    width: width,
+                    child: _HomeSensorCard(
+                      title: 'Iluminação',
+                      subtitle: snapshot.lightingReady
+                          ? '${snapshot.lightingOnCount}/4 ligados'
+                          : 'Pendente',
+                      icon: Icons.lightbulb_outline,
+                      active: snapshot.lightingReady,
+                      route: '/integrations',
+                      child: _HomeLightingPreview(snapshot: snapshot),
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _HomeSensorCard(
+                      title: 'Balança',
+                      subtitle: snapshot.scaleWeightKg == null
+                          ? 'Sem leitura'
+                          : kg(snapshot.scaleWeightKg!),
+                      icon: Icons.scale_outlined,
+                      active: snapshot.scaleWeightKg != null,
+                      route: '/hardware-scale',
+                      child: _HomeScalePreview(
+                        weightKg: snapshot.scaleWeightKg,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _HomeSensorCard(
+                      title: 'Ambiente',
+                      subtitle: snapshot.environmentTemperatureC == null
+                          ? 'Sem leitura'
+                          : '${decimal.format(snapshot.environmentTemperatureC!)} °C',
+                      icon: Icons.thermostat_outlined,
+                      active:
+                          snapshot.environmentTemperatureC != null ||
+                          snapshot.environmentHumidityPercent != null,
+                      route: '/hardware-environment',
+                      child: _HomeEnvironmentPreview(snapshot: snapshot),
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _HomeSensorCard(
+                      title: 'Água',
+                      subtitle: snapshot.waterLevelPercent == null
+                          ? 'Sem leitura'
+                          : '${decimal.format(snapshot.waterLevelPercent!)}%',
+                      icon: Icons.water_outlined,
+                      active:
+                          snapshot.waterLevelPercent != null ||
+                          snapshot.waterPh != null,
+                      route: '/hardware-water',
+                      child: _HomeWaterPreview(snapshot: snapshot),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeSensorCard extends StatelessWidget {
+  const _HomeSensorCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.active,
+    required this.route,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool active;
+  final String route;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = active ? scheme.primary : scheme.onSurfaceVariant;
+    return Material(
+      color: scheme.surfaceContainerHighest.withValues(alpha: .30),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: active
+              ? scheme.primary.withValues(alpha: .32)
+              : scheme.outlineVariant,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.go(route),
+        child: Padding(
+          padding: const EdgeInsets.all(9),
+          child: SizedBox(
+            height: 174,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(icon, size: 18, color: color),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(child: child),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeLightingPreview extends StatelessWidget {
+  const _HomeLightingPreview({required this.snapshot});
+
+  final _HomeSensorSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return CustomPaint(
+      painter: _HomeLightingPainter(
+        color: scheme.primary,
+        outline: scheme.outlineVariant,
+        enabled: snapshot.lightingEnabled,
+        onCount: snapshot.lightingOnCount,
+      ),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: _HomeMiniBadge(
+          icon: Icons.tungsten_outlined,
+          label:
+              '${snapshot.lightingEnabledCount}/4 ativos  ${snapshot.lightingOnCount}/4 ON',
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeScalePreview extends StatelessWidget {
+  const _HomeScalePreview({required this.weightKg});
+
+  final double? weightKg;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return CustomPaint(
+      painter: _HomeScalePainter(
+        color: scheme.primary,
+        outline: scheme.outlineVariant,
+        active: weightKg != null,
+      ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Text(
+            weightKg == null ? '--,-- kg' : kg(weightKg!),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: scheme.primary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeEnvironmentPreview extends StatelessWidget {
+  const _HomeEnvironmentPreview({required this.snapshot});
+
+  final _HomeSensorSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return CustomPaint(
+      painter: _HomeHousePainter(
+        color: scheme.primary,
+        outline: scheme.outlineVariant,
+        temperatureC: snapshot.environmentTemperatureC,
+        humidityPercent: snapshot.environmentHumidityPercent,
+      ),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: _HomeMiniBadge(
+          icon: Icons.water_drop_outlined,
+          label: snapshot.environmentHumidityPercent == null
+              ? 'Umidade --'
+              : '${decimal.format(snapshot.environmentHumidityPercent!)}%',
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeWaterPreview extends StatelessWidget {
+  const _HomeWaterPreview({required this.snapshot});
+
+  final _HomeSensorSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final level = ((snapshot.waterLevelPercent ?? 0) / 100).clamp(0.0, 1.0);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: level),
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.easeOutCubic,
+      builder: (context, animatedLevel, _) => CustomPaint(
+        painter: _HomeWaterPainter(
+          color: scheme.primary,
+          outline: scheme.outlineVariant,
+          level: animatedLevel,
+          active: snapshot.waterLevelPercent != null,
+        ),
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: _HomeMiniBadge(
+            icon: Icons.science_outlined,
+            label: snapshot.waterPh == null
+                ? 'pH --'
+                : 'pH ${decimal.format(snapshot.waterPh!)}',
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeMiniBadge extends StatelessWidget {
+  const _HomeMiniBadge({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+      decoration: BoxDecoration(
+        color: scheme.surface.withValues(alpha: .88),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: scheme.primary),
+          const SizedBox(width: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 122),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w900),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeLightingPainter extends CustomPainter {
+  const _HomeLightingPainter({
+    required this.color,
+    required this.outline,
+    required this.enabled,
+    required this.onCount,
+  });
+
+  final Color color;
+  final Color outline;
+  final bool enabled;
+  final int onCount;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = outline
+      ..strokeWidth = 1.4
+      ..style = PaintingStyle.stroke;
+    final y = size.height * .42;
+    canvas.drawLine(
+      Offset(size.width * .12, y),
+      Offset(size.width * .88, y),
+      line,
+    );
+    for (var i = 0; i < 4; i++) {
+      final x = size.width * (.16 + i * .225);
+      final on = enabled && i < onCount;
+      final paint = Paint()
+        ..color = color.withValues(alpha: on ? .72 : .20)
+        ..style = PaintingStyle.fill;
+      canvas.drawLine(Offset(x, y), Offset(x, size.height * .62), line);
+      canvas.drawCircle(Offset(x, size.height * .66), on ? 9 : 6, paint);
+      canvas.drawCircle(Offset(x, size.height * .66), on ? 12 : 8, line);
+      if (on) {
+        final beam = Paint()
+          ..color = color.withValues(alpha: .10)
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(Offset(x, size.height * .66), 28, beam);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HomeLightingPainter oldDelegate) =>
+      oldDelegate.enabled != enabled ||
+      oldDelegate.onCount != onCount ||
+      oldDelegate.color != color ||
+      oldDelegate.outline != outline;
+}
+
+class _HomeScalePainter extends CustomPainter {
+  const _HomeScalePainter({
+    required this.color,
+    required this.outline,
+    required this.active,
+  });
+
+  final Color color;
+  final Color outline;
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = outline
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    final fill = Paint()
+      ..color = color.withValues(alpha: active ? .16 : .06)
+      ..style = PaintingStyle.fill;
+    final plate = RRect.fromRectAndRadius(
+      Rect.fromLTWH(size.width * .20, size.height * .55, size.width * .60, 18),
+      const Radius.circular(8),
+    );
+    canvas.drawRRect(plate, fill);
+    canvas.drawRRect(plate, line);
+    final base = Path()
+      ..moveTo(size.width * .34, size.height * .70)
+      ..lineTo(size.width * .66, size.height * .70)
+      ..lineTo(size.width * .76, size.height * .90)
+      ..lineTo(size.width * .24, size.height * .90)
+      ..close();
+    canvas.drawPath(base, line);
+  }
+
+  @override
+  bool shouldRepaint(covariant _HomeScalePainter oldDelegate) =>
+      oldDelegate.active != active ||
+      oldDelegate.color != color ||
+      oldDelegate.outline != outline;
+}
+
+class _HomeHousePainter extends CustomPainter {
+  const _HomeHousePainter({
+    required this.color,
+    required this.outline,
+    required this.temperatureC,
+    required this.humidityPercent,
+  });
+
+  final Color color;
+  final Color outline;
+  final double? temperatureC;
+  final double? humidityPercent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = outline
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    final fill = Paint()
+      ..color = color.withValues(alpha: .09)
+      ..style = PaintingStyle.fill;
+    final house = Path()
+      ..moveTo(size.width * .22, size.height * .60)
+      ..lineTo(size.width * .50, size.height * .32)
+      ..lineTo(size.width * .78, size.height * .60)
+      ..lineTo(size.width * .73, size.height * .60)
+      ..lineTo(size.width * .73, size.height * .82)
+      ..lineTo(size.width * .27, size.height * .82)
+      ..lineTo(size.width * .27, size.height * .60)
+      ..close();
+    canvas.drawPath(house, fill);
+    canvas.drawPath(house, line);
+    final temp = ((temperatureC ?? 24) - 15).clamp(0, 25) / 25;
+    final humidity = ((humidityPercent ?? 45).clamp(0, 100)) / 100;
+    canvas.drawCircle(
+      Offset(size.width * .40, size.height * .64),
+      12 + 8 * temp.toDouble(),
+      Paint()
+        ..color = Color.lerp(
+          const Color(0xFF2DD4BF),
+          const Color(0xFFEF4444),
+          temp.toDouble(),
+        )!.withValues(alpha: .34),
+    );
+    canvas.drawCircle(
+      Offset(size.width * .60, size.height * .64),
+      10 + 8 * humidity.toDouble(),
+      Paint()..color = color.withValues(alpha: .22 + .20 * humidity.toDouble()),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _HomeHousePainter oldDelegate) =>
+      oldDelegate.temperatureC != temperatureC ||
+      oldDelegate.humidityPercent != humidityPercent ||
+      oldDelegate.color != color ||
+      oldDelegate.outline != outline;
+}
+
+class _HomeWaterPainter extends CustomPainter {
+  const _HomeWaterPainter({
+    required this.color,
+    required this.outline,
+    required this.level,
+    required this.active,
+  });
+
+  final Color color;
+  final Color outline;
+  final double level;
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final tankRect = Rect.fromLTWH(
+      size.width * .30,
+      size.height * .18,
+      size.width * .40,
+      size.height * .66,
+    );
+    final tank = RRect.fromRectAndRadius(tankRect, const Radius.circular(16));
+    canvas.drawRRect(
+      tank,
+      Paint()
+        ..color = outline
+        ..strokeWidth = 1.6
+        ..style = PaintingStyle.stroke,
+    );
+    final waterHeight = (tankRect.height - 8) * level;
+    final waterRect = Rect.fromLTWH(
+      tankRect.left + 4,
+      tankRect.bottom - waterHeight - 4,
+      tankRect.width - 8,
+      math.max(0, waterHeight),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(waterRect, const Radius.circular(13)),
+      Paint()
+        ..color = color.withValues(alpha: active ? .58 : .22)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawLine(
+      Offset(tankRect.right, tankRect.center.dy),
+      Offset(size.width * .86, tankRect.center.dy),
+      Paint()
+        ..color = outline
+        ..strokeWidth = 1.5,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _HomeWaterPainter oldDelegate) =>
+      oldDelegate.level != level ||
+      oldDelegate.active != active ||
+      oldDelegate.color != color ||
+      oldDelegate.outline != outline;
 }
 
 class _DashboardChartGrid extends StatelessWidget {

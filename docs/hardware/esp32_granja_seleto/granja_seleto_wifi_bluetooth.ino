@@ -11,6 +11,13 @@
   Endpoints HTTP:
     GET  /api/ping
     GET  /api/status
+    GET  /api/scale
+    POST /api/scale/tare
+    POST /api/scale/calibrate  knownWeightKg=1.000
+    POST /api/scale/rate       rateHz=10|80
+    GET  /api/environment
+    GET  /api/water
+    GET  /api/sensors
     GET  /api/relay?channel=1
     POST /api/relay             channel=1&state=on|off|pulse
     POST /api/channel_schedule  channel=1&enabled=1&on1=04:30&off1=06:10&en1=1&on2=17:40&off2=20:00&en2=1&days=127
@@ -35,6 +42,7 @@
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <math.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -62,6 +70,24 @@ constexpr bool relayActiveLow = true;
 constexpr uint8_t relayPins[] = {23, 22, 21, 19};
 constexpr uint8_t relayCount = sizeof(relayPins) / sizeof(relayPins[0]);
 constexpr uint8_t scheduleSlotCount = 2;
+
+constexpr uint8_t hx711DataPin = 32;
+constexpr uint8_t hx711ClockPin = 33;
+constexpr uint8_t scaleTareButtonPin = 13;
+constexpr uint8_t scaleCalibrateButtonPin = 14;
+constexpr uint8_t scaleRateButtonPin = 26;
+constexpr float defaultScaleFactor = 21000.0f;
+constexpr float defaultCalibrationWeightKg = 1.0f;
+
+constexpr uint8_t dhtPin = 27;
+constexpr uint8_t dhtType = 22;
+
+constexpr uint8_t waterLevelPin = 34;
+constexpr uint8_t waterTemperaturePin = 35;
+constexpr uint8_t waterPhPin = 36;
+constexpr uint8_t waterTdsPin = 39;
+constexpr int waterLevelRawEmpty = 600;
+constexpr int waterLevelRawFull = 3200;
 }  // namespace Config
 
 struct WifiCredentials {
@@ -94,6 +120,17 @@ String quoteJson(const String& value) {
   escaped.replace("\\", "\\\\");
   escaped.replace("\"", "\\\"");
   return "\"" + escaped + "\"";
+}
+
+String numberJson(float value, uint8_t decimals = 2) {
+  if (isnan(value) || isinf(value)) return "null";
+  return String(value, decimals);
+}
+
+float clampFloat(float value, float minimum, float maximum) {
+  if (value < minimum) return minimum;
+  if (value > maximum) return maximum;
+  return value;
 }
 
 String minuteToTime(int minute) {
@@ -424,6 +461,281 @@ class ScheduleService {
   }
 };
 
+class ScaleService {
+ public:
+  void begin() {
+    prefs_.begin("seleto_scale", false);
+    offset_ = prefs_.getLong64("offset", 0);
+    factor_ = prefs_.getFloat("factor", Config::defaultScaleFactor);
+    rateHz_ = prefs_.getUChar("rate_hz", 10);
+    pinMode(Config::hx711ClockPin, OUTPUT);
+    pinMode(Config::hx711DataPin, INPUT);
+    pinMode(Config::scaleTareButtonPin, INPUT_PULLUP);
+    pinMode(Config::scaleCalibrateButtonPin, INPUT_PULLUP);
+    pinMode(Config::scaleRateButtonPin, INPUT_PULLUP);
+    digitalWrite(Config::hx711ClockPin, LOW);
+  }
+
+  void loop() {
+    if (millis() - lastButtonCheckMs_ < 80) return;
+    lastButtonCheckMs_ = millis();
+    if (buttonPressed(Config::scaleTareButtonPin, tareButtonDown_)) {
+      tare();
+    }
+    if (buttonPressed(Config::scaleCalibrateButtonPin, calibrateButtonDown_)) {
+      calibrate(Config::defaultCalibrationWeightKg);
+    }
+    if (buttonPressed(Config::scaleRateButtonPin, rateButtonDown_)) {
+      setRate(rateHz_ == 10 ? 80 : 10);
+    }
+  }
+
+  bool ready() const {
+    return digitalRead(Config::hx711DataPin) == LOW;
+  }
+
+  long readAverage(uint8_t samples = 5) {
+    long total = 0;
+    uint8_t valid = 0;
+    for (uint8_t i = 0; i < samples; i++) {
+      long raw = 0;
+      if (readRaw(raw, 80)) {
+        total += raw;
+        valid++;
+      }
+      delay(4);
+    }
+    return valid == 0 ? lastRaw_ : total / valid;
+  }
+
+  float weightKg() {
+    const long raw = readAverage();
+    lastRaw_ = raw;
+    if (factor_ == 0) return 0;
+    return static_cast<float>(raw - offset_) / factor_;
+  }
+
+  void tare() {
+    offset_ = readAverage(12);
+    prefs_.putLong64("offset", offset_);
+  }
+
+  bool calibrate(float knownWeightKg) {
+    if (knownWeightKg <= 0) return false;
+    const long raw = readAverage(12);
+    const long net = raw - offset_;
+    if (net == 0) return false;
+    factor_ = static_cast<float>(net) / knownWeightKg;
+    prefs_.putFloat("factor", factor_);
+    prefs_.putFloat("known_kg", knownWeightKg);
+    return true;
+  }
+
+  void setRate(uint8_t rateHz) {
+    rateHz_ = rateHz >= 80 ? 80 : 10;
+    prefs_.putUChar("rate_hz", rateHz_);
+  }
+
+  uint8_t rateHz() const {
+    return rateHz_;
+  }
+
+  String toJson() {
+    const float weight = weightKg();
+    String json = "{\"ok\":true";
+    json += ",\"enabled\":true";
+    json += ",\"weightKg\":" + numberJson(weight, 3);
+    json += ",\"stable\":true";
+    json += ",\"ready\":" + boolJson(ready());
+    json += ",\"raw\":" + String(lastRaw_);
+    json += ",\"offset\":" + String(static_cast<long>(offset_));
+    json += ",\"factor\":" + numberJson(factor_, 4);
+    json += ",\"sampleRateHz\":" + String(rateHz_);
+    json += ",\"calibrated\":" + boolJson(factor_ != 0);
+    json += "}";
+    return json;
+  }
+
+ private:
+  Preferences prefs_;
+  int64_t offset_ = 0;
+  float factor_ = Config::defaultScaleFactor;
+  uint8_t rateHz_ = 10;
+  long lastRaw_ = 0;
+  uint32_t lastButtonCheckMs_ = 0;
+  bool tareButtonDown_ = false;
+  bool calibrateButtonDown_ = false;
+  bool rateButtonDown_ = false;
+
+  bool readRaw(long& value, uint32_t timeoutMs) {
+    const uint32_t start = millis();
+    while (digitalRead(Config::hx711DataPin) == HIGH) {
+      if (millis() - start > timeoutMs) return false;
+      delay(1);
+    }
+
+    uint32_t data = 0;
+    noInterrupts();
+    for (uint8_t i = 0; i < 24; i++) {
+      digitalWrite(Config::hx711ClockPin, HIGH);
+      delayMicroseconds(1);
+      data = (data << 1) | digitalRead(Config::hx711DataPin);
+      digitalWrite(Config::hx711ClockPin, LOW);
+      delayMicroseconds(1);
+    }
+    digitalWrite(Config::hx711ClockPin, HIGH);
+    delayMicroseconds(1);
+    digitalWrite(Config::hx711ClockPin, LOW);
+    interrupts();
+
+    if (data & 0x800000) data |= 0xFF000000;
+    value = static_cast<int32_t>(data);
+    return true;
+  }
+
+  bool buttonPressed(uint8_t pin, bool& wasDown) {
+    const bool down = digitalRead(pin) == LOW;
+    const bool pressed = down && !wasDown;
+    wasDown = down;
+    return pressed;
+  }
+};
+
+class EnvironmentService {
+ public:
+  void begin() {
+    pinMode(Config::dhtPin, INPUT_PULLUP);
+  }
+
+  bool read(float& temperatureC, float& humidityPercent) {
+    if (millis() - lastReadMs_ < 2000 && !isnan(lastTemperatureC_)) {
+      temperatureC = lastTemperatureC_;
+      humidityPercent = lastHumidityPercent_;
+      return true;
+    }
+
+    uint8_t data[5] = {0, 0, 0, 0, 0};
+    pinMode(Config::dhtPin, OUTPUT);
+    digitalWrite(Config::dhtPin, LOW);
+    delay(20);
+    digitalWrite(Config::dhtPin, HIGH);
+    delayMicroseconds(40);
+    pinMode(Config::dhtPin, INPUT_PULLUP);
+
+    if (pulseIn(Config::dhtPin, LOW, 1000) == 0) return false;
+    if (pulseIn(Config::dhtPin, HIGH, 1000) == 0) return false;
+
+    for (uint8_t i = 0; i < 40; i++) {
+      if (pulseIn(Config::dhtPin, LOW, 1000) == 0) return false;
+      const unsigned long highTime = pulseIn(Config::dhtPin, HIGH, 1000);
+      if (highTime == 0) return false;
+      data[i / 8] <<= 1;
+      if (highTime > 45) data[i / 8] |= 1;
+    }
+
+    const uint8_t checksum = data[0] + data[1] + data[2] + data[3];
+    if (checksum != data[4]) return false;
+
+    if (Config::dhtType == 11) {
+      humidityPercent = data[0];
+      temperatureC = data[2];
+    } else {
+      humidityPercent = ((data[0] << 8) | data[1]) * 0.1f;
+      int16_t rawTemperature = ((data[2] & 0x7F) << 8) | data[3];
+      temperatureC = rawTemperature * 0.1f;
+      if (data[2] & 0x80) temperatureC = -temperatureC;
+    }
+
+    lastTemperatureC_ = temperatureC;
+    lastHumidityPercent_ = humidityPercent;
+    lastReadMs_ = millis();
+    return true;
+  }
+
+  String toJson() {
+    float temperature = NAN;
+    float humidity = NAN;
+    const bool ok = read(temperature, humidity);
+    String json = "{\"ok\":";
+    json += boolJson(ok);
+    json += ",\"airTemperatureC\":" + numberJson(temperature, 1);
+    json += ",\"airHumidityPercent\":" + numberJson(humidity, 1);
+    json += ",\"sensor\":\"DHT";
+    json += String(Config::dhtType);
+    json += "\"}";
+    return json;
+  }
+
+ private:
+  uint32_t lastReadMs_ = 0;
+  float lastTemperatureC_ = NAN;
+  float lastHumidityPercent_ = NAN;
+};
+
+class WaterService {
+ public:
+  void begin() {
+    analogReadResolution(12);
+    pinMode(Config::waterLevelPin, INPUT);
+    pinMode(Config::waterTemperaturePin, INPUT);
+    pinMode(Config::waterPhPin, INPUT);
+    pinMode(Config::waterTdsPin, INPUT);
+  }
+
+  float levelPercent() {
+    const int raw = analogRead(Config::waterLevelPin);
+    const float percent =
+        100.0f * (raw - Config::waterLevelRawEmpty) /
+        (Config::waterLevelRawFull - Config::waterLevelRawEmpty);
+    return clampFloat(percent, 0, 100);
+  }
+
+  float temperatureC() {
+    const float voltage = analogVoltage(Config::waterTemperaturePin);
+    return voltage * 100.0f;
+  }
+
+  float ph() {
+    const float voltage = analogVoltage(Config::waterPhPin);
+    return clampFloat(7.0f + ((2.50f - voltage) * 3.50f), 0, 14);
+  }
+
+  float tdsPpm() {
+    const float voltage = analogVoltage(Config::waterTdsPin);
+    const float compensation = 1.0f + 0.02f * (temperatureC() - 25.0f);
+    const float compensatedVoltage = voltage / compensation;
+    const float tds =
+        (133.42f * compensatedVoltage * compensatedVoltage * compensatedVoltage -
+         255.86f * compensatedVoltage * compensatedVoltage +
+         857.39f * compensatedVoltage) * 0.5f;
+    return tds < 0 ? 0 : tds;
+  }
+
+  String toJson() {
+    const float level = levelPercent();
+    const float temperature = temperatureC();
+    const float currentPh = ph();
+    const float tds = tdsPpm();
+    String json = "{\"ok\":true";
+    json += ",\"levelPercent\":" + numberJson(level, 1);
+    json += ",\"temperatureC\":" + numberJson(temperature, 1);
+    json += ",\"ph\":" + numberJson(currentPh, 2);
+    json += ",\"tdsPpm\":" + numberJson(tds, 0);
+    json += ",\"raw\":{";
+    json += "\"level\":" + String(analogRead(Config::waterLevelPin));
+    json += ",\"temperature\":" + String(analogRead(Config::waterTemperaturePin));
+    json += ",\"ph\":" + String(analogRead(Config::waterPhPin));
+    json += ",\"tds\":" + String(analogRead(Config::waterTdsPin));
+    json += "}}";
+    return json;
+  }
+
+ private:
+  float analogVoltage(uint8_t pin) {
+    return analogRead(pin) * (3.3f / 4095.0f);
+  }
+};
+
 class NetworkService {
  public:
   explicit NetworkService(StorageService& storage) : storage_(storage) {}
@@ -483,17 +795,34 @@ class ApiServer {
     NetworkService& network,
     ClockService& clock,
     RelayService& relay,
-    ScheduleService& scheduler
+    ScheduleService& scheduler,
+    ScaleService& scale,
+    EnvironmentService& environment,
+    WaterService& water
   ) : server_(Config::httpPort),
       network_(network),
       clock_(clock),
       relay_(relay),
-      scheduler_(scheduler) {}
+      scheduler_(scheduler),
+      scale_(scale),
+      environment_(environment),
+      water_(water) {}
 
   void begin() {
     server_.on("/", HTTP_GET, [this]() { handleRoot(); });
     server_.on("/api/ping", HTTP_GET, [this]() { handlePing(); });
     server_.on("/api/status", HTTP_GET, [this]() { handleStatus(); });
+    server_.on("/api/scale", HTTP_GET, [this]() { handleScaleGet(); });
+    server_.on("/api/scale/tare", HTTP_POST, [this]() { handleScaleTare(); });
+    server_.on("/api/scale/calibrate", HTTP_POST, [this]() {
+      handleScaleCalibrate();
+    });
+    server_.on("/api/scale/rate", HTTP_POST, [this]() { handleScaleRate(); });
+    server_.on("/api/environment", HTTP_GET, [this]() {
+      handleEnvironmentGet();
+    });
+    server_.on("/api/water", HTTP_GET, [this]() { handleWaterGet(); });
+    server_.on("/api/sensors", HTTP_GET, [this]() { handleSensorsGet(); });
     server_.on("/api/relay", HTTP_GET, [this]() { handleRelayGet(); });
     server_.on("/api/relay", HTTP_POST, [this]() { handleRelayPost(); });
     server_.on("/api/channel_schedule", HTTP_POST, [this]() {
@@ -519,6 +848,9 @@ class ApiServer {
   ClockService& clock_;
   RelayService& relay_;
   ScheduleService& scheduler_;
+  ScaleService& scale_;
+  EnvironmentService& environment_;
+  WaterService& water_;
 
   void addCors() {
     server_.sendHeader("Access-Control-Allow-Origin", "*");
@@ -547,6 +879,7 @@ class ApiServer {
     json += ",\"relayActiveLow\":" + boolJson(Config::relayActiveLow);
     json += ",\"relays\":" + relay_.toJson();
     json += ",\"schedules\":" + scheduler_.toJson();
+    json += ",\"sensorEndpoints\":[\"/api/scale\",\"/api/environment\",\"/api/water\",\"/api/sensors\"]";
     json += ",\"uptimeMs\":" + String(millis());
     json += "}";
     return json;
@@ -557,10 +890,11 @@ class ApiServer {
     String html = "<!doctype html><html><head><meta charset='utf-8'>";
     html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
     html += "<title>GRANJA SELETO RELE</title></head><body>";
-    html += "<h1>GRANJA SELETO RELE</h1>";
-    html += "<p>Use /api/status, /api/relay e /api/channel_schedule.</p>";
+    html += "<h1>GRANJA SELETO ESP32</h1>";
+    html += "<p>Use /api/status, /api/relay, /api/scale, /api/environment e /api/water.</p>";
     html += "<form method='post' action='/api/wifi'>";
-    html += "<h2>Configurar Wi-Fi</h2>";
+    html += "<h2>Backup manual de Wi-Fi</h2>";
+    html += "<p>Preferencialmente configure pelo app. Use esta tela apenas como recuperacao.</p>";
     html += "<input name='ssid' placeholder='Nome da rede Wi-Fi'><br>";
     html += "<input name='password' placeholder='Senha' type='password'><br>";
     html += "<button type='submit'>Salvar e conectar</button></form>";
@@ -582,6 +916,65 @@ class ApiServer {
   void handleScheduleGet() {
     String json = "{\"ok\":true,\"schedules\":";
     json += scheduler_.toJson();
+    json += "}";
+    sendJson(json);
+  }
+
+  void handleScaleGet() {
+    sendJson(scale_.toJson());
+  }
+
+  void handleScaleTare() {
+    scale_.tare();
+    String json = "{\"ok\":true,\"tare\":true,\"scale\":";
+    json += scale_.toJson();
+    json += "}";
+    sendJson(json);
+  }
+
+  void handleScaleCalibrate() {
+    const float knownWeightKg = server_.arg("knownWeightKg").toFloat();
+    if (knownWeightKg <= 0) {
+      sendJson("{\"ok\":false,\"error\":\"invalid_known_weight\"}", 400);
+      return;
+    }
+    const bool ok = scale_.calibrate(knownWeightKg);
+    String json = "{\"ok\":";
+    json += boolJson(ok);
+    json += ",\"knownWeightKg\":";
+    json += numberJson(knownWeightKg, 3);
+    json += ",\"scale\":";
+    json += scale_.toJson();
+    json += "}";
+    sendJson(json, ok ? 200 : 422);
+  }
+
+  void handleScaleRate() {
+    const int rateHz = server_.arg("rateHz").toInt();
+    if (rateHz != 10 && rateHz != 80) {
+      sendJson("{\"ok\":false,\"error\":\"invalid_rate\"}", 400);
+      return;
+    }
+    scale_.setRate(static_cast<uint8_t>(rateHz));
+    String json = "{\"ok\":true,\"sampleRateHz\":";
+    json += String(scale_.rateHz());
+    json += "}";
+    sendJson(json);
+  }
+
+  void handleEnvironmentGet() {
+    sendJson(environment_.toJson());
+  }
+
+  void handleWaterGet() {
+    sendJson(water_.toJson());
+  }
+
+  void handleSensorsGet() {
+    String json = "{\"ok\":true";
+    json += ",\"scale\":" + scale_.toJson();
+    json += ",\"environment\":" + environment_.toJson();
+    json += ",\"water\":" + water_.toJson();
     json += "}";
     sendJson(json);
   }
@@ -1034,7 +1427,18 @@ ClockService clockService;
 NetworkService network(storage);
 RelayService relay;
 ScheduleService scheduler(storage, clockService, relay);
-ApiServer api(network, clockService, relay, scheduler);
+ScaleService scaleService;
+EnvironmentService environmentService;
+WaterService waterService;
+ApiServer api(
+  network,
+  clockService,
+  relay,
+  scheduler,
+  scaleService,
+  environmentService,
+  waterService
+);
 BluetoothBridge bluetooth(network, clockService, relay, scheduler);
 
 void setup() {
@@ -1045,6 +1449,9 @@ void setup() {
   Serial.println("GRANJA SELETO - ESP32 Rele 4 canais");
 
   storage.begin();
+  scaleService.begin();
+  environmentService.begin();
+  waterService.begin();
   relay.begin();
   network.begin();
   clockService.begin();
@@ -1072,4 +1479,5 @@ void loop() {
   api.loop();
   bluetooth.loop();
   scheduler.loop();
+  scaleService.loop();
 }

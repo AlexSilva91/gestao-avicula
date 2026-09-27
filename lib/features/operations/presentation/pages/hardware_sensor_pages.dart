@@ -1,0 +1,1958 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../../core/database/app_database.dart';
+import '../../../../core/utils/formatters.dart';
+import '../../../../core/widgets/app_shell.dart';
+import '../../../../core/widgets/seleto_widgets.dart';
+import '../../application/hardware_esp_client.dart';
+import '../../application/operations_controller.dart';
+
+const _scaleSensorPorts = [
+  _SensorPort('HX711 DT', 'GPIO32', Icons.input_outlined),
+  _SensorPort('HX711 SCK', 'GPIO33', Icons.sync_alt_outlined),
+  _SensorPort('Botão tara', 'GPIO13', Icons.exposure_zero_outlined),
+  _SensorPort('Botão calibrar', 'GPIO14', Icons.tune_outlined),
+  _SensorPort('Botão taxa', 'GPIO26', Icons.speed_outlined),
+];
+
+const _environmentSensorPorts = [
+  _SensorPort('DHT22 dados', 'GPIO27', Icons.device_thermostat_outlined),
+];
+
+const _waterReservoirSensorPorts = [
+  _SensorPort('Nível da água', 'GPIO34', Icons.water_outlined),
+  _SensorPort('Temperatura', 'GPIO35', Icons.device_thermostat_outlined),
+];
+
+const _waterQualitySensorPorts = [
+  _SensorPort('pH', 'GPIO36', Icons.science_outlined),
+  _SensorPort('TDS', 'GPIO39', Icons.blur_on_outlined),
+];
+
+const _waterSystemSensorPorts = [
+  ..._waterReservoirSensorPorts,
+  ..._waterQualitySensorPorts,
+];
+
+class ScaleSensorPage extends ConsumerStatefulWidget {
+  const ScaleSensorPage({super.key});
+
+  @override
+  ConsumerState<ScaleSensorPage> createState() => _ScaleSensorPageState();
+}
+
+class _ScaleSensorPageState extends ConsumerState<ScaleSensorPage> {
+  final espClient = const HardwareEspClient();
+  final endpoint = TextEditingController();
+  final knownWeight = TextEditingController(text: '1,000');
+  bool initialized = false;
+  bool working = false;
+  int rateHz = 10;
+  double? weightKg;
+  String status = 'Aguardando leitura';
+  Map<String, Object?>? lastPayload;
+
+  @override
+  void dispose() {
+    endpoint.dispose();
+    knownWeight.dispose();
+    super.dispose();
+  }
+
+  void _hydrate(List<AppSetting> settings) {
+    if (initialized) return;
+    initialized = true;
+    endpoint.text = _sensorEndpoint(settings, 'hardware_scale_endpoint');
+    rateHz = int.tryParse(_setting(settings, 'hardware_scale_rate_hz')) ?? 10;
+  }
+
+  @override
+  Widget build(BuildContext context) => AppShell(
+    title: 'Balança',
+    child: ref
+        .watch(appSettingsProvider)
+        .when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => const SeletoAsyncError(),
+          data: (settings) {
+            _hydrate(settings);
+            return _SensorExperience(
+              icon: Icons.scale_outlined,
+              title: 'Balança inteligente',
+              subtitle: 'HX711 + célula de carga',
+              status: status,
+              visual: _ScaleInstrument(
+                weightText: weightKg == null ? '--,-- kg' : kg(weightKg!),
+                rateText: '$rateHz Hz',
+                active: weightKg != null,
+                working: working,
+              ),
+              metrics: [
+                _SensorMetric(
+                  icon: Icons.monitor_weight_outlined,
+                  label: 'Peso',
+                  value: weightKg == null ? 'Sem leitura' : kg(weightKg!),
+                  active: weightKg != null,
+                ),
+                _SensorMetric(
+                  icon: Icons.speed_outlined,
+                  label: 'Taxa',
+                  value: '$rateHz Hz',
+                  active: true,
+                ),
+              ],
+              actions: [
+                FilledButton.icon(
+                  onPressed: working ? null : _readScale,
+                  icon: const Icon(Icons.sensors_outlined),
+                  label: const Text('Ler'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: working ? null : _tareScale,
+                  icon: const Icon(Icons.exposure_zero_outlined),
+                  label: const Text('Tara'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: working ? null : _calibrateScale,
+                  icon: const Icon(Icons.tune_outlined),
+                  label: const Text('Calibrar'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: working ? null : _save,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Salvar'),
+                ),
+              ],
+              ports: _scaleSensorPorts,
+              payload: lastPayload,
+              config: [
+                _SensorConfigCard(
+                  title: 'Conexão e calibração',
+                  icon: Icons.tune_outlined,
+                  children: [
+                    _EndpointField(controller: endpoint, working: working),
+                    const SizedBox(height: 8),
+                    LayoutBuilder(
+                      builder: (context, box) => box.maxWidth > 620
+                          ? Row(
+                              children: [
+                                Expanded(child: _knownWeightField()),
+                                const SizedBox(width: 8),
+                                Expanded(child: _rateControl()),
+                              ],
+                            )
+                          : Column(
+                              children: [
+                                _knownWeightField(),
+                                const SizedBox(height: 8),
+                                _rateControl(),
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+  );
+
+  Widget _knownWeightField() => TextField(
+    controller: knownWeight,
+    enabled: !working,
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    decoration: const InputDecoration(
+      labelText: 'Peso conhecido',
+      suffixText: 'kg',
+      prefixIcon: Icon(Icons.fitness_center_outlined),
+      isDense: true,
+    ),
+  );
+
+  Widget _rateControl() => SegmentedButton<int>(
+    showSelectedIcon: false,
+    segments: const [
+      ButtonSegment(
+        value: 10,
+        icon: Icon(Icons.speed_outlined),
+        label: Text('10 Hz'),
+      ),
+      ButtonSegment(
+        value: 80,
+        icon: Icon(Icons.flash_on_outlined),
+        label: Text('80 Hz'),
+      ),
+    ],
+    selected: {rateHz},
+    onSelectionChanged: working
+        ? null
+        : (value) => setState(() => rateHz = value.first),
+  );
+
+  Future<void> _save() async {
+    setState(() => working = true);
+    try {
+      final controller = ref.read(operationsControllerProvider);
+      await controller.saveSetting('hardware_scale_enabled', 'true');
+      await controller.saveSetting('hardware_scale_connection', 'WIFI');
+      await controller.saveSetting(
+        'hardware_scale_endpoint',
+        endpoint.text.trim(),
+      );
+      await controller.saveSetting('hardware_scale_rate_hz', '$rateHz');
+      if (mounted) setState(() => status = 'Configuração da balança salva.');
+    } catch (error) {
+      if (mounted) await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => working = false);
+    }
+  }
+
+  Future<void> _readScale() async {
+    if (!_hasEndpoint()) return;
+    setState(() => working = true);
+    try {
+      final reading = await espClient.readScale(endpoint.text.trim());
+      await ref
+          .read(operationsControllerProvider)
+          .saveSetting(
+            'hardware_scale_last_weight_kg',
+            decimal.format(reading.weightKg),
+          );
+      if (!mounted) return;
+      setState(() {
+        weightKg = reading.weightKg;
+        lastPayload = reading.payload;
+        status = reading.message;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => status = 'Falha na leitura da balança: $error');
+      }
+    } finally {
+      if (mounted) setState(() => working = false);
+    }
+  }
+
+  Future<void> _tareScale() async {
+    if (!_hasEndpoint()) return;
+    setState(() => working = true);
+    try {
+      final payload = await espClient.tareScale(endpoint.text.trim());
+      if (!mounted) return;
+      setState(() {
+        weightKg = 0;
+        lastPayload = payload;
+        status = 'Tara confirmada pelo ESP.';
+      });
+    } catch (error) {
+      if (mounted) setState(() => status = 'Falha ao aplicar tara: $error');
+    } finally {
+      if (mounted) setState(() => working = false);
+    }
+  }
+
+  Future<void> _calibrateScale() async {
+    if (!_hasEndpoint()) return;
+    final known = parseDecimal(knownWeight.text);
+    if (known <= 0) {
+      setState(() => status = 'Informe um peso conhecido maior que zero.');
+      return;
+    }
+    setState(() => working = true);
+    try {
+      final ratePayload = await espClient.setScaleRate(
+        endpoint: endpoint.text.trim(),
+        rateHz: rateHz,
+      );
+      final calibrationPayload = await espClient.calibrateScale(
+        endpoint: endpoint.text.trim(),
+        knownWeightKg: known,
+      );
+      await _save();
+      if (!mounted) return;
+      setState(() {
+        lastPayload = {'rate': ratePayload, 'calibration': calibrationPayload};
+        status = 'Calibração salva para ${kg(known)}.';
+      });
+    } catch (error) {
+      if (mounted) setState(() => status = 'Falha na calibração: $error');
+    } finally {
+      if (mounted) setState(() => working = false);
+    }
+  }
+
+  bool _hasEndpoint() {
+    if (endpoint.text.trim().isNotEmpty) return true;
+    setState(() => status = 'Informe o endpoint/IP do ESP.');
+    return false;
+  }
+}
+
+class EnvironmentSensorPage extends ConsumerStatefulWidget {
+  const EnvironmentSensorPage({super.key});
+
+  @override
+  ConsumerState<EnvironmentSensorPage> createState() =>
+      _EnvironmentSensorPageState();
+}
+
+class _EnvironmentSensorPageState extends ConsumerState<EnvironmentSensorPage> {
+  final espClient = const HardwareEspClient();
+  final endpoint = TextEditingController();
+  bool initialized = false;
+  bool working = false;
+  double? temperatureC;
+  double? humidityPercent;
+  String status = 'Aguardando leitura';
+  Map<String, Object?>? lastPayload;
+
+  @override
+  void dispose() {
+    endpoint.dispose();
+    super.dispose();
+  }
+
+  void _hydrate(List<AppSetting> settings) {
+    if (initialized) return;
+    initialized = true;
+    endpoint.text = _sensorEndpoint(settings, 'hardware_environment_endpoint');
+  }
+
+  @override
+  Widget build(BuildContext context) => AppShell(
+    title: 'Ambiente',
+    child: ref
+        .watch(appSettingsProvider)
+        .when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => const SeletoAsyncError(),
+          data: (settings) {
+            _hydrate(settings);
+            return _SensorExperience(
+              icon: Icons.thermostat_outlined,
+              title: 'Ambiente do galpão',
+              subtitle: 'Temperatura e umidade do ar',
+              status: status,
+              visual: _EnvironmentHouseInstrument(
+                temperatureC: temperatureC,
+                humidityPercent: humidityPercent,
+                working: working,
+              ),
+              metrics: [
+                _SensorMetric(
+                  icon: Icons.device_thermostat_outlined,
+                  label: 'Temperatura',
+                  value: temperatureC == null
+                      ? 'Sem leitura'
+                      : '${decimal.format(temperatureC!)} °C',
+                  active: temperatureC != null,
+                ),
+                _SensorMetric(
+                  icon: Icons.water_drop_outlined,
+                  label: 'Umidade',
+                  value: humidityPercent == null
+                      ? 'Sem leitura'
+                      : '${decimal.format(humidityPercent!)}%',
+                  active: humidityPercent != null,
+                ),
+              ],
+              actions: [
+                FilledButton.icon(
+                  onPressed: working ? null : _read,
+                  icon: const Icon(Icons.sensors_outlined),
+                  label: const Text('Ler'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: working
+                      ? null
+                      : () => _save('hardware_environment_endpoint'),
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Salvar'),
+                ),
+              ],
+              ports: _environmentSensorPorts,
+              payload: lastPayload,
+              config: [
+                _SensorConfigCard(
+                  title: 'Conexão',
+                  icon: Icons.router_outlined,
+                  children: [
+                    _EndpointField(controller: endpoint, working: working),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+  );
+
+  Future<void> _read() async {
+    if (endpoint.text.trim().isEmpty) {
+      setState(() => status = 'Informe o endpoint/IP do ESP.');
+      return;
+    }
+    setState(() => working = true);
+    try {
+      final reading = await espClient.readEnvironment(endpoint.text.trim());
+      final controller = ref.read(operationsControllerProvider);
+      await controller.saveSetting(
+        'hardware_environment_endpoint',
+        endpoint.text.trim(),
+      );
+      await controller.saveSetting(
+        'hardware_environment_last_temperature_c',
+        decimal.format(reading.airTemperatureC),
+      );
+      await controller.saveSetting(
+        'hardware_environment_last_humidity_percent',
+        decimal.format(reading.airHumidityPercent),
+      );
+      if (!mounted) return;
+      setState(() {
+        temperatureC = reading.airTemperatureC;
+        humidityPercent = reading.airHumidityPercent;
+        lastPayload = reading.payload;
+        status = reading.message;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => status = 'Falha na leitura do ambiente: $error');
+      }
+    } finally {
+      if (mounted) setState(() => working = false);
+    }
+  }
+
+  Future<void> _save(String key) async {
+    await ref
+        .read(operationsControllerProvider)
+        .saveSetting(key, endpoint.text.trim());
+  }
+}
+
+class WaterReservoirSensorPage extends ConsumerStatefulWidget {
+  const WaterReservoirSensorPage({super.key});
+
+  @override
+  ConsumerState<WaterReservoirSensorPage> createState() =>
+      _WaterReservoirSensorPageState();
+}
+
+class _WaterReservoirSensorPageState
+    extends ConsumerState<WaterReservoirSensorPage> {
+  final espClient = const HardwareEspClient();
+  final endpoint = TextEditingController();
+  bool initialized = false;
+  bool working = false;
+  double? levelPercent;
+  double? temperatureC;
+  double? ph;
+  double? tdsPpm;
+  String status = 'Aguardando leitura';
+  Map<String, Object?>? lastPayload;
+
+  @override
+  void dispose() {
+    endpoint.dispose();
+    super.dispose();
+  }
+
+  void _hydrate(List<AppSetting> settings) {
+    if (initialized) return;
+    initialized = true;
+    endpoint.text = _sensorEndpoint(settings, 'hardware_water_endpoint');
+  }
+
+  @override
+  Widget build(BuildContext context) => AppShell(
+    title: 'Água',
+    child: ref
+        .watch(appSettingsProvider)
+        .when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => const SeletoAsyncError(),
+          data: (settings) {
+            _hydrate(settings);
+            return _SensorExperience(
+              icon: Icons.water_outlined,
+              title: 'Reservatório inteligente',
+              subtitle: 'Nível, temperatura e qualidade da água',
+              status: status,
+              visual: _WaterReservoirInstrument(
+                levelPercent: levelPercent,
+                temperatureC: temperatureC,
+                ph: ph,
+                tdsPpm: tdsPpm,
+                working: working,
+              ),
+              metrics: [
+                _SensorMetric(
+                  icon: Icons.water_outlined,
+                  label: 'Nível',
+                  value: levelPercent == null
+                      ? 'Sem leitura'
+                      : '${decimal.format(levelPercent!)}%',
+                  active: levelPercent != null,
+                ),
+                _SensorMetric(
+                  icon: Icons.device_thermostat_outlined,
+                  label: 'Temperatura',
+                  value: temperatureC == null
+                      ? 'Sem leitura'
+                      : '${decimal.format(temperatureC!)} °C',
+                  active: temperatureC != null,
+                ),
+                _SensorMetric(
+                  icon: Icons.science_outlined,
+                  label: 'pH',
+                  value: ph == null ? 'Sem leitura' : decimal.format(ph!),
+                  active: ph != null,
+                ),
+                _SensorMetric(
+                  icon: Icons.blur_on_outlined,
+                  label: 'TDS',
+                  value: tdsPpm == null
+                      ? 'Sem leitura'
+                      : '${decimal.format(tdsPpm!)} ppm',
+                  active: tdsPpm != null,
+                ),
+              ],
+              actions: [
+                FilledButton.icon(
+                  onPressed: working ? null : _read,
+                  icon: const Icon(Icons.sensors_outlined),
+                  label: const Text('Ler'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: working
+                      ? null
+                      : () => _save('hardware_water_endpoint'),
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Salvar'),
+                ),
+              ],
+              ports: _waterSystemSensorPorts,
+              payload: lastPayload,
+              config: [
+                _SensorConfigCard(
+                  title: 'Conexão',
+                  icon: Icons.router_outlined,
+                  children: [
+                    _EndpointField(controller: endpoint, working: working),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+  );
+
+  Future<void> _read() async {
+    if (endpoint.text.trim().isEmpty) {
+      setState(() => status = 'Informe o endpoint/IP do ESP.');
+      return;
+    }
+    setState(() => working = true);
+    try {
+      final reading = await espClient.readWater(endpoint.text.trim());
+      final controller = ref.read(operationsControllerProvider);
+      await controller.saveSetting(
+        'hardware_water_endpoint',
+        endpoint.text.trim(),
+      );
+      await controller.saveSetting(
+        'hardware_water_last_level_percent',
+        decimal.format(reading.levelPercent),
+      );
+      await controller.saveSetting(
+        'hardware_water_last_temperature_c',
+        decimal.format(reading.temperatureC),
+      );
+      await controller.saveSetting(
+        'hardware_water_last_ph',
+        decimal.format(reading.ph),
+      );
+      await controller.saveSetting(
+        'hardware_water_last_tds_ppm',
+        decimal.format(reading.tdsPpm),
+      );
+      if (!mounted) return;
+      setState(() {
+        levelPercent = reading.levelPercent;
+        temperatureC = reading.temperatureC;
+        ph = reading.ph;
+        tdsPpm = reading.tdsPpm;
+        lastPayload = reading.payload;
+        status = reading.message;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => status = 'Falha na leitura do reservatório: $error');
+      }
+    } finally {
+      if (mounted) setState(() => working = false);
+    }
+  }
+
+  Future<void> _save(String key) async {
+    await ref
+        .read(operationsControllerProvider)
+        .saveSetting(key, endpoint.text.trim());
+  }
+}
+
+class WaterQualitySensorPage extends ConsumerStatefulWidget {
+  const WaterQualitySensorPage({super.key});
+
+  @override
+  ConsumerState<WaterQualitySensorPage> createState() =>
+      _WaterQualitySensorPageState();
+}
+
+class _WaterQualitySensorPageState
+    extends ConsumerState<WaterQualitySensorPage> {
+  final espClient = const HardwareEspClient();
+  final endpoint = TextEditingController();
+  bool initialized = false;
+  bool working = false;
+  double? ph;
+  double? tdsPpm;
+  String status = 'Aguardando leitura';
+  Map<String, Object?>? lastPayload;
+
+  @override
+  void dispose() {
+    endpoint.dispose();
+    super.dispose();
+  }
+
+  void _hydrate(List<AppSetting> settings) {
+    if (initialized) return;
+    initialized = true;
+    endpoint.text = _sensorEndpoint(
+      settings,
+      'hardware_water_quality_endpoint',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => AppShell(
+    title: 'Qualidade da água',
+    child: ref
+        .watch(appSettingsProvider)
+        .when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => const SeletoAsyncError(),
+          data: (settings) {
+            _hydrate(settings);
+            return _SensorPanel(
+              icon: Icons.science_outlined,
+              title: 'Parâmetros da água',
+              status: status,
+              children: [
+                _ReadingGrid(
+                  tiles: [
+                    _ReadingTile(
+                      icon: Icons.science_outlined,
+                      label: 'pH',
+                      value: ph == null ? 'Sem leitura' : decimal.format(ph!),
+                      active: ph != null,
+                    ),
+                    _ReadingTile(
+                      icon: Icons.blur_on_outlined,
+                      label: 'TDS',
+                      value: tdsPpm == null
+                          ? 'Sem leitura'
+                          : '${decimal.format(tdsPpm!)} ppm',
+                      active: tdsPpm != null,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _SensorActions(
+                  working: working,
+                  onRead: _read,
+                  onSave: () => _save('hardware_water_quality_endpoint'),
+                ),
+                const SizedBox(height: 10),
+                const _SensorPortMap(ports: _waterQualitySensorPorts),
+                const SizedBox(height: 10),
+                _SensorConfigCard(
+                  title: 'Conexão',
+                  icon: Icons.router_outlined,
+                  children: [
+                    _EndpointField(controller: endpoint, working: working),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _PayloadPanel(payload: lastPayload),
+              ],
+            );
+          },
+        ),
+  );
+
+  Future<void> _read() async {
+    if (endpoint.text.trim().isEmpty) {
+      setState(() => status = 'Informe o endpoint/IP do ESP.');
+      return;
+    }
+    setState(() => working = true);
+    try {
+      final reading = await espClient.readWater(endpoint.text.trim());
+      final controller = ref.read(operationsControllerProvider);
+      await controller.saveSetting(
+        'hardware_water_quality_endpoint',
+        endpoint.text.trim(),
+      );
+      await controller.saveSetting(
+        'hardware_water_last_ph',
+        decimal.format(reading.ph),
+      );
+      await controller.saveSetting(
+        'hardware_water_last_tds_ppm',
+        decimal.format(reading.tdsPpm),
+      );
+      if (!mounted) return;
+      setState(() {
+        ph = reading.ph;
+        tdsPpm = reading.tdsPpm;
+        lastPayload = reading.payload;
+        status = reading.message;
+      });
+    } catch (error) {
+      if (mounted) setState(() => status = 'Falha na leitura da água: $error');
+    } finally {
+      if (mounted) setState(() => working = false);
+    }
+  }
+
+  Future<void> _save(String key) async {
+    await ref
+        .read(operationsControllerProvider)
+        .saveSetting(key, endpoint.text.trim());
+  }
+}
+
+class _SensorMetric {
+  const _SensorMetric({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.active,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool active;
+}
+
+class _SensorExperience extends StatelessWidget {
+  const _SensorExperience({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.status,
+    required this.visual,
+    required this.metrics,
+    required this.actions,
+    required this.ports,
+    required this.config,
+    required this.payload,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String status;
+  final Widget visual;
+  final List<_SensorMetric> metrics;
+  final List<Widget> actions;
+  final List<_SensorPort> ports;
+  final List<Widget> config;
+  final Map<String, Object?>? payload;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final failed = status.toLowerCase().contains('falha');
+    final active = !failed && status != 'Aguardando leitura';
+    return Material(
+      color: colors.surface.withValues(alpha: .96),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                _TechIcon(icon: icon),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _SensorStatusPill(
+                  label: failed
+                      ? 'Falha'
+                      : active
+                      ? 'Online'
+                      : 'Pronto',
+                  icon: failed
+                      ? Icons.error_outline
+                      : active
+                      ? Icons.check_circle_outline
+                      : Icons.sensors_outlined,
+                  positive: active && !failed,
+                  warning: failed,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _SensorStatusStrip(status: status, failed: failed),
+            const SizedBox(height: 10),
+            visual,
+            const SizedBox(height: 10),
+            _MetricRail(metrics: metrics),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                for (final action in actions)
+                  IconTheme.merge(
+                    data: const IconThemeData(size: 18),
+                    child: action,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _SensorPortMap(ports: ports),
+            const SizedBox(height: 10),
+            ...config,
+            const SizedBox(height: 10),
+            _PayloadPanel(payload: payload),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TechIcon extends StatelessWidget {
+  const _TechIcon({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: colors.primary.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.primary.withValues(alpha: .22)),
+      ),
+      child: Icon(icon, color: colors.primary, size: 21),
+    );
+  }
+}
+
+class _MetricRail extends StatelessWidget {
+  const _MetricRail({required this.metrics});
+
+  final List<_SensorMetric> metrics;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final columns = box.maxWidth > 680 ? math.min(metrics.length, 4) : 2;
+      return GridView.builder(
+        itemCount: metrics.length,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: box.maxWidth > 420 ? 2.55 : 2.1,
+        ),
+        itemBuilder: (context, index) => _MetricTile(metric: metrics[index]),
+      );
+    },
+  );
+}
+
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({required this.metric});
+
+  final _SensorMetric metric;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = metric.active ? colors.primary : colors.onSurfaceVariant;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .32),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: metric.active
+              ? colors.primary.withValues(alpha: .36)
+              : colors.outlineVariant,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          children: [
+            Icon(metric.icon, size: 20, color: color),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    metric.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    metric.value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScaleInstrument extends StatelessWidget {
+  const _ScaleInstrument({
+    required this.weightText,
+    required this.rateText,
+    required this.active,
+    required this.working,
+  });
+
+  final String weightText;
+  final String rateText;
+  final bool active;
+  final bool working;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      height: 184,
+      decoration: _instrumentDecoration(colors),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _ScaleInstrumentPainter(
+                color: colors.primary,
+                outline: colors.outlineVariant,
+                active: active || working,
+              ),
+            ),
+          ),
+          Positioned(
+            left: 18,
+            right: 18,
+            top: 18,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: colors.surface.withValues(alpha: .86),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: colors.primary.withValues(alpha: .24),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.memory_outlined, size: 18, color: colors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'LOAD CELL / HX711',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    rateText,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: 22,
+            child: Text(
+              weightText,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                color: colors.primary,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EnvironmentHouseInstrument extends StatelessWidget {
+  const _EnvironmentHouseInstrument({
+    required this.temperatureC,
+    required this.humidityPercent,
+    required this.working,
+  });
+
+  final double? temperatureC;
+  final double? humidityPercent;
+  final bool working;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      height: 190,
+      decoration: _instrumentDecoration(colors),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _HouseClimatePainter(
+                color: colors.primary,
+                outline: colors.outlineVariant,
+                temperatureC: temperatureC,
+                humidityPercent: humidityPercent,
+                active:
+                    temperatureC != null || humidityPercent != null || working,
+              ),
+            ),
+          ),
+          Positioned(
+            left: 12,
+            top: 12,
+            child: _SceneBadge(
+              icon: Icons.device_thermostat_outlined,
+              label: temperatureC == null
+                  ? '-- °C'
+                  : '${decimal.format(temperatureC!)} °C',
+            ),
+          ),
+          Positioned(
+            right: 12,
+            top: 12,
+            child: _SceneBadge(
+              icon: Icons.water_drop_outlined,
+              label: humidityPercent == null
+                  ? '--%'
+                  : '${decimal.format(humidityPercent!)}%',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WaterReservoirInstrument extends StatelessWidget {
+  const _WaterReservoirInstrument({
+    required this.levelPercent,
+    required this.temperatureC,
+    required this.ph,
+    required this.tdsPpm,
+    required this.working,
+  });
+
+  final double? levelPercent;
+  final double? temperatureC;
+  final double? ph;
+  final double? tdsPpm;
+  final bool working;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final level = ((levelPercent ?? 0) / 100).clamp(0.0, 1.0);
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: level),
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.easeOutCubic,
+      builder: (context, animatedLevel, _) => Container(
+        height: 218,
+        decoration: _instrumentDecoration(colors),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _ReservoirPainter(
+                  level: animatedLevel,
+                  color: colors.primary,
+                  outline: colors.outlineVariant,
+                  active: levelPercent != null || working,
+                ),
+              ),
+            ),
+            Positioned(
+              left: 14,
+              top: 14,
+              child: _SceneBadge(
+                icon: Icons.water_outlined,
+                label: levelPercent == null
+                    ? '--%'
+                    : '${decimal.format(levelPercent!)}%',
+              ),
+            ),
+            Positioned(
+              right: 14,
+              top: 14,
+              child: _SceneBadge(
+                icon: Icons.science_outlined,
+                label: ph == null ? 'pH --' : 'pH ${decimal.format(ph!)}',
+              ),
+            ),
+            Positioned(
+              left: 14,
+              right: 14,
+              bottom: 12,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _SceneBadge(
+                      icon: Icons.device_thermostat_outlined,
+                      label: temperatureC == null
+                          ? '-- °C'
+                          : '${decimal.format(temperatureC!)} °C',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _SceneBadge(
+                      icon: Icons.blur_on_outlined,
+                      label: tdsPpm == null
+                          ? 'TDS --'
+                          : '${decimal.format(tdsPpm!)} ppm',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SceneBadge extends StatelessWidget {
+  const _SceneBadge({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: .88),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: colors.primary),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+BoxDecoration _instrumentDecoration(ColorScheme colors) => BoxDecoration(
+  color: colors.surfaceContainerHighest.withValues(alpha: .28),
+  borderRadius: BorderRadius.circular(8),
+  border: Border.all(color: colors.outlineVariant),
+);
+
+class _ScaleInstrumentPainter extends CustomPainter {
+  const _ScaleInstrumentPainter({
+    required this.color,
+    required this.outline,
+    required this.active,
+  });
+
+  final Color color;
+  final Color outline;
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = outline
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+    final glow = Paint()
+      ..color = color.withValues(alpha: active ? .18 : .08)
+      ..style = PaintingStyle.fill;
+    final platform = RRect.fromRectAndRadius(
+      Rect.fromLTWH(size.width * .18, size.height * .52, size.width * .64, 24),
+      const Radius.circular(8),
+    );
+    canvas.drawRRect(platform, glow);
+    canvas.drawRRect(platform, stroke);
+    final base = Path()
+      ..moveTo(size.width * .30, size.height * .66)
+      ..lineTo(size.width * .70, size.height * .66)
+      ..lineTo(size.width * .78, size.height * .88)
+      ..lineTo(size.width * .22, size.height * .88)
+      ..close();
+    canvas.drawPath(base, stroke);
+    for (var i = 0; i < 5; i++) {
+      final x = size.width * (.28 + i * .11);
+      canvas.drawLine(
+        Offset(x, size.height * .72),
+        Offset(x + size.width * .035, size.height * .82),
+        stroke,
+      );
+    }
+    canvas.drawCircle(
+      Offset(size.width * .5, size.height * .66),
+      active ? 4.5 : 3,
+      Paint()..color = color.withValues(alpha: active ? .75 : .35),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScaleInstrumentPainter oldDelegate) =>
+      oldDelegate.active != active ||
+      oldDelegate.color != color ||
+      oldDelegate.outline != outline;
+}
+
+class _HouseClimatePainter extends CustomPainter {
+  const _HouseClimatePainter({
+    required this.color,
+    required this.outline,
+    required this.temperatureC,
+    required this.humidityPercent,
+    required this.active,
+  });
+
+  final Color color;
+  final Color outline;
+  final double? temperatureC;
+  final double? humidityPercent;
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = outline
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final fill = Paint()
+      ..color = color.withValues(alpha: active ? .10 : .05)
+      ..style = PaintingStyle.fill;
+    final house = Path()
+      ..moveTo(size.width * .18, size.height * .58)
+      ..lineTo(size.width * .50, size.height * .26)
+      ..lineTo(size.width * .82, size.height * .58)
+      ..lineTo(size.width * .76, size.height * .58)
+      ..lineTo(size.width * .76, size.height * .82)
+      ..lineTo(size.width * .24, size.height * .82)
+      ..lineTo(size.width * .24, size.height * .58)
+      ..close();
+    canvas.drawPath(house, fill);
+    canvas.drawPath(house, stroke);
+    final temp = ((temperatureC ?? 25) - 15).clamp(0, 25) / 25;
+    final humidity = ((humidityPercent ?? 50).clamp(0, 100)) / 100;
+    final climate = Paint()
+      ..color = Color.lerp(
+        const Color(0xFF2DD4BF),
+        const Color(0xFFEF4444),
+        temp.toDouble(),
+      )!.withValues(alpha: .38)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(
+      Offset(size.width * .38, size.height * .62),
+      18 + 8 * temp.toDouble(),
+      climate,
+    );
+    final drop = Paint()
+      ..color = color.withValues(alpha: .24 + .30 * humidity.toDouble())
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(
+      Offset(size.width * .62, size.height * .62),
+      12 + 14 * humidity.toDouble(),
+      drop,
+    );
+    for (var i = 0; i < 4; i++) {
+      final y = size.height * (.40 + i * .10);
+      canvas.drawLine(
+        Offset(size.width * .18, y),
+        Offset(size.width * .10, y + 8),
+        stroke,
+      );
+      canvas.drawLine(
+        Offset(size.width * .82, y),
+        Offset(size.width * .90, y + 8),
+        stroke,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HouseClimatePainter oldDelegate) =>
+      oldDelegate.temperatureC != temperatureC ||
+      oldDelegate.humidityPercent != humidityPercent ||
+      oldDelegate.active != active ||
+      oldDelegate.color != color ||
+      oldDelegate.outline != outline;
+}
+
+class _ReservoirPainter extends CustomPainter {
+  const _ReservoirPainter({
+    required this.level,
+    required this.color,
+    required this.outline,
+    required this.active,
+  });
+
+  final double level;
+  final Color color;
+  final Color outline;
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final tankRect = Rect.fromLTWH(
+      size.width * .28,
+      size.height * .18,
+      size.width * .44,
+      size.height * .64,
+    );
+    final tank = RRect.fromRectAndRadius(tankRect, const Radius.circular(18));
+    final outlinePaint = Paint()
+      ..color = outline
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8;
+    canvas.drawRRect(tank, outlinePaint);
+    final waterHeight = tankRect.height * level;
+    final waterRect = Rect.fromLTWH(
+      tankRect.left + 4,
+      tankRect.bottom - waterHeight - 4,
+      tankRect.width - 8,
+      math.max(0, waterHeight),
+    );
+    final waterPaint = Paint()
+      ..color = color.withValues(alpha: active ? .58 : .28)
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(waterRect, const Radius.circular(14)),
+      waterPaint,
+    );
+    final wavePaint = Paint()
+      ..color = color.withValues(alpha: .80)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    if (waterHeight > 8) {
+      final y = waterRect.top + 6;
+      final wave = Path()..moveTo(waterRect.left + 8, y);
+      for (var x = waterRect.left + 8; x <= waterRect.right - 8; x += 10) {
+        wave.quadraticBezierTo(x + 5, y - 5, x + 10, y);
+      }
+      canvas.drawPath(wave, wavePaint);
+    }
+    final pipe = Paint()
+      ..color = outline
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    canvas.drawLine(
+      Offset(tankRect.right, tankRect.center.dy),
+      Offset(size.width * .88, tankRect.center.dy),
+      pipe,
+    );
+    canvas.drawCircle(
+      Offset(size.width * .88, tankRect.center.dy),
+      5,
+      Paint()..color = color.withValues(alpha: active ? .65 : .30),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ReservoirPainter oldDelegate) =>
+      oldDelegate.level != level ||
+      oldDelegate.active != active ||
+      oldDelegate.color != color ||
+      oldDelegate.outline != outline;
+}
+
+class _SensorPanel extends StatelessWidget {
+  const _SensorPanel({
+    required this.icon,
+    required this.title,
+    required this.status,
+    required this.children,
+  });
+
+  final IconData icon;
+  final String title;
+  final String status;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final failed = status.toLowerCase().contains('falha');
+    final active = !failed && status != 'Aguardando leitura';
+    return Material(
+      color: colors.surface.withValues(alpha: .95),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 22, color: colors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _SensorStatusPill(
+                  label: failed
+                      ? 'Falha'
+                      : active
+                      ? 'Lido'
+                      : 'Pronto',
+                  icon: failed
+                      ? Icons.error_outline
+                      : active
+                      ? Icons.check_circle_outline
+                      : Icons.sensors_outlined,
+                  positive: active && !failed,
+                  warning: failed,
+                ),
+              ],
+            ),
+            const SizedBox(height: 7),
+            _SensorStatusStrip(status: status, failed: failed),
+            const SizedBox(height: 10),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EndpointField extends StatelessWidget {
+  const _EndpointField({required this.controller, required this.working});
+
+  final TextEditingController controller;
+  final bool working;
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: controller,
+    enabled: !working,
+    decoration: const InputDecoration(
+      labelText: 'Endpoint/IP do ESP32',
+      prefixIcon: Icon(Icons.router_outlined),
+      isDense: true,
+    ),
+  );
+}
+
+class _SensorConfigCard extends StatelessWidget {
+  const _SensorConfigCard({
+    required this.title,
+    required this.icon,
+    required this.children,
+  });
+
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .22),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(9),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 17, color: colors.primary),
+                const SizedBox(width: 6),
+                Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SensorStatusPill extends StatelessWidget {
+  const _SensorStatusPill({
+    required this.label,
+    required this.icon,
+    required this.positive,
+    required this.warning,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool positive;
+  final bool warning;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = warning
+        ? colors.error
+        : positive
+        ? colors.primary
+        : colors.onSurfaceVariant;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: .20)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SensorStatusStrip extends StatelessWidget {
+  const _SensorStatusStrip({required this.status, required this.failed});
+
+  final String status;
+  final bool failed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = failed ? colors.error : colors.primary;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: .16)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              failed ? Icons.error_outline : Icons.info_outline,
+              size: 16,
+              color: color,
+            ),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                status,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: failed ? colors.error : colors.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SensorPort {
+  const _SensorPort(this.label, this.gpio, this.icon);
+
+  final String label;
+  final String gpio;
+  final IconData icon;
+}
+
+class _SensorPortMap extends StatelessWidget {
+  const _SensorPortMap({required this.ports});
+
+  final List<_SensorPort> ports;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.settings_input_component_outlined,
+              size: 17,
+              color: colors.primary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Portas do ESP32',
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+        const SizedBox(height: 7),
+        Wrap(
+          spacing: 7,
+          runSpacing: 7,
+          children: [for (final port in ports) _SensorPortChip(port: port)],
+        ),
+      ],
+    );
+  }
+}
+
+class _SensorPortChip extends StatelessWidget {
+  const _SensorPortChip({required this.port});
+
+  final _SensorPort port;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .38),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(port.icon, size: 15, color: colors.primary),
+          const SizedBox(width: 5),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 104),
+            child: Text(
+              port.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colors.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            port.gpio,
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SensorActions extends StatelessWidget {
+  const _SensorActions({
+    required this.working,
+    required this.onRead,
+    required this.onSave,
+  });
+
+  final bool working;
+  final VoidCallback onRead;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    alignment: WrapAlignment.end,
+    children: [
+      FilledButton.icon(
+        onPressed: working ? null : onRead,
+        icon: const Icon(Icons.sensors_outlined),
+        label: const Text('Ler'),
+        style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+      ),
+      OutlinedButton.icon(
+        onPressed: working ? null : onSave,
+        icon: const Icon(Icons.save_outlined),
+        label: const Text('Salvar'),
+        style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+      ),
+    ],
+  );
+}
+
+class _ReadingGrid extends StatelessWidget {
+  const _ReadingGrid({required this.tiles});
+
+  final List<_ReadingTile> tiles;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => GridView.count(
+      crossAxisCount: box.maxWidth > 680 ? 4 : 2,
+      childAspectRatio: box.maxWidth > 420 ? 2.45 : 2.02,
+      crossAxisSpacing: 8,
+      mainAxisSpacing: 8,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: tiles,
+    ),
+  );
+}
+
+class _ReadingTile extends StatelessWidget {
+  const _ReadingTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.active,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = active ? colors.primary : colors.onSurfaceVariant;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .46),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: active
+              ? colors.primary.withValues(alpha: .42)
+              : colors.outlineVariant,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          children: [
+            Icon(icon, size: 21, color: color),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PayloadPanel extends StatelessWidget {
+  const _PayloadPanel({required this.payload});
+
+  final Map<String, Object?>? payload;
+
+  @override
+  Widget build(BuildContext context) {
+    if (payload == null) return const SizedBox.shrink();
+    final colors = Theme.of(context).colorScheme;
+    const encoder = JsonEncoder.withIndent('  ');
+    return Material(
+      color: colors.surfaceContainerHighest.withValues(alpha: .24),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+        childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+        leading: Icon(
+          Icons.data_object_outlined,
+          size: 18,
+          color: colors.onSurfaceVariant,
+        ),
+        title: Text(
+          'Payload da última leitura',
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: colors.onSurfaceVariant,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SelectableText(
+              encoder.convert(payload),
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _setting(List<AppSetting> settings, String key) {
+  for (final setting in settings) {
+    if (setting.key == key) return setting.value.trim();
+  }
+  return '';
+}
+
+String _sensorEndpoint(List<AppSetting> settings, String preferredKey) {
+  final preferred = _setting(settings, preferredKey);
+  if (preferred.isNotEmpty) return preferred;
+  final scale = _setting(settings, 'hardware_scale_endpoint');
+  if (scale.isNotEmpty) return scale;
+  return _setting(settings, 'hardware_lighting_endpoint');
+}

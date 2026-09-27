@@ -30,6 +30,38 @@ class EspScaleReading {
   final Map<String, Object?> payload;
 }
 
+class EspEnvironmentReading {
+  const EspEnvironmentReading({
+    required this.airTemperatureC,
+    required this.airHumidityPercent,
+    required this.message,
+    required this.payload,
+  });
+
+  final double airTemperatureC;
+  final double airHumidityPercent;
+  final String message;
+  final Map<String, Object?> payload;
+}
+
+class EspWaterReading {
+  const EspWaterReading({
+    required this.levelPercent,
+    required this.temperatureC,
+    required this.ph,
+    required this.tdsPpm,
+    required this.message,
+    required this.payload,
+  });
+
+  final double levelPercent;
+  final double temperatureC;
+  final double ph;
+  final double tdsPpm;
+  final String message;
+  final Map<String, Object?> payload;
+}
+
 class EspRelayResult {
   const EspRelayResult({
     required this.channel,
@@ -157,6 +189,78 @@ class HardwareEspClient {
     );
   }
 
+  Future<EspEnvironmentReading> readEnvironment(String endpoint) async {
+    final normalized = _normalizeEndpoint(endpoint);
+    final payload = await _getJson('$normalized/api/environment');
+    final temperature = _doubleValue(payload['airTemperatureC']);
+    final humidity = _doubleValue(payload['airHumidityPercent']);
+    return EspEnvironmentReading(
+      airTemperatureC: temperature,
+      airHumidityPercent: humidity,
+      message:
+          'Ambiente: ${temperature.toStringAsFixed(1)} °C / ${humidity.toStringAsFixed(1)}%',
+      payload: payload,
+    );
+  }
+
+  Future<EspWaterReading> readWater(String endpoint) async {
+    final normalized = _normalizeEndpoint(endpoint);
+    final payload = await _getJson('$normalized/api/water');
+    final level = _doubleValue(payload['levelPercent']);
+    final temperature = _doubleValue(payload['temperatureC']);
+    final ph = _doubleValue(payload['ph']);
+    final tds = _doubleValue(payload['tdsPpm']);
+    return EspWaterReading(
+      levelPercent: level,
+      temperatureC: temperature,
+      ph: ph,
+      tdsPpm: tds,
+      message:
+          'Água: ${level.toStringAsFixed(0)}% / ${temperature.toStringAsFixed(1)} °C / pH ${ph.toStringAsFixed(2)} / ${tds.toStringAsFixed(0)} ppm',
+      payload: payload,
+    );
+  }
+
+  Future<Map<String, Object?>> readSensors(String endpoint) {
+    final normalized = _normalizeEndpoint(endpoint);
+    return _getJson('$normalized/api/sensors');
+  }
+
+  Future<Map<String, Object?>> tareScale(String endpoint) {
+    final normalized = _normalizeEndpoint(endpoint);
+    return _postForm('$normalized/api/scale/tare', const {});
+  }
+
+  Future<Map<String, Object?>> calibrateScale({
+    required String endpoint,
+    required double knownWeightKg,
+  }) {
+    final normalized = _normalizeEndpoint(endpoint);
+    return _postForm('$normalized/api/scale/calibrate', {
+      'knownWeightKg': knownWeightKg.toStringAsFixed(3),
+    });
+  }
+
+  Future<Map<String, Object?>> setScaleRate({
+    required String endpoint,
+    required int rateHz,
+  }) {
+    final normalized = _normalizeEndpoint(endpoint);
+    return _postForm('$normalized/api/scale/rate', {'rateHz': '$rateHz'});
+  }
+
+  Future<Map<String, Object?>> configureWifi({
+    required String endpoint,
+    required String ssid,
+    required String password,
+  }) {
+    final normalized = _normalizeEndpoint(endpoint);
+    return _postForm('$normalized/api/wifi', {
+      'ssid': ssid,
+      'password': password,
+    });
+  }
+
   Future<EspRelayResult> setRelay({
     required String endpoint,
     required int channel,
@@ -262,6 +366,11 @@ class HardwareEspClient {
           : 'Canal $channel confirmado pelo ESP: ${on ? 'ON' : 'OFF'}',
       payload: payload,
     );
+  }
+
+  double _doubleValue(Object? value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   Future<EspDeviceProbe?> _scanSubnet(

@@ -15,6 +15,7 @@ import '../../features/operations/presentation/pages/egg_stock_page.dart';
 import '../../features/operations/presentation/pages/feed_page.dart';
 import '../../features/operations/presentation/pages/finance_page.dart';
 import '../../features/operations/presentation/pages/hardware_integrations_page.dart';
+import '../../features/operations/presentation/pages/hardware_sensor_pages.dart';
 import '../../features/operations/presentation/pages/movements_page.dart';
 import '../../features/operations/presentation/pages/reports_page.dart';
 import '../../features/operations/presentation/pages/settings_page.dart';
@@ -65,6 +66,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/integrations',
         builder: (_, _) => const HardwareIntegrationsPage(),
+      ),
+      GoRoute(
+        path: '/hardware-scale',
+        builder: (_, _) => const ScaleSensorPage(),
+      ),
+      GoRoute(
+        path: '/hardware-environment',
+        builder: (_, _) => const EnvironmentSensorPage(),
+      ),
+      GoRoute(
+        path: '/hardware-water',
+        builder: (_, _) => const WaterReservoirSensorPage(),
+      ),
+      GoRoute(
+        path: '/hardware-water-quality',
+        builder: (_, _) => const WaterReservoirSensorPage(),
       ),
       GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
       GoRoute(path: '/audit', builder: (_, _) => const AuditPage()),

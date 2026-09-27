@@ -155,6 +155,36 @@ const _destinationSections = <_DestinationSection>[
       'calendar.view',
     ),
   ]),
+  _DestinationSection('SENSORES', [
+    _DestinationItem(
+      Icons.lightbulb_outline,
+      Icons.lightbulb,
+      'Iluminação',
+      '/integrations',
+      'settings.view',
+    ),
+    _DestinationItem(
+      Icons.scale_outlined,
+      Icons.scale,
+      'Balança',
+      '/hardware-scale',
+      'settings.view',
+    ),
+    _DestinationItem(
+      Icons.thermostat_outlined,
+      Icons.thermostat,
+      'Ambiente',
+      '/hardware-environment',
+      'settings.view',
+    ),
+    _DestinationItem(
+      Icons.water_outlined,
+      Icons.water,
+      'Água',
+      '/hardware-water',
+      'settings.view',
+    ),
+  ]),
   _DestinationSection('COMERCIAL', [
     _DestinationItem(
       Icons.storefront_outlined,
@@ -196,13 +226,6 @@ const _destinationSections = <_DestinationSection>[
       'Usuários',
       '/users',
       'users.view',
-    ),
-    _DestinationItem(
-      Icons.settings_input_antenna_outlined,
-      Icons.settings_input_antenna,
-      'Integrações',
-      '/integrations',
-      'settings.view',
     ),
     _DestinationItem(
       Icons.settings_outlined,
@@ -260,6 +283,10 @@ String _backgroundForPath(String path) {
   if (path == '/alerts') return 'assets/images/backgrounds/bg_management.png';
   if (path == '/users' ||
       path == '/integrations' ||
+      path == '/hardware-scale' ||
+      path == '/hardware-environment' ||
+      path == '/hardware-water' ||
+      path == '/hardware-water-quality' ||
       path == '/settings' ||
       path == '/audit') {
     return 'assets/images/backgrounds/bg_management.png';

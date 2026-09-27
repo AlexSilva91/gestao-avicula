@@ -24,6 +24,38 @@ class EspScaleReading {
   final Map<String, Object?> payload;
 }
 
+class EspEnvironmentReading {
+  const EspEnvironmentReading({
+    required this.airTemperatureC,
+    required this.airHumidityPercent,
+    required this.message,
+    required this.payload,
+  });
+
+  final double airTemperatureC;
+  final double airHumidityPercent;
+  final String message;
+  final Map<String, Object?> payload;
+}
+
+class EspWaterReading {
+  const EspWaterReading({
+    required this.levelPercent,
+    required this.temperatureC,
+    required this.ph,
+    required this.tdsPpm,
+    required this.message,
+    required this.payload,
+  });
+
+  final double levelPercent;
+  final double temperatureC;
+  final double ph;
+  final double tdsPpm;
+  final String message;
+  final Map<String, Object?> payload;
+}
+
 class EspRelayResult {
   const EspRelayResult({
     required this.channel,
@@ -83,6 +115,56 @@ class HardwareEspClient {
   Future<EspScaleReading> readScale(String endpoint) async {
     throw UnsupportedError(
       'Leitura direta do ESP indisponivel nesta plataforma.',
+    );
+  }
+
+  Future<EspEnvironmentReading> readEnvironment(String endpoint) async {
+    throw UnsupportedError(
+      'Leitura direta do ESP indisponivel nesta plataforma.',
+    );
+  }
+
+  Future<EspWaterReading> readWater(String endpoint) async {
+    throw UnsupportedError(
+      'Leitura direta do ESP indisponivel nesta plataforma.',
+    );
+  }
+
+  Future<Map<String, Object?>> readSensors(String endpoint) async {
+    throw UnsupportedError(
+      'Leitura direta do ESP indisponivel nesta plataforma.',
+    );
+  }
+
+  Future<Map<String, Object?>> tareScale(String endpoint) async {
+    throw UnsupportedError('Tara direta do ESP indisponivel nesta plataforma.');
+  }
+
+  Future<Map<String, Object?>> calibrateScale({
+    required String endpoint,
+    required double knownWeightKg,
+  }) async {
+    throw UnsupportedError(
+      'Calibracao direta do ESP indisponivel nesta plataforma.',
+    );
+  }
+
+  Future<Map<String, Object?>> setScaleRate({
+    required String endpoint,
+    required int rateHz,
+  }) async {
+    throw UnsupportedError(
+      'Configuracao direta do ESP indisponivel nesta plataforma.',
+    );
+  }
+
+  Future<Map<String, Object?>> configureWifi({
+    required String endpoint,
+    required String ssid,
+    required String password,
+  }) async {
+    throw UnsupportedError(
+      'Configuracao de Wi-Fi do ESP indisponivel nesta plataforma.',
     );
   }
 
