@@ -164,13 +164,6 @@ const _destinationSections = <_DestinationSection>[
       'settings.view',
     ),
     _DestinationItem(
-      Icons.scale_outlined,
-      Icons.scale,
-      'Balança',
-      '/hardware-scale',
-      'settings.view',
-    ),
-    _DestinationItem(
       Icons.thermostat_outlined,
       Icons.thermostat,
       'Ambiente',
@@ -297,7 +290,6 @@ String _backgroundForPath(String path) {
   if (path == '/alerts') return 'assets/images/backgrounds/bg_management.png';
   if (path == '/users' ||
       path == '/integrations' ||
-      path == '/hardware-scale' ||
       path == '/hardware-environment' ||
       path == '/hardware-water' ||
       path == '/hardware-water-quality' ||

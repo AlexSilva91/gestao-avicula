@@ -69,10 +69,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, _) => const HardwareIntegrationsPage(),
       ),
       GoRoute(
-        path: '/hardware-scale',
-        builder: (_, _) => const ScaleSensorPage(),
-      ),
-      GoRoute(
         path: '/hardware-environment',
         builder: (_, _) => const EnvironmentSensorPage(),
       ),

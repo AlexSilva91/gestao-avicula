@@ -16,14 +16,6 @@ const _ventilationChannelCount = 8;
 const _ventilationRelayOffset = 4;
 const _ventilationDefaultPins = ['18', '5', '17', '16', '4', '25', '2', '15'];
 
-const _scaleSensorPorts = [
-  _SensorPort('HX711 DT', 'GPIO32', Icons.input_outlined),
-  _SensorPort('HX711 SCK', 'GPIO33', Icons.sync_alt_outlined),
-  _SensorPort('Botão tara', 'GPIO13', Icons.exposure_zero_outlined),
-  _SensorPort('Botão calibrar', 'GPIO14', Icons.tune_outlined),
-  _SensorPort('Botão taxa', 'GPIO26', Icons.speed_outlined),
-];
-
 const _environmentSensorPorts = [
   _SensorPort('DHT22 dados', 'GPIO27', Icons.device_thermostat_outlined),
 ];
@@ -53,261 +45,6 @@ const _ventilationSensorPorts = [
   _SensorPort('Ventilação 7', 'GPIO2', Icons.air_outlined),
   _SensorPort('Ventilação 8', 'GPIO15', Icons.air_outlined),
 ];
-
-class ScaleSensorPage extends ConsumerStatefulWidget {
-  const ScaleSensorPage({super.key});
-
-  @override
-  ConsumerState<ScaleSensorPage> createState() => _ScaleSensorPageState();
-}
-
-class _ScaleSensorPageState extends ConsumerState<ScaleSensorPage> {
-  final espClient = const HardwareEspClient();
-  final endpoint = TextEditingController();
-  final knownWeight = TextEditingController(text: '1,000');
-  bool initialized = false;
-  bool working = false;
-  int rateHz = 10;
-  double? weightKg;
-  String status = 'Aguardando leitura';
-  Map<String, Object?>? lastPayload;
-
-  @override
-  void dispose() {
-    endpoint.dispose();
-    knownWeight.dispose();
-    super.dispose();
-  }
-
-  void _hydrate(List<AppSetting> settings) {
-    if (initialized) return;
-    initialized = true;
-    endpoint.text = _sensorEndpoint(settings, 'hardware_scale_endpoint');
-    rateHz = int.tryParse(_setting(settings, 'hardware_scale_rate_hz')) ?? 10;
-  }
-
-  @override
-  Widget build(BuildContext context) => AppShell(
-    title: 'Balança',
-    child: ref
-        .watch(appSettingsProvider)
-        .when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, _) => const SeletoAsyncError(),
-          data: (settings) {
-            _hydrate(settings);
-            return _SensorExperience(
-              icon: Icons.scale_outlined,
-              title: 'Balança inteligente',
-              subtitle: 'HX711 + célula de carga',
-              status: status,
-              visual: _ScaleInstrument(
-                weightText: weightKg == null ? '--,-- kg' : kg(weightKg!),
-                rateText: '$rateHz Hz',
-                active: weightKg != null,
-                working: working,
-              ),
-              metrics: [
-                _SensorMetric(
-                  icon: Icons.monitor_weight_outlined,
-                  label: 'Peso',
-                  value: weightKg == null ? 'Sem leitura' : kg(weightKg!),
-                  active: weightKg != null,
-                ),
-                _SensorMetric(
-                  icon: Icons.speed_outlined,
-                  label: 'Taxa',
-                  value: '$rateHz Hz',
-                  active: true,
-                ),
-              ],
-              actions: [
-                FilledButton.icon(
-                  onPressed: working ? null : _readScale,
-                  icon: const Icon(Icons.sensors_outlined),
-                  label: const Text('Ler'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: working ? null : _tareScale,
-                  icon: const Icon(Icons.exposure_zero_outlined),
-                  label: const Text('Tara'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: working ? null : _calibrateScale,
-                  icon: const Icon(Icons.tune_outlined),
-                  label: const Text('Calibrar'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: working ? null : _save,
-                  icon: const Icon(Icons.save_outlined),
-                  label: const Text('Salvar'),
-                ),
-              ],
-              ports: _scaleSensorPorts,
-              payload: lastPayload,
-              config: [
-                _SensorConfigCard(
-                  title: 'Conexão e calibração',
-                  icon: Icons.tune_outlined,
-                  children: [
-                    _EndpointField(controller: endpoint, working: working),
-                    const SizedBox(height: 8),
-                    LayoutBuilder(
-                      builder: (context, box) => box.maxWidth > 620
-                          ? Row(
-                              children: [
-                                Expanded(child: _knownWeightField()),
-                                const SizedBox(width: 8),
-                                Expanded(child: _rateControl()),
-                              ],
-                            )
-                          : Column(
-                              children: [
-                                _knownWeightField(),
-                                const SizedBox(height: 8),
-                                _rateControl(),
-                              ],
-                            ),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
-  );
-
-  Widget _knownWeightField() => TextField(
-    controller: knownWeight,
-    enabled: !working,
-    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-    decoration: const InputDecoration(
-      labelText: 'Peso conhecido',
-      suffixText: 'kg',
-      prefixIcon: Icon(Icons.fitness_center_outlined),
-      isDense: true,
-    ),
-  );
-
-  Widget _rateControl() => SegmentedButton<int>(
-    showSelectedIcon: false,
-    segments: const [
-      ButtonSegment(
-        value: 10,
-        icon: Icon(Icons.speed_outlined),
-        label: Text('10 Hz'),
-      ),
-      ButtonSegment(
-        value: 80,
-        icon: Icon(Icons.flash_on_outlined),
-        label: Text('80 Hz'),
-      ),
-    ],
-    selected: {rateHz},
-    onSelectionChanged: working
-        ? null
-        : (value) => setState(() => rateHz = value.first),
-  );
-
-  Future<void> _save() async {
-    setState(() => working = true);
-    try {
-      final controller = ref.read(operationsControllerProvider);
-      await controller.saveSetting('hardware_scale_enabled', 'true');
-      await controller.saveSetting('hardware_scale_connection', 'WIFI');
-      await controller.saveSetting(
-        'hardware_scale_endpoint',
-        endpoint.text.trim(),
-      );
-      await controller.saveSetting('hardware_scale_rate_hz', '$rateHz');
-      if (mounted) setState(() => status = 'Configuração da balança salva.');
-    } catch (error) {
-      if (mounted) await showOperationError(context, error);
-    } finally {
-      if (mounted) setState(() => working = false);
-    }
-  }
-
-  Future<void> _readScale() async {
-    if (!_hasEndpoint()) return;
-    setState(() => working = true);
-    try {
-      final reading = await espClient.readScale(endpoint.text.trim());
-      await ref
-          .read(operationsControllerProvider)
-          .saveSetting(
-            'hardware_scale_last_weight_kg',
-            decimal.format(reading.weightKg),
-          );
-      if (!mounted) return;
-      setState(() {
-        weightKg = reading.weightKg;
-        lastPayload = reading.payload;
-        status = reading.message;
-      });
-    } catch (error) {
-      if (mounted) {
-        setState(() => status = 'Falha na leitura da balança: $error');
-      }
-    } finally {
-      if (mounted) setState(() => working = false);
-    }
-  }
-
-  Future<void> _tareScale() async {
-    if (!_hasEndpoint()) return;
-    setState(() => working = true);
-    try {
-      final payload = await espClient.tareScale(endpoint.text.trim());
-      if (!mounted) return;
-      setState(() {
-        weightKg = 0;
-        lastPayload = payload;
-        status = 'Tara confirmada pelo ESP.';
-      });
-    } catch (error) {
-      if (mounted) setState(() => status = 'Falha ao aplicar tara: $error');
-    } finally {
-      if (mounted) setState(() => working = false);
-    }
-  }
-
-  Future<void> _calibrateScale() async {
-    if (!_hasEndpoint()) return;
-    final known = parseDecimal(knownWeight.text);
-    if (known <= 0) {
-      setState(() => status = 'Informe um peso conhecido maior que zero.');
-      return;
-    }
-    setState(() => working = true);
-    try {
-      final ratePayload = await espClient.setScaleRate(
-        endpoint: endpoint.text.trim(),
-        rateHz: rateHz,
-      );
-      final calibrationPayload = await espClient.calibrateScale(
-        endpoint: endpoint.text.trim(),
-        knownWeightKg: known,
-      );
-      await _save();
-      if (!mounted) return;
-      setState(() {
-        lastPayload = {'rate': ratePayload, 'calibration': calibrationPayload};
-        status = 'Calibração salva para ${kg(known)}.';
-      });
-    } catch (error) {
-      if (mounted) setState(() => status = 'Falha na calibração: $error');
-    } finally {
-      if (mounted) setState(() => working = false);
-    }
-  }
-
-  bool _hasEndpoint() {
-    if (endpoint.text.trim().isNotEmpty) return true;
-    setState(() => status = 'Informe o endpoint/IP do ESP.');
-    return false;
-  }
-}
 
 class EnvironmentSensorPage extends ConsumerStatefulWidget {
   const EnvironmentSensorPage({super.key});
@@ -854,6 +591,7 @@ class _VentilationSensorPageState extends ConsumerState<VentilationSensorPage> {
               visual: _VentilationInstrument(
                 enabled: ventilationEnabled,
                 onCount: onCount,
+                channelOn: channelOn,
                 channels: _ventilationChannelCount,
               ),
               metrics: [
@@ -1154,22 +892,7 @@ class _VentilationSensorPageState extends ConsumerState<VentilationSensorPage> {
   }
 
   String? _validatePins() {
-    const reservedPins = {
-      '23',
-      '22',
-      '21',
-      '19',
-      '32',
-      '33',
-      '13',
-      '14',
-      '26',
-      '27',
-      '34',
-      '35',
-      '36',
-      '39',
-    };
+    const reservedPins = {'23', '22', '21', '19', '27', '34', '35', '36', '39'};
     final used = <String>{};
     for (var i = 0; i < _ventilationChannelCount; i++) {
       if (!channelEnabled[i]) continue;
@@ -1259,11 +982,13 @@ class _VentilationInstrument extends StatelessWidget {
   const _VentilationInstrument({
     required this.enabled,
     required this.onCount,
+    required this.channelOn,
     required this.channels,
   });
 
   final bool enabled;
   final int onCount;
+  final List<bool> channelOn;
   final int channels;
 
   @override
@@ -1300,7 +1025,7 @@ class _VentilationInstrument extends StatelessWidget {
                     for (var i = 0; i < channels; i++)
                       _AnimatedFan(
                         size: fanSize,
-                        active: active && i < onCount.clamp(0, channels),
+                        active: active && i < channelOn.length && channelOn[i],
                         label: '${i + 1}',
                       ),
                   ],
@@ -1909,92 +1634,6 @@ class _MetricTile extends StatelessWidget {
   }
 }
 
-class _ScaleInstrument extends StatelessWidget {
-  const _ScaleInstrument({
-    required this.weightText,
-    required this.rateText,
-    required this.active,
-    required this.working,
-  });
-
-  final String weightText;
-  final String rateText;
-  final bool active;
-  final bool working;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      height: 184,
-      decoration: _instrumentDecoration(colors),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _ScaleInstrumentPainter(
-                color: colors.primary,
-                outline: colors.outlineVariant,
-                active: active || working,
-              ),
-            ),
-          ),
-          Positioned(
-            left: 18,
-            right: 18,
-            top: 18,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: colors.surface.withValues(alpha: .86),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: colors.primary.withValues(alpha: .24),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.memory_outlined, size: 18, color: colors.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'LOAD CELL / HX711',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: colors.onSurfaceVariant,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    rateText,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            left: 24,
-            right: 24,
-            bottom: 22,
-            child: Text(
-              weightText,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                color: colors.primary,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _EnvironmentHouseInstrument extends StatelessWidget {
   const _EnvironmentHouseInstrument({
     required this.temperatureC,
@@ -2181,61 +1820,6 @@ BoxDecoration _instrumentDecoration(ColorScheme colors) => BoxDecoration(
   borderRadius: BorderRadius.circular(8),
   border: Border.all(color: colors.outlineVariant),
 );
-
-class _ScaleInstrumentPainter extends CustomPainter {
-  const _ScaleInstrumentPainter({
-    required this.color,
-    required this.outline,
-    required this.active,
-  });
-
-  final Color color;
-  final Color outline;
-  final bool active;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final stroke = Paint()
-      ..color = outline
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4;
-    final glow = Paint()
-      ..color = color.withValues(alpha: active ? .18 : .08)
-      ..style = PaintingStyle.fill;
-    final platform = RRect.fromRectAndRadius(
-      Rect.fromLTWH(size.width * .18, size.height * .52, size.width * .64, 24),
-      const Radius.circular(8),
-    );
-    canvas.drawRRect(platform, glow);
-    canvas.drawRRect(platform, stroke);
-    final base = Path()
-      ..moveTo(size.width * .30, size.height * .66)
-      ..lineTo(size.width * .70, size.height * .66)
-      ..lineTo(size.width * .78, size.height * .88)
-      ..lineTo(size.width * .22, size.height * .88)
-      ..close();
-    canvas.drawPath(base, stroke);
-    for (var i = 0; i < 5; i++) {
-      final x = size.width * (.28 + i * .11);
-      canvas.drawLine(
-        Offset(x, size.height * .72),
-        Offset(x + size.width * .035, size.height * .82),
-        stroke,
-      );
-    }
-    canvas.drawCircle(
-      Offset(size.width * .5, size.height * .66),
-      active ? 4.5 : 3,
-      Paint()..color = color.withValues(alpha: active ? .75 : .35),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _ScaleInstrumentPainter oldDelegate) =>
-      oldDelegate.active != active ||
-      oldDelegate.color != color ||
-      oldDelegate.outline != outline;
-}
 
 class _HouseClimatePainter extends CustomPainter {
   const _HouseClimatePainter({
@@ -2887,7 +2471,5 @@ String _setting(List<AppSetting> settings, String key) {
 String _sensorEndpoint(List<AppSetting> settings, String preferredKey) {
   final preferred = _setting(settings, preferredKey);
   if (preferred.isNotEmpty) return preferred;
-  final scale = _setting(settings, 'hardware_scale_endpoint');
-  if (scale.isNotEmpty) return scale;
   return _setting(settings, 'hardware_lighting_endpoint');
 }

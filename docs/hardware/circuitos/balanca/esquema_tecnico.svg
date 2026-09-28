@@ -61,27 +61,27 @@
   <text class="t" x="864" y="548">em placa combinadora, ou complete a ponte conforme o datasheet.</text>
 
   <rect class="card" x="54" y="660" width="1492" height="250" rx="16"/>
-  <text class="h" x="84" y="700">Botoes fisicos da balanca</text>
-  <text class="t" x="84" y="730">Cada botao liga o GPIO ao GND. O firmware usa INPUT_PULLUP interno.</text>
+  <text class="h" x="84" y="700">Controle da balanca pelo app</text>
+  <text class="t" x="84" y="730">Tara, calibracao e taxa sao comandos enviados pelo app ao ESP32.</text>
 
   <g transform="translate(90 770)">
     <rect class="btn" x="0" y="0" width="260" height="82" rx="16"/>
     <text class="pin" x="26" y="34">TARA</text>
-    <text class="t" x="26" y="60">GPIO13 -> botao -> GND</text>
+    <text class="t" x="26" y="60">POST /api/scale/tare</text>
     <path class="wire green" d="M260 40H390"/>
     <path class="wire black" d="M390 40V84"/>
   </g>
   <g transform="translate(500 770)">
     <rect class="btn" x="0" y="0" width="300" height="82" rx="16"/>
     <text class="pin" x="26" y="34">CALIBRACAO</text>
-    <text class="t" x="26" y="60">GPIO14 -> botao -> GND</text>
+    <text class="t" x="26" y="60">POST /api/scale/calibrate</text>
     <path class="wire green" d="M300 40H430"/>
     <path class="wire black" d="M430 40V84"/>
   </g>
   <g transform="translate(958 770)">
     <rect class="btn" x="0" y="0" width="300" height="82" rx="16"/>
     <text class="pin" x="26" y="34">TAXA 10/80 Hz</text>
-    <text class="t" x="26" y="60">GPIO26 -> botao -> GND</text>
+    <text class="t" x="26" y="60">POST /api/scale/rate</text>
     <path class="wire green" d="M300 40H430"/>
     <path class="wire black" d="M430 40V84"/>
   </g>
@@ -89,4 +89,3 @@
   <rect class="ok" x="84" y="930" width="1430" height="42" rx="10"/>
   <text class="t" x="104" y="957">No app: Sensores > Balanca. Endpoint do ESP e leitura em tempo real usam /api/scale.</text>
 </svg>
-

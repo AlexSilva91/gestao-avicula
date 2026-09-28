@@ -18,18 +18,6 @@ class EspDeviceProbe {
   final Map<String, Object?> payload;
 }
 
-class EspScaleReading {
-  const EspScaleReading({
-    required this.weightKg,
-    required this.message,
-    required this.payload,
-  });
-
-  final double weightKg;
-  final String message;
-  final Map<String, Object?> payload;
-}
-
 class EspEnvironmentReading {
   const EspEnvironmentReading({
     required this.airTemperatureC,
@@ -104,7 +92,7 @@ class HardwareEspClient {
   const HardwareEspClient();
 
   static const _probeTimeout = Duration(milliseconds: 850);
-  static const _requestTimeout = Duration(seconds: 3);
+  static const _requestTimeout = Duration(seconds: 8);
   static const _knownSetupEndpoint = 'http://192.168.4.1';
   static const _networkChannel = MethodChannel('seleto/network');
 
@@ -175,20 +163,6 @@ class HardwareEspClient {
     );
   }
 
-  Future<EspScaleReading> readScale(String endpoint) async {
-    final normalized = _normalizeEndpoint(endpoint);
-    final payload = await _getJson('$normalized/api/scale');
-    final rawWeight = payload['weightKg'];
-    final weight = rawWeight is num
-        ? rawWeight.toDouble()
-        : double.tryParse(rawWeight?.toString() ?? '') ?? 0;
-    return EspScaleReading(
-      weightKg: weight,
-      message: 'Leitura recebida do ESP: ${weight.toStringAsFixed(3)} kg',
-      payload: payload,
-    );
-  }
-
   Future<EspEnvironmentReading> readEnvironment(String endpoint) async {
     final normalized = _normalizeEndpoint(endpoint);
     final payload = await _getJson('$normalized/api/environment');
@@ -224,29 +198,6 @@ class HardwareEspClient {
   Future<Map<String, Object?>> readSensors(String endpoint) {
     final normalized = _normalizeEndpoint(endpoint);
     return _getJson('$normalized/api/sensors');
-  }
-
-  Future<Map<String, Object?>> tareScale(String endpoint) {
-    final normalized = _normalizeEndpoint(endpoint);
-    return _postForm('$normalized/api/scale/tare', const {});
-  }
-
-  Future<Map<String, Object?>> calibrateScale({
-    required String endpoint,
-    required double knownWeightKg,
-  }) {
-    final normalized = _normalizeEndpoint(endpoint);
-    return _postForm('$normalized/api/scale/calibrate', {
-      'knownWeightKg': knownWeightKg.toStringAsFixed(3),
-    });
-  }
-
-  Future<Map<String, Object?>> setScaleRate({
-    required String endpoint,
-    required int rateHz,
-  }) {
-    final normalized = _normalizeEndpoint(endpoint);
-    return _postForm('$normalized/api/scale/rate', {'rateHz': '$rateHz'});
   }
 
   Future<Map<String, Object?>> configureWifi({
@@ -426,6 +377,9 @@ class HardwareEspClient {
   }
 
   Future<Map<String, Object?>> _getJson(String url) async {
+    if (Platform.isAndroid && _isLocalEndpoint(url)) {
+      return _rawHttpJson(method: 'GET', url: url);
+    }
     final client = HttpClient();
     final boundToWifi = await _bindWifiIfLocalEndpoint(url);
     client.connectionTimeout = _requestTimeout;
@@ -445,6 +399,21 @@ class HardwareEspClient {
     String url,
     Map<String, String> fields,
   ) async {
+    if (Platform.isAndroid && _isLocalEndpoint(url)) {
+      final body = fields.entries
+          .map(
+            (entry) =>
+                '${Uri.encodeQueryComponent(entry.key)}='
+                '${Uri.encodeQueryComponent(entry.value)}',
+          )
+          .join('&');
+      return _rawHttpJson(
+        method: 'POST',
+        url: url,
+        body: body,
+        contentType: 'application/x-www-form-urlencoded; charset=utf-8',
+      );
+    }
     final client = HttpClient();
     final boundToWifi = await _bindWifiIfLocalEndpoint(url);
     client.connectionTimeout = _requestTimeout;
@@ -487,6 +456,68 @@ class HardwareEspClient {
       throw const FormatException('Resposta do ESP nao veio em JSON.');
     }
     return decoded;
+  }
+
+  Future<Map<String, Object?>> _rawHttpJson({
+    required String method,
+    required String url,
+    String body = '',
+    String contentType = 'application/json',
+  }) async {
+    final uri = Uri.parse(url);
+    final port = uri.hasPort ? uri.port : 80;
+    final basePath = uri.path.isEmpty ? '/' : uri.path;
+    final path = uri.hasQuery && uri.query.isNotEmpty
+        ? '$basePath?${uri.query}'
+        : basePath;
+    final boundToWifi = await _bindWifiIfLocalEndpoint(url);
+    Socket? socket;
+    try {
+      socket = await Socket.connect(uri.host, port, timeout: _requestTimeout);
+      final bodyBytes = utf8.encode(body);
+      final request = StringBuffer()
+        ..write('$method $path HTTP/1.0\r\n')
+        ..write('Host: ${uri.host}\r\n')
+        ..write('Connection: close\r\n')
+        ..write('Accept: application/json\r\n');
+      if (method == 'POST') {
+        request
+          ..write('Content-Type: $contentType\r\n')
+          ..write('Content-Length: ${bodyBytes.length}\r\n');
+      }
+      request.write('\r\n');
+      socket.add(utf8.encode(request.toString()));
+      if (bodyBytes.isNotEmpty) socket.add(bodyBytes);
+      await socket.flush().timeout(_requestTimeout);
+
+      final responseBytes = <int>[];
+      await for (final chunk in socket.timeout(_requestTimeout)) {
+        responseBytes.addAll(chunk);
+      }
+      final response = utf8.decode(responseBytes);
+      final splitIndex = response.indexOf('\r\n\r\n');
+      if (splitIndex < 0) {
+        throw const FormatException('Resposta HTTP do ESP incompleta.');
+      }
+      final header = response.substring(0, splitIndex);
+      final responseBody = response.substring(splitIndex + 4);
+      final statusLine = header.split('\r\n').first;
+      final statusParts = statusLine.split(' ');
+      final statusCode = statusParts.length > 1
+          ? int.tryParse(statusParts[1]) ?? 0
+          : 0;
+      if (statusCode < 200 || statusCode >= 300) {
+        throw HttpException('ESP respondeu $statusCode: $responseBody');
+      }
+      final decoded = jsonDecode(responseBody);
+      if (decoded is! Map<String, Object?>) {
+        throw const FormatException('Resposta do ESP nao veio em JSON.');
+      }
+      return decoded;
+    } finally {
+      socket?.destroy();
+      if (boundToWifi) await _clearNetworkBinding();
+    }
   }
 
   String _normalizeEndpoint(String endpoint) {

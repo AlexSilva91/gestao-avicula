@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/app_database.dart';
-import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
 import '../../application/hardware_esp_client.dart';
@@ -13,12 +12,6 @@ import '../../application/operations_controller.dart';
 
 class HardwareIntegrationSettings {
   const HardwareIntegrationSettings({
-    required this.scaleEnabled,
-    required this.scaleConnection,
-    required this.scaleMode,
-    required this.scaleDevice,
-    required this.scaleEndpoint,
-    required this.scaleLastWeightKg,
     required this.lightingEnabled,
     required this.lightingConnection,
     required this.lightingEndpoint,
@@ -26,12 +19,6 @@ class HardwareIntegrationSettings {
     required this.lightingChannels,
   });
 
-  final bool scaleEnabled;
-  final String scaleConnection;
-  final String scaleMode;
-  final String scaleDevice;
-  final String scaleEndpoint;
-  final double scaleLastWeightKg;
   final bool lightingEnabled;
   final String lightingConnection;
   final String lightingEndpoint;
@@ -40,28 +27,11 @@ class HardwareIntegrationSettings {
 
   factory HardwareIntegrationSettings.fromSettings(List<AppSetting> settings) {
     final values = {for (final setting in settings) setting.key: setting.value};
-    final scaleConnection = values['hardware_scale_connection'] == 'BLUETOOTH'
-        ? 'BLUETOOTH'
-        : 'WIFI';
-    final scaleMode = switch (values['hardware_scale_mode']) {
-      'INGREDIENT_PURCHASE' ||
-      'FEEDING' ||
-      'BOTH' => values['hardware_scale_mode']!,
-      _ => 'BOTH',
-    };
     final lightingConnection =
         values['hardware_lighting_connection'] == 'BLUETOOTH'
         ? 'BLUETOOTH'
         : 'WIFI';
     return HardwareIntegrationSettings(
-      scaleEnabled: values['hardware_scale_enabled'] == 'true',
-      scaleConnection: scaleConnection,
-      scaleMode: scaleMode,
-      scaleDevice: values['hardware_scale_device']?.trim() ?? '',
-      scaleEndpoint: values['hardware_scale_endpoint']?.trim() ?? '',
-      scaleLastWeightKg: parseDecimal(
-        values['hardware_scale_last_weight_kg'] ?? '',
-      ),
       lightingEnabled: values['hardware_lighting_enabled'] == 'true',
       lightingConnection: lightingConnection,
       lightingEndpoint: values['hardware_lighting_endpoint']?.trim() ?? '',
@@ -88,11 +58,7 @@ class HardwareIntegrationSettings {
     );
   }
 
-  bool get scaleReady => scaleEnabled && scaleEndpoint.isNotEmpty;
   bool get lightingReady => lightingEnabled && lightingEndpoint.isNotEmpty;
-  bool get scaleForIngredientPurchase =>
-      scaleMode == 'BOTH' || scaleMode == 'INGREDIENT_PURCHASE';
-  bool get scaleForFeeding => scaleMode == 'BOTH' || scaleMode == 'FEEDING';
 }
 
 class LightingChannelConfig {
@@ -120,10 +86,6 @@ class HardwareIntegrationsPage extends ConsumerStatefulWidget {
 class _HardwareIntegrationsPageState
     extends ConsumerState<HardwareIntegrationsPage> {
   final espClient = const HardwareEspClient();
-  final scaleDevice = TextEditingController();
-  final scaleEndpoint = TextEditingController();
-  final scaleWeight = TextEditingController();
-  final scaleTolerance = TextEditingController(text: '0,05');
   final lightingEndpoint = TextEditingController();
   final lightingRelayPin = TextEditingController(text: '23');
   final wifiProvisionEndpoint = TextEditingController(text: '192.168.4.1');
@@ -168,24 +130,11 @@ class _HardwareIntegrationsPageState
   final generalScheduleChannels = List.generate(4, (index) => true);
   bool generalMorningEnabled = true;
   bool generalEveningEnabled = true;
-  String scaleConnection = 'WIFI';
-  String scaleMode = 'BOTH';
   String lightingConnection = 'WIFI';
-  bool scaleEnabled = false;
   bool lightingEnabled = false;
   bool saving = false;
   bool initialized = false;
-  String scaleStatus = 'Aguardando teste';
   String lightingStatus = 'Aguardando teste';
-  bool scaleLiveReading = false;
-  Timer? scaleReadTimer;
-  int scaleSampleCount = 0;
-  double? scaleLastSample;
-  double? scaleMinSample;
-  double? scaleMaxSample;
-  DateTime? scaleLastReadAt;
-  String? scaleConnectionResult;
-  String? scalePrecisionResult;
   String? lightingConnectionResult;
   bool espDiscoveryStarted = false;
   bool espScanning = false;
@@ -198,11 +147,6 @@ class _HardwareIntegrationsPageState
 
   @override
   void dispose() {
-    scaleReadTimer?.cancel();
-    scaleDevice.dispose();
-    scaleEndpoint.dispose();
-    scaleWeight.dispose();
-    scaleTolerance.dispose();
     lightingEndpoint.dispose();
     lightingRelayPin.dispose();
     wifiProvisionEndpoint.dispose();
@@ -238,14 +182,6 @@ class _HardwareIntegrationsPageState
     initialized = true;
     final values = {for (final setting in settings) setting.key: setting.value};
     final config = HardwareIntegrationSettings.fromSettings(settings);
-    scaleEnabled = config.scaleEnabled;
-    scaleConnection = config.scaleConnection;
-    scaleMode = config.scaleMode;
-    scaleDevice.text = config.scaleDevice;
-    scaleEndpoint.text = config.scaleEndpoint;
-    scaleWeight.text = config.scaleLastWeightKg > 0
-        ? decimal.format(config.scaleLastWeightKg)
-        : '';
     lightingEnabled = config.lightingEnabled;
     lightingConnection = config.lightingConnection;
     lightingEndpoint.text = config.lightingEndpoint;
@@ -355,189 +291,6 @@ class _HardwareIntegrationsPageState
   );
 
   // ignore: unused_element
-  Widget _scalePanel(BuildContext context) => _IntegrationPanel(
-    icon: Icons.scale_outlined,
-    title: 'Balança',
-    status: scaleStatus,
-    children: [
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        secondary: const Icon(Icons.monitor_weight_outlined),
-        title: const Text('Ativar balança'),
-        subtitle: const Text('ESP32 ou Arduino para leitura de ração/insumos'),
-        value: scaleEnabled,
-        onChanged: saving
-            ? null
-            : (value) => setState(() => scaleEnabled = value),
-      ),
-      const SizedBox(height: 8),
-      SegmentedButton<String>(
-        segments: const [
-          ButtonSegment(
-            value: 'WIFI',
-            icon: Icon(Icons.wifi),
-            label: Text('Wi-Fi'),
-          ),
-          ButtonSegment(
-            value: 'BLUETOOTH',
-            icon: Icon(Icons.bluetooth),
-            label: Text('Bluetooth'),
-          ),
-        ],
-        selected: {scaleConnection},
-        onSelectionChanged: saving
-            ? null
-            : (value) => setState(() => scaleConnection = value.first),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: scaleDevice,
-        enabled: !saving,
-        decoration: const InputDecoration(
-          labelText: 'Nome/ID do dispositivo',
-          prefixIcon: Icon(Icons.developer_board),
-        ),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: scaleEndpoint,
-        enabled: !saving,
-        decoration: InputDecoration(
-          labelText: scaleConnection == 'WIFI'
-              ? 'Endpoint ou IP do ESP32'
-              : 'Identificador Bluetooth',
-          prefixIcon: const Icon(Icons.hub_outlined),
-        ),
-      ),
-      const SizedBox(height: 12),
-      DropdownButtonFormField<String>(
-        isExpanded: true,
-        initialValue: scaleMode,
-        decoration: const InputDecoration(labelText: 'Uso da balança'),
-        items: const [
-          DropdownMenuItem(value: 'BOTH', child: Text('Entrada e alimentação')),
-          DropdownMenuItem(
-            value: 'INGREDIENT_PURCHASE',
-            child: Text('Entrada de insumos'),
-          ),
-          DropdownMenuItem(
-            value: 'FEEDING',
-            child: Text('Alimentação por lote'),
-          ),
-        ],
-        onChanged: saving
-            ? null
-            : (value) {
-                if (value != null) setState(() => scaleMode = value);
-              },
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: scaleWeight,
-        enabled: !saving,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(
-          labelText: 'Leitura de teste',
-          suffixText: 'kg',
-          prefixIcon: Icon(Icons.speed_outlined),
-        ),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: scaleTolerance,
-        enabled: !saving,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(
-          labelText: 'Tolerância para precisão',
-          suffixText: 'kg',
-          prefixIcon: Icon(Icons.rule_outlined),
-        ),
-      ),
-      const SizedBox(height: 12),
-      _ScaleReadingPanel(
-        reading: parseDecimal(scaleWeight.text),
-        sampleCount: scaleSampleCount,
-        minSample: scaleMinSample,
-        maxSample: scaleMaxSample,
-        lastReadAt: scaleLastReadAt,
-        live: scaleLiveReading,
-      ),
-      const SizedBox(height: 12),
-      _ResultPanel(
-        title: 'Resultado dos testes da balança',
-        items: [
-          _ResultLine(
-            icon: Icons.cable_outlined,
-            label: 'Conexão',
-            value: scaleConnectionResult ?? 'Ainda não testada',
-            ok: scaleConnectionResult?.contains('OK') == true,
-          ),
-          _ResultLine(
-            icon: Icons.monitor_weight_outlined,
-            label: 'Leitura',
-            value: scaleSampleCount == 0
-                ? 'Sem amostras'
-                : '$scaleSampleCount amostra(s) recebidas',
-            ok: scaleSampleCount > 0,
-          ),
-          _ResultLine(
-            icon: Icons.verified_outlined,
-            label: 'Precisão',
-            value: scalePrecisionResult ?? 'Aguardando leitura',
-            ok: scalePrecisionResult?.contains('OK') == true,
-          ),
-        ],
-      ),
-      const SizedBox(height: 12),
-      _InfoStrip(
-        icon: Icons.memory_outlined,
-        text: scaleConnection == 'WIFI'
-            ? 'No Wi-Fi, o app consulta o ESP32 real em /api/status e /api/scale. Se nao achar na rede local, conecte o celular em GRANJA-SELETO-SETUP.'
-            : 'Bluetooth salva o identificador do ESP. Para teste serial direto, use GRANJA_SELETO_RELE.',
-      ),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          FilledButton.icon(
-            onPressed: saving ? null : _saveScale,
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('Salvar'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: saving || espScanning
-                ? null
-                : () => _testScaleConnection('WIFI'),
-            icon: const Icon(Icons.wifi),
-            label: const Text('Testar Wi-Fi'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: saving ? null : () => _testScaleConnection('BLUETOOTH'),
-            icon: const Icon(Icons.bluetooth),
-            label: const Text('Testar Bluetooth'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: saving || espScanning ? null : _toggleScaleLiveReading,
-            icon: Icon(
-              scaleLiveReading
-                  ? Icons.stop_circle_outlined
-                  : Icons.play_circle_outline,
-            ),
-            label: Text(
-              scaleLiveReading ? 'Parar leitura' : 'Ler em tempo real',
-            ),
-          ),
-          OutlinedButton.icon(
-            onPressed: saving ? null : _simulateStableScaleRead,
-            icon: const Icon(Icons.play_arrow_outlined),
-            label: const Text('Simular precisão'),
-          ),
-        ],
-      ),
-    ],
-  );
-
   Widget _lightingPanel(BuildContext context) {
     final channelLabels = [
       for (var i = 0; i < lightingChannelNames.length; i++)
@@ -1050,32 +803,6 @@ class _HardwareIntegrationsPageState
     );
   }
 
-  Future<void> _saveScale() async {
-    setState(() => saving = true);
-    try {
-      final controller = ref.read(operationsControllerProvider);
-      final updates = {
-        'hardware_scale_enabled': scaleEnabled.toString(),
-        'hardware_scale_connection': scaleConnection,
-        'hardware_scale_mode': scaleMode,
-        'hardware_scale_device': scaleDevice.text.trim(),
-        'hardware_scale_endpoint': scaleEndpoint.text.trim(),
-        'hardware_scale_last_weight_kg': scaleWeight.text.trim(),
-      };
-      for (final entry in updates.entries) {
-        await controller.saveSetting(entry.key, entry.value);
-      }
-      if (mounted) {
-        setState(() => scaleStatus = 'Configuração da balança salva');
-        _snack('Balança salva.');
-      }
-    } catch (error) {
-      if (mounted) await showOperationError(context, error);
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
   Future<void> _saveLighting() async {
     setState(() => saving = true);
     try {
@@ -1302,158 +1029,6 @@ class _HardwareIntegrationsPageState
     }
   }
 
-  Future<void> _testScaleConnection(String connection) async {
-    setState(() => scaleConnection = connection);
-    if (!scaleEnabled || scaleEndpoint.text.trim().isEmpty) {
-      setState(() {
-        scaleStatus = 'Falha: ative a balança e informe o endpoint/ID.';
-        scaleConnectionResult =
-            'FALHA ${_connectionLabel(connection)}: configuração incompleta.';
-      });
-      return;
-    }
-    if (connection == 'WIFI') {
-      await _probeEspConnection(source: 'balanca');
-      return;
-    }
-    await _saveScale();
-    if (!mounted) return;
-    setState(() {
-      scaleConnectionResult =
-          'OK ${_connectionLabel(connection)}: endpoint aceito para leitura.';
-      scaleStatus =
-          'Conexão ${_connectionLabel(connection)} pronta para leitura.';
-    });
-    _appendEspLog('BT> identificador aceito: ${scaleEndpoint.text.trim()}');
-    _appendEspLog('BT> pareie com GRANJA_SELETO_RELE para terminal serial');
-  }
-
-  Future<void> _toggleScaleLiveReading() async {
-    if (!scaleEnabled) {
-      setState(() {
-        scaleStatus = 'Falha: ative a balança antes de ler.';
-        scaleConnectionResult = 'FALHA: balança desativada.';
-      });
-      return;
-    }
-    if (scaleEndpoint.text.trim().isEmpty) {
-      setState(() {
-        scaleStatus = 'Falha: informe o endpoint/ID da balança.';
-        scaleConnectionResult = 'FALHA: endpoint/ID ausente.';
-      });
-      return;
-    }
-    if (scaleLiveReading) {
-      _stopScaleLiveReading();
-      return;
-    }
-    await _saveScale();
-    if (!mounted) return;
-    setState(() {
-      scaleLiveReading = true;
-      scaleSampleCount = 0;
-      scaleLastSample = null;
-      scaleMinSample = null;
-      scaleMaxSample = null;
-      scaleLastReadAt = null;
-      scalePrecisionResult = 'Coletando amostras...';
-      scaleStatus = 'Lendo balança em tempo real no celular.';
-    });
-    scaleReadTimer?.cancel();
-    scaleReadTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      unawaited(_appendScaleSample());
-    });
-    await _appendScaleSample();
-  }
-
-  void _stopScaleLiveReading() {
-    scaleReadTimer?.cancel();
-    scaleReadTimer = null;
-    setState(() {
-      scaleLiveReading = false;
-      scaleStatus = scaleSampleCount == 0
-          ? 'Leitura em tempo real parada sem amostras.'
-          : 'Leitura em tempo real parada com $scaleSampleCount amostra(s).';
-    });
-  }
-
-  Future<void> _appendScaleSample() async {
-    if (scaleConnection == 'WIFI' && scaleEndpoint.text.trim().isNotEmpty) {
-      try {
-        final reading = await espClient.readScale(scaleEndpoint.text.trim());
-        if (!mounted) return;
-        _appendScaleSampleValue(reading.weightKg);
-        _appendEspLog('ESP> ${reading.message}');
-        _appendEspPayload(reading.payload);
-        return;
-      } catch (error) {
-        _appendEspLog('ERR> leitura real falhou: $error');
-      }
-    }
-
-    final base = parseDecimal(scaleWeight.text) > 0
-        ? parseDecimal(scaleWeight.text)
-        : 25.0;
-    final variation = switch (scaleSampleCount % 5) {
-      0 => 0.00,
-      1 => 0.01,
-      2 => -0.01,
-      3 => 0.02,
-      _ => -0.02,
-    };
-    final sample = base + variation;
-    _appendScaleSampleValue(sample);
-  }
-
-  void _appendScaleSampleValue(double sample) {
-    final min = scaleMinSample == null
-        ? sample
-        : sample < scaleMinSample!
-        ? sample
-        : scaleMinSample!;
-    final max = scaleMaxSample == null
-        ? sample
-        : sample > scaleMaxSample!
-        ? sample
-        : scaleMaxSample!;
-    final tolerance = parseDecimal(scaleTolerance.text) > 0
-        ? parseDecimal(scaleTolerance.text)
-        : 0.05;
-    final amplitude = max - min;
-    setState(() {
-      scaleSampleCount += 1;
-      scaleLastSample = sample;
-      scaleMinSample = min;
-      scaleMaxSample = max;
-      scaleLastReadAt = DateTime.now();
-      scaleWeight.text = decimal.format(sample);
-      scalePrecisionResult = amplitude <= tolerance
-          ? 'OK: variação ${kg(amplitude)} dentro de ${kg(tolerance)}.'
-          : 'FALHA: variação ${kg(amplitude)} acima de ${kg(tolerance)}.';
-      scaleStatus = 'Peso exibido em tempo real: ${kg(sample)}.';
-    });
-  }
-
-  Future<void> _simulateStableScaleRead() async {
-    if (!scaleEnabled) {
-      setState(() {
-        scaleStatus = 'Falha: ative a balança antes de simular.';
-        scalePrecisionResult = 'FALHA: balança desativada.';
-      });
-      return;
-    }
-    for (var i = 0; i < 4; i++) {
-      await _appendScaleSample();
-    }
-    await _saveScale();
-    if (!mounted) return;
-    setState(
-      () => scaleStatus =
-          'Teste de precisão concluído com $scaleSampleCount amostra(s).',
-    );
-  }
-
   Future<void> _testLightingConnection(String connection) async {
     setState(() => lightingConnection = connection);
     if (!lightingEnabled || lightingEndpoint.text.trim().isEmpty) {
@@ -1465,7 +1040,7 @@ class _HardwareIntegrationsPageState
       return;
     }
     if (connection == 'WIFI') {
-      await _probeEspConnection(source: 'iluminacao');
+      await _probeEspConnection();
       return;
     }
     await _saveLighting();
@@ -1745,20 +1320,14 @@ class _HardwareIntegrationsPageState
       var resultMessage =
           'Wi-Fi enviado para o ESP. Conecte na rede e detecte o endpoint.';
       if (connected && normalizedIp.isNotEmpty) {
-        scaleEndpoint.text = normalizedIp;
         lightingEndpoint.text = normalizedIp;
-        scaleConnection = 'WIFI';
         lightingConnection = 'WIFI';
-        scaleEnabled = true;
         lightingEnabled = true;
-        await controller.saveSetting('hardware_scale_endpoint', normalizedIp);
         await controller.saveSetting(
           'hardware_lighting_endpoint',
           normalizedIp,
         );
-        await controller.saveSetting('hardware_scale_connection', 'WIFI');
         await controller.saveSetting('hardware_lighting_connection', 'WIFI');
-        await controller.saveSetting('hardware_scale_enabled', 'true');
         await controller.saveSetting('hardware_lighting_enabled', 'true');
         statusMessage = 'ESP conectado em $normalizedIp.';
         resultMessage = 'OK Wi-Fi: ESP conectado em $normalizedIp.';
@@ -1768,9 +1337,7 @@ class _HardwareIntegrationsPageState
       if (!mounted) return;
       setState(() {
         espTerminalTitle = connected ? 'WIFI CONFIGURADO' : 'WIFI SALVO NO ESP';
-        scaleConnectionResult = resultMessage;
         lightingConnectionResult = resultMessage;
-        scaleStatus = statusMessage;
         lightingStatus = statusMessage;
       });
       _appendEspLog(
@@ -1786,9 +1353,7 @@ class _HardwareIntegrationsPageState
       if (!mounted) return;
       setState(() {
         espTerminalTitle = 'FALHA WIFI ESP';
-        scaleConnectionResult = 'FALHA Wi-Fi: nao foi possivel configurar.';
         lightingConnectionResult = 'FALHA Wi-Fi: nao foi possivel configurar.';
-        scaleStatus = 'Falha ao enviar credenciais para o ESP.';
         lightingStatus = 'Falha ao enviar credenciais para o ESP.';
       });
       _appendEspLog('ERR> Wi-Fi do ESP falhou: $error');
@@ -1833,8 +1398,6 @@ class _HardwareIntegrationsPageState
       if (probe == null) {
         setState(() {
           espTerminalTitle = 'ESP NAO ENCONTRADO';
-          scaleStatus =
-              'ESP não encontrado. Conecte o celular em GRANJA-SELETO-SETUP.';
           lightingStatus =
               'ESP não encontrado. Use a rede padrão do controlador.';
         });
@@ -1870,7 +1433,6 @@ class _HardwareIntegrationsPageState
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        scaleConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
         lightingConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
       });
       _appendEspLog('ERR> endpoint sem resposta: $error');
@@ -1880,29 +1442,22 @@ class _HardwareIntegrationsPageState
     }
   }
 
-  Future<void> _probeEspConnection({required String source}) async {
+  Future<void> _probeEspConnection() async {
     setState(() {
       espScanning = true;
       espTerminalTitle = 'ESP HANDSHAKE';
     });
     try {
-      final endpoint = source == 'iluminacao'
-          ? lightingEndpoint.text.trim()
-          : scaleEndpoint.text.trim();
+      final endpoint = lightingEndpoint.text.trim();
       final probe = await espClient.ping(endpoint);
       if (!mounted) return;
       await _applyEspProbe(probe);
-      await (source == 'iluminacao' ? _saveLighting() : _saveScale());
+      await _saveLighting();
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        if (source == 'iluminacao') {
-          lightingConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
-          lightingStatus = 'Falha no handshake com o ESP.';
-        } else {
-          scaleConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
-          scaleStatus = 'Falha no handshake com o ESP.';
-        }
+        lightingConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
+        lightingStatus = 'Falha no handshake com o ESP.';
       });
       _appendEspLog('ERR> handshake falhou: $error');
       _appendEspLog('AP> conecte no Wi-Fi GRANJA-SELETO-SETUP e tente de novo');
@@ -1914,16 +1469,10 @@ class _HardwareIntegrationsPageState
   Future<void> _applyEspProbe(EspDeviceProbe probe) async {
     final endpoint = probe.endpoint;
     setState(() {
-      scaleEnabled = true;
       lightingEnabled = true;
-      scaleConnection = 'WIFI';
       lightingConnection = 'WIFI';
-      scaleDevice.text = probe.deviceId;
-      scaleEndpoint.text = endpoint;
       lightingEndpoint.text = endpoint;
-      scaleConnectionResult = 'OK Wi-Fi: ${probe.message}.';
       lightingConnectionResult = 'OK Wi-Fi: ${probe.message}.';
-      scaleStatus = 'ESP conectado em $endpoint.';
       lightingStatus = 'Controlador conectado em $endpoint.';
       espTerminalTitle = 'ESP CONECTADO';
     });
@@ -1935,9 +1484,6 @@ class _HardwareIntegrationsPageState
     if (lightingConnection == 'WIFI' &&
         lightingEndpoint.text.trim().isNotEmpty) {
       return lightingEndpoint.text.trim();
-    }
-    if (scaleConnection == 'WIFI' && scaleEndpoint.text.trim().isNotEmpty) {
-      return scaleEndpoint.text.trim();
     }
     return '';
   }
@@ -1958,62 +1504,6 @@ class _HardwareIntegrationsPageState
     for (final line in lines.take(8)) {
       _appendEspLog('JSON> $line');
     }
-  }
-}
-
-class _ScaleReadingPanel extends StatelessWidget {
-  const _ScaleReadingPanel({
-    required this.reading,
-    required this.sampleCount,
-    required this.minSample,
-    required this.maxSample,
-    required this.lastReadAt,
-    required this.live,
-  });
-
-  final double reading;
-  final int sampleCount;
-  final double? minSample;
-  final double? maxSample;
-  final DateTime? lastReadAt;
-  final bool live;
-
-  @override
-  Widget build(BuildContext context) {
-    final amplitude = minSample == null || maxSample == null
-        ? 0.0
-        : maxSample! - minSample!;
-    return _ResultPanel(
-      title: live ? 'Leitura em tempo real' : 'Leitura da balança',
-      items: [
-        _ResultLine(
-          icon: Icons.monitor_weight_outlined,
-          label: 'Peso atual',
-          value: reading > 0 ? kg(reading) : 'Sem leitura',
-          ok: reading > 0,
-        ),
-        _ResultLine(
-          icon: Icons.timeline_outlined,
-          label: 'Amostras',
-          value: '$sampleCount recebida(s)',
-          ok: sampleCount > 0,
-        ),
-        _ResultLine(
-          icon: Icons.straighten_outlined,
-          label: 'Variação',
-          value: sampleCount > 1 ? kg(amplitude) : 'Aguardando',
-          ok: sampleCount > 1,
-        ),
-        _ResultLine(
-          icon: Icons.schedule_outlined,
-          label: 'Última leitura',
-          value: lastReadAt == null
-              ? 'Aguardando'
-              : '${lastReadAt!.hour.toString().padLeft(2, '0')}:${lastReadAt!.minute.toString().padLeft(2, '0')}:${lastReadAt!.second.toString().padLeft(2, '0')}',
-          ok: lastReadAt != null,
-        ),
-      ],
-    );
   }
 }
 
@@ -2271,82 +1761,6 @@ class _EspWifiProvisionPanel extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _ResultPanel extends StatelessWidget {
-  const _ResultPanel({required this.title, required this.items});
-
-  final String title;
-  final List<_ResultLine> items;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: .48),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 10),
-            for (var i = 0; i < items.length; i++) ...[
-              items[i],
-              if (i < items.length - 1) const SizedBox(height: 8),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ResultLine extends StatelessWidget {
-  const _ResultLine({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.ok,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final bool ok;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final color = ok ? colors.primary : colors.onSurfaceVariant;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: colors.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(value),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
@@ -2814,8 +2228,10 @@ class _LightingInstrumentPainter extends CustomPainter {
       final x = size.width * (.18 + i * .213);
       final on = i < channelOn.length && channelOn[i];
       final active = i < channelEnabled.length && channelEnabled[i];
+      final onColor = const Color(0xFFFFB020);
+      final idleColor = color;
       final lampPaint = Paint()
-        ..color = color.withValues(
+        ..color = (on ? onColor : idleColor).withValues(
           alpha: on
               ? .70
               : active
@@ -2824,7 +2240,7 @@ class _LightingInstrumentPainter extends CustomPainter {
         )
         ..style = PaintingStyle.fill;
       final beamPaint = Paint()
-        ..color = color.withValues(alpha: on ? .12 : .03)
+        ..color = (on ? onColor : idleColor).withValues(alpha: on ? .18 : .03)
         ..style = PaintingStyle.fill;
       final beam = Path()
         ..moveTo(x - 22, busY + 12)

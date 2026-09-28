@@ -11,7 +11,6 @@ import '../../../auth/application/auth_controller.dart';
 import '../../../lots/application/lots_controller.dart';
 import '../../../lots/domain/value_objects/lot_lifecycle.dart';
 import '../../application/operations_controller.dart';
-import 'hardware_integrations_page.dart';
 
 class FeedPage extends ConsumerWidget {
   const FeedPage({super.key});
@@ -1265,13 +1264,6 @@ String? _tenantScope(WidgetRef ref) {
   return session?.allows('tenant.view_all') == true ? null : session?.tenantId;
 }
 
-String _appendNote(String current, String addition) {
-  final trimmed = current.trim();
-  if (trimmed.isEmpty) return addition;
-  if (trimmed.contains(addition)) return trimmed;
-  return '$trimmed\n$addition';
-}
-
 class _IngredientEntryDialog extends StatefulWidget {
   const _IngredientEntryDialog({required this.ref, required this.ingredients});
   final WidgetRef ref;
@@ -1310,12 +1302,6 @@ class _IngredientEntryDialogState extends State<_IngredientEntryDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final settings =
-        widget.ref.watch(appSettingsProvider).asData?.value ??
-        const <AppSetting>[];
-    final hardware = HardwareIntegrationSettings.fromSettings(settings);
-    final scaleAvailable =
-        hardware.scaleReady && hardware.scaleForIngredientPurchase;
     return AlertDialog(
       title: const Text('Entrada de estoque'),
       content: SizedBox(
@@ -1374,19 +1360,6 @@ class _IngredientEntryDialogState extends State<_IngredientEntryDialog> {
                   decoration: const InputDecoration(
                     labelText: 'Kg por saco',
                     suffixText: 'kg',
-                  ),
-                ),
-              ],
-              if (scaleAvailable) ...[
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton.tonalIcon(
-                    onPressed: saving
-                        ? null
-                        : () => _applyScaleWeight(context, hardware),
-                    icon: const Icon(Icons.scale_outlined),
-                    label: const Text('Usar leitura da balança'),
                   ),
                 ),
               ],
@@ -1464,29 +1437,6 @@ class _IngredientEntryDialogState extends State<_IngredientEntryDialog> {
         ),
       ],
     );
-  }
-
-  Future<void> _applyScaleWeight(
-    BuildContext context,
-    HardwareIntegrationSettings hardware,
-  ) async {
-    final weight = hardware.scaleLastWeightKg;
-    if (weight <= 0) {
-      await showOperationError(
-        context,
-        StateError('Faça uma leitura de teste da balança antes de usar.'),
-      );
-      return;
-    }
-    setState(() {
-      unit = 'KG';
-      quantity.text = decimal.format(weight);
-      kgPerUnit.text = '1';
-      notes.text = _appendNote(
-        notes.text,
-        'Peso preenchido pela balança (${hardware.scaleConnection}).',
-      );
-    });
   }
 }
 
@@ -2510,11 +2460,6 @@ class _FeedingDialogState extends State<_FeedingDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final settings =
-        widget.ref.watch(appSettingsProvider).asData?.value ??
-        const <AppSetting>[];
-    final hardware = HardwareIntegrationSettings.fromSettings(settings);
-    final scaleAvailable = hardware.scaleReady && hardware.scaleForFeeding;
     final lots =
         widget.ref.watch(lotSummariesProvider).asData?.value ?? <LotSummary>[];
     final batches =
@@ -2672,19 +2617,6 @@ class _FeedingDialogState extends State<_FeedingDialog> {
                   suffixText: 'kg',
                 ),
               ),
-              if (scaleAvailable) ...[
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton.tonalIcon(
-                    onPressed: saving
-                        ? null
-                        : () => _applyScaleWeight(context, hardware),
-                    icon: const Icon(Icons.scale_outlined),
-                    label: const Text('Usar leitura da balança'),
-                  ),
-                ),
-              ],
               const SizedBox(height: 12),
               TextField(
                 controller: notes,
@@ -2738,27 +2670,6 @@ class _FeedingDialogState extends State<_FeedingDialog> {
       }
     }
     return null;
-  }
-
-  Future<void> _applyScaleWeight(
-    BuildContext context,
-    HardwareIntegrationSettings hardware,
-  ) async {
-    final weight = hardware.scaleLastWeightKg;
-    if (weight <= 0) {
-      await showOperationError(
-        context,
-        StateError('Faça uma leitura de teste da balança antes de usar.'),
-      );
-      return;
-    }
-    setState(() {
-      qty.text = decimal.format(weight);
-      notes.text = _appendNote(
-        notes.text,
-        'Peso preenchido pela balança (${hardware.scaleConnection}).',
-      );
-    });
   }
 }
 

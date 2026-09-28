@@ -193,13 +193,13 @@ Recomendacao final:
 | --- | --- |
 | HX711 DT | GPIO32 |
 | HX711 SCK | GPIO33 |
-| Botao tara | GPIO13 |
-| Botao calibracao | GPIO14 |
-| Botao taxa | GPIO26 |
 | DHT22 ar | GPIO27 |
 | Nivel da agua analogico | GPIO34 |
 | Nivel por boia | Qualquer GPIO digital livre |
 | Ultrassonico TRIG | Qualquer GPIO digital livre |
+
+Tara, calibracao e taxa da balanca sao controladas pelo app; nao compre botoes
+dedicados para a balanca nesta versao.
 | Ultrassonico ECHO | Qualquer GPIO digital livre com protecao 3.3 V |
 | Temperatura da agua analogica | GPIO35 |
 | pH analogico | GPIO36 |

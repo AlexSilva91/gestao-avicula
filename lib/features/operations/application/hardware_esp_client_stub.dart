@@ -12,18 +12,6 @@ class EspDeviceProbe {
   final Map<String, Object?> payload;
 }
 
-class EspScaleReading {
-  const EspScaleReading({
-    required this.weightKg,
-    required this.message,
-    required this.payload,
-  });
-
-  final double weightKg;
-  final String message;
-  final Map<String, Object?> payload;
-}
-
 class EspEnvironmentReading {
   const EspEnvironmentReading({
     required this.airTemperatureC,
@@ -112,12 +100,6 @@ class HardwareEspClient {
     );
   }
 
-  Future<EspScaleReading> readScale(String endpoint) async {
-    throw UnsupportedError(
-      'Leitura direta do ESP indisponivel nesta plataforma.',
-    );
-  }
-
   Future<EspEnvironmentReading> readEnvironment(String endpoint) async {
     throw UnsupportedError(
       'Leitura direta do ESP indisponivel nesta plataforma.',
@@ -133,28 +115,6 @@ class HardwareEspClient {
   Future<Map<String, Object?>> readSensors(String endpoint) async {
     throw UnsupportedError(
       'Leitura direta do ESP indisponivel nesta plataforma.',
-    );
-  }
-
-  Future<Map<String, Object?>> tareScale(String endpoint) async {
-    throw UnsupportedError('Tara direta do ESP indisponivel nesta plataforma.');
-  }
-
-  Future<Map<String, Object?>> calibrateScale({
-    required String endpoint,
-    required double knownWeightKg,
-  }) async {
-    throw UnsupportedError(
-      'Calibracao direta do ESP indisponivel nesta plataforma.',
-    );
-  }
-
-  Future<Map<String, Object?>> setScaleRate({
-    required String endpoint,
-    required int rateHz,
-  }) async {
-    throw UnsupportedError(
-      'Configuracao direta do ESP indisponivel nesta plataforma.',
     );
   }
 

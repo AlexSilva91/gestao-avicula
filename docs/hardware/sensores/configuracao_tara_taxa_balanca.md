@@ -44,17 +44,11 @@ Ligacao padrao da balanca:
 
 Observacao importante: celulas de carga de 50 kg com 3 fios normalmente sao meia ponte. Para uma leitura estavel, o ideal e usar 4 celulas com placa combinadora ou uma celula de carga de ponte completa adequada ao HX711.
 
-### 3.2. Botoes fisicos opcionais
+### 3.2. Controle pelo app
 
-O firmware tambem aceita botoes fisicos ligados ao ESP32:
-
-| Acao | GPIO | Funcao |
-|---|---:|---|
-| Tara | GPIO13 | Zera a balanca com a plataforma vazia |
-| Calibracao | GPIO14 | Calibra usando o peso conhecido padrao salvo no firmware |
-| Taxa | GPIO26 | Alterna entre 10 Hz e 80 Hz |
-
-Os botoes usam `INPUT_PULLUP`. Isso significa que o botao deve fechar o contato entre o GPIO e o GND.
+Tara, calibracao e alteracao de taxa sao executadas pelo app por Wi-Fi usando
+os endpoints do ESP32. Nesta versao nao ha botoes fisicos dedicados no ESP32
+para a balanca.
 
 ## 4. Configuracao da balanca
 
@@ -857,4 +851,3 @@ O app deve permitir:
 
 Use 10 Hz como padrao para uso normal e 80 Hz apenas para leituras mais rapidas ou diagnostico.
 ```
-

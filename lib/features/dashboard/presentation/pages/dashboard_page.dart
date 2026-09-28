@@ -243,8 +243,6 @@ class _MetricGrid extends StatelessWidget {
 
 class _HomeSensorSnapshot {
   const _HomeSensorSnapshot({
-    required this.scaleWeightKg,
-    required this.scaleReady,
     required this.environmentTemperatureC,
     required this.environmentHumidityPercent,
     required this.environmentReady,
@@ -257,14 +255,14 @@ class _HomeSensorSnapshot {
     required this.lightingReady,
     required this.lightingEnabledCount,
     required this.lightingOnCount,
+    required this.lightingChannelOn,
     required this.ventilationEnabled,
     required this.ventilationReady,
     required this.ventilationEnabledCount,
     required this.ventilationOnCount,
+    required this.ventilationChannelOn,
   });
 
-  final double? scaleWeightKg;
-  final bool scaleReady;
   final double? environmentTemperatureC;
   final double? environmentHumidityPercent;
   final bool environmentReady;
@@ -277,38 +275,46 @@ class _HomeSensorSnapshot {
   final bool lightingReady;
   final int lightingEnabledCount;
   final int lightingOnCount;
+  final List<bool> lightingChannelOn;
   final bool ventilationEnabled;
   final bool ventilationReady;
   final int ventilationEnabledCount;
   final int ventilationOnCount;
+  final List<bool> ventilationChannelOn;
 
   factory _HomeSensorSnapshot.fromSettings(List<AppSetting> settings) {
     final values = {for (final setting in settings) setting.key: setting.value};
     final lightingEnabled = values['hardware_lighting_enabled'] == 'true';
     var enabledCount = 0;
     var onCount = 0;
+    final lightingChannelOn = <bool>[];
     for (var i = 1; i <= 4; i++) {
       if (values['hardware_lighting_channel_${i}_enabled'] != 'false') {
         enabledCount++;
       }
-      if (values['hardware_lighting_channel_${i}_last_test_state'] == 'ON') {
+      final isOn =
+          values['hardware_lighting_channel_${i}_last_test_state'] == 'ON';
+      lightingChannelOn.add(isOn);
+      if (isOn) {
         onCount++;
       }
     }
     final ventilationEnabled = values['hardware_ventilation_enabled'] == 'true';
     var ventilationEnabledCount = 0;
     var ventilationOnCount = 0;
+    final ventilationChannelOn = <bool>[];
     for (var i = 1; i <= 8; i++) {
       if (values['hardware_ventilation_channel_${i}_enabled'] != 'false') {
         ventilationEnabledCount++;
       }
-      if (values['hardware_ventilation_channel_${i}_last_test_state'] == 'ON') {
+      final isOn =
+          values['hardware_ventilation_channel_${i}_last_test_state'] == 'ON';
+      ventilationChannelOn.add(isOn);
+      if (isOn) {
         ventilationOnCount++;
       }
     }
     return _HomeSensorSnapshot(
-      scaleWeightKg: _settingDouble(values, 'hardware_scale_last_weight_kg'),
-      scaleReady: (values['hardware_scale_endpoint'] ?? '').trim().isNotEmpty,
       environmentTemperatureC: _settingDouble(
         values,
         'hardware_environment_last_temperature_c',
@@ -337,6 +343,7 @@ class _HomeSensorSnapshot {
           (values['hardware_lighting_endpoint'] ?? '').trim().isNotEmpty,
       lightingEnabledCount: enabledCount,
       lightingOnCount: onCount,
+      lightingChannelOn: lightingChannelOn,
       ventilationEnabled: ventilationEnabled,
       ventilationReady:
           ventilationEnabled &&
@@ -347,6 +354,7 @@ class _HomeSensorSnapshot {
               .isNotEmpty),
       ventilationEnabledCount: ventilationEnabledCount,
       ventilationOnCount: ventilationOnCount,
+      ventilationChannelOn: ventilationChannelOn,
     );
   }
 }
@@ -412,21 +420,6 @@ class _HomeSensorDeck extends StatelessWidget {
                       active: snapshot.lightingReady,
                       route: '/integrations',
                       child: _HomeLightingPreview(snapshot: snapshot),
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _HomeSensorCard(
-                      title: 'Balança',
-                      subtitle: snapshot.scaleWeightKg == null
-                          ? 'Sem leitura'
-                          : kg(snapshot.scaleWeightKg!),
-                      icon: Icons.scale_outlined,
-                      active: snapshot.scaleWeightKg != null,
-                      route: '/hardware-scale',
-                      child: _HomeScalePreview(
-                        weightKg: snapshot.scaleWeightKg,
-                      ),
                     ),
                   ),
                   SizedBox(
@@ -573,7 +566,7 @@ class _HomeLightingPreview extends StatelessWidget {
         color: scheme.primary,
         outline: scheme.outlineVariant,
         enabled: snapshot.lightingEnabled,
-        onCount: snapshot.lightingOnCount,
+        channelOn: snapshot.lightingChannelOn,
       ),
       child: Align(
         alignment: Alignment.bottomCenter,
@@ -581,38 +574,6 @@ class _HomeLightingPreview extends StatelessWidget {
           icon: Icons.tungsten_outlined,
           label:
               '${snapshot.lightingEnabledCount}/4 ativos  ${snapshot.lightingOnCount}/4 ON',
-        ),
-      ),
-    );
-  }
-}
-
-class _HomeScalePreview extends StatelessWidget {
-  const _HomeScalePreview({required this.weightKg});
-
-  final double? weightKg;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return CustomPaint(
-      painter: _HomeScalePainter(
-        color: scheme.primary,
-        outline: scheme.outlineVariant,
-        active: weightKg != null,
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: Text(
-            weightKg == null ? '--,-- kg' : kg(weightKg!),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: scheme.primary,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
         ),
       ),
     );
@@ -757,7 +718,9 @@ class _HomeVentilationPreviewState extends State<_HomeVentilationPreview>
                         painter: _HomeFanPainter(
                           color: color,
                           active:
-                              _active && i < widget.snapshot.ventilationOnCount,
+                              _active &&
+                              i < widget.snapshot.ventilationChannelOn.length &&
+                              widget.snapshot.ventilationChannelOn[i],
                         ),
                       ),
                     ),
@@ -905,13 +868,13 @@ class _HomeLightingPainter extends CustomPainter {
     required this.color,
     required this.outline,
     required this.enabled,
-    required this.onCount,
+    required this.channelOn,
   });
 
   final Color color;
   final Color outline;
   final bool enabled;
-  final int onCount;
+  final List<bool> channelOn;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -927,9 +890,11 @@ class _HomeLightingPainter extends CustomPainter {
     );
     for (var i = 0; i < 4; i++) {
       final x = size.width * (.16 + i * .225);
-      final on = enabled && i < onCount;
+      final on = enabled && i < channelOn.length && channelOn[i];
       final paint = Paint()
-        ..color = color.withValues(alpha: on ? .72 : .20)
+        ..color = (on ? const Color(0xFFFFB020) : color).withValues(
+          alpha: on ? .86 : .20,
+        )
         ..style = PaintingStyle.fill;
       canvas.drawLine(Offset(x, y), Offset(x, size.height * .62), line);
       canvas.drawCircle(Offset(x, size.height * .66), on ? 9 : 6, paint);
@@ -946,49 +911,7 @@ class _HomeLightingPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _HomeLightingPainter oldDelegate) =>
       oldDelegate.enabled != enabled ||
-      oldDelegate.onCount != onCount ||
-      oldDelegate.color != color ||
-      oldDelegate.outline != outline;
-}
-
-class _HomeScalePainter extends CustomPainter {
-  const _HomeScalePainter({
-    required this.color,
-    required this.outline,
-    required this.active,
-  });
-
-  final Color color;
-  final Color outline;
-  final bool active;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final line = Paint()
-      ..color = outline
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    final fill = Paint()
-      ..color = color.withValues(alpha: active ? .16 : .06)
-      ..style = PaintingStyle.fill;
-    final plate = RRect.fromRectAndRadius(
-      Rect.fromLTWH(size.width * .20, size.height * .55, size.width * .60, 18),
-      const Radius.circular(8),
-    );
-    canvas.drawRRect(plate, fill);
-    canvas.drawRRect(plate, line);
-    final base = Path()
-      ..moveTo(size.width * .34, size.height * .70)
-      ..lineTo(size.width * .66, size.height * .70)
-      ..lineTo(size.width * .76, size.height * .90)
-      ..lineTo(size.width * .24, size.height * .90)
-      ..close();
-    canvas.drawPath(base, line);
-  }
-
-  @override
-  bool shouldRepaint(covariant _HomeScalePainter oldDelegate) =>
-      oldDelegate.active != active ||
+      oldDelegate.channelOn != channelOn ||
       oldDelegate.color != color ||
       oldDelegate.outline != outline;
 }
