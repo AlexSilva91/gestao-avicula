@@ -32,7 +32,7 @@ class CriticalAlarmService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val id = intent?.getIntExtra("id", System.currentTimeMillis().toInt())
             ?: System.currentTimeMillis().toInt()
-        val title = intent?.getStringExtra("title") ?: "GRANJA SELETO"
+        val title = intent?.getStringExtra("title") ?: "SELETO"
         val body = intent?.getStringExtra("body") ?: "Alerta operacional"
         val durationMillis = intent?.getLongExtra(
             "durationMillis",
@@ -90,7 +90,7 @@ class CriticalAlarmService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Alertas sonoros GRANJA SELETO",
+            "Alertas sonoros SELETO",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Alertas operacionais com som, vibracao e prioridade de alarme"

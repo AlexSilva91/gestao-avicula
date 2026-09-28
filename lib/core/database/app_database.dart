@@ -9,7 +9,7 @@ import 'operations_tables.dart';
 part 'app_database.g.dart';
 
 const defaultTenantId = 'tenant-default';
-const defaultTenantName = 'Granja Seleto';
+const defaultTenantName = 'SELETO';
 const _globalUserPermissions = {
   'system.super_admin',
   'tenant.view_all',

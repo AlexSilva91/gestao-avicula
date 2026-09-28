@@ -123,7 +123,7 @@ class _StartupScreen extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             const Text(
-              'GRANJA SELETO',
+              'SELETO',
               style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 2),
             ),
             const SizedBox(height: 16),

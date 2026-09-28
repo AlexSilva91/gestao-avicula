@@ -777,7 +777,7 @@ class _EventDialogState extends State<_EventDialog> {
                   );
               if (alertEnabled) {
                 await NotificationService().testCriticalAlert(
-                  title: 'GRANJA SELETO · Teste: ${title.text.trim()}',
+                  title: 'SELETO · Teste: ${title.text.trim()}',
                   body: alertMessage.text.trim().isEmpty
                       ? 'Teste do alerta criado.'
                       : alertMessage.text.trim(),

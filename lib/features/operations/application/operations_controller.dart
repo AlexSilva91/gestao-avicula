@@ -655,7 +655,7 @@ class OperationsController {
         }
         await NotificationService().schedule(
           id: stableAlertId('calendar:$eventId:$index'),
-          title: 'GRANJA SELETO · $title',
+          title: 'SELETO · $title',
           body: body,
           at: occurrence,
           urgent: true,

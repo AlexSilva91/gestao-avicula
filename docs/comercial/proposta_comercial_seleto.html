@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Proposta Comercial - SELETO</title>
+  <style>
+    @page { size: A4; margin: 1.7cm; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #1f2a24;
+      line-height: 1.38;
+      font-size: 11.5pt;
+    }
+    h1, h2, h3 {
+      color: #183c2b;
+      margin-bottom: 0.25em;
+    }
+    h1 {
+      font-size: 25pt;
+      letter-spacing: 0;
+      margin-top: 0;
+    }
+    h2 {
+      font-size: 16pt;
+      border-bottom: 1px solid #d9c58a;
+      padding-bottom: 4px;
+      margin-top: 1.1em;
+    }
+    h3 {
+      font-size: 13pt;
+      margin-top: 0.9em;
+    }
+    p { margin: 0.35em 0; }
+    ul { margin-top: 0.25em; }
+    li { margin-bottom: 0.18em; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.6em 0 1em;
+      font-size: 10pt;
+    }
+    th {
+      background: #193d2b;
+      color: #fff;
+      text-align: left;
+    }
+    th, td {
+      border: 1px solid #d8decd;
+      padding: 7px 8px;
+      vertical-align: top;
+    }
+    .cover {
+      text-align: center;
+      padding-top: 0.2cm;
+      page-break-after: always;
+    }
+    .logo {
+      width: 310px;
+      height: auto;
+      margin: 0 auto 0.5cm;
+    }
+    .subtitle {
+      font-size: 14pt;
+      color: #4a5a4f;
+      margin-bottom: 0.5cm;
+    }
+    .proposal-box {
+      border: 2px solid #d9b24c;
+      background: #fbfaf4;
+      padding: 14px 18px;
+      margin: 0.8cm auto;
+      max-width: 15cm;
+      text-align: left;
+    }
+    .muted { color: #59665d; }
+    .highlight {
+      background: #f5efd7;
+      border-left: 5px solid #c59026;
+      padding: 10px 12px;
+      margin: 0.8em 0;
+    }
+    .signature {
+      margin-top: 1.2cm;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1cm;
+    }
+    .line {
+      border-top: 1px solid #59665d;
+      padding-top: 6px;
+      margin-top: 1cm;
+    }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <img class="logo" src="../../SELETO_LOGO.png" alt="Logo SELETO">
+    <h1>Proposta Comercial</h1>
+    <p class="subtitle"><strong>SELETO</strong><br>Controle e automação para granjas inteligentes.</p>
+    <div class="proposal-box">
+      <p><strong>Cliente:</strong> ___________________________________________</p>
+      <p><strong>Propriedade:</strong> _______________________________________</p>
+      <p><strong>Responsável:</strong> ________________________________________</p>
+      <p><strong>Data:</strong> ____ / ____ / ______</p>
+      <p><strong>Validade da proposta:</strong> 15 dias</p>
+    </div>
+    <p class="muted">Documento editável para adaptação conforme diagnóstico, distância, quantidade de galpões, câmeras, sensores, automações e nível de suporte contratado.</p>
+  </section>
+
+  <h2>1. Contexto do cliente</h2>
+  <p>Pequenas e médias granjas normalmente crescem antes de terem uma estrutura digital de controle. A rotina passa a depender de anotações em caderno, mensagens de WhatsApp, planilhas soltas e conferências manuais. Isso dificulta saber, com segurança, quanto foi produzido, quanto foi vendido, quanto de ração foi consumido, quais lotes estão performando melhor e se água, ambiente, iluminação e ventilação estão dentro do esperado.</p>
+  <p>Além disso, quando o produtor não está presente, falhas simples podem virar prejuízo: reservatório baixo, excesso de calor, ventilador desligado, iluminação fora do horário, câmera sem acesso, estoque de ração desatualizado ou falta de registro de mortalidade e coleta.</p>
+
+  <div class="highlight">
+    <strong>Dor principal atendida:</strong> reduzir perda de controle operacional e dar ao produtor uma central simples para acompanhar produção, sensores, câmeras, automações, estoque e rotina da granja.
+  </div>
+
+  <h2>2. Solução proposta</h2>
+  <p>O SELETO é uma plataforma de gestão, monitoramento e automação para granjas. A solução reúne aplicativo, implantação assistida, integração com ESP32, sensores, balança, câmeras, controle de relés, suporte e possibilidade de comodato de equipamentos.</p>
+
+  <h3>Serviços incluídos conforme o plano contratado</h3>
+  <ul>
+    <li>Configuração inicial do aplicativo e da propriedade.</li>
+    <li>Cadastro de lotes, produção, coleta de ovos, estoque, alimentação e vendas.</li>
+    <li>Integração com sensores de ambiente, água, nível, pH, TDS e balança, quando contratados.</li>
+    <li>Automação de iluminação e ventilação por relés, conforme viabilidade elétrica.</li>
+    <li>Integração com câmeras IP para monitoramento local/remoto, conforme rede disponível.</li>
+    <li>Treinamento do produtor e equipe.</li>
+    <li>Suporte remoto e visitas presenciais conforme plano.</li>
+    <li>Documentação básica da instalação e checklist de aceite.</li>
+  </ul>
+
+  <h2>3. Diagnóstico recomendado antes da implantação</h2>
+  <table>
+    <tr><th>Ponto avaliado</th><th>O que verificar</th><th>Impacto na proposta</th></tr>
+    <tr><td>Quantidade de galpões</td><td>Número de áreas produtivas que precisam de controle.</td><td>Define sensores, relés, câmeras e horas de instalação.</td></tr>
+    <tr><td>Internet e Wi-Fi</td><td>Qualidade do sinal no local da instalação.</td><td>Pode exigir roteador, repetidor, cabo de rede ou ajuste de posicionamento.</td></tr>
+    <tr><td>Energia elétrica</td><td>Tomadas, proteção, aterramento e distância dos equipamentos.</td><td>Pode exigir eletricista, caixa de proteção, fonte, conduíte e cabos.</td></tr>
+    <tr><td>Câmeras</td><td>Quantidade, pontos de visão, rede e armazenamento.</td><td>Define switch PoE, cabo, conectores e configuração.</td></tr>
+    <tr><td>Automação</td><td>Luz, ventilador, bomba ou outros acionamentos.</td><td>Define relés, proteções e necessidade de instalação elétrica habilitada.</td></tr>
+    <tr><td>Sensores</td><td>Ambiente, água, nível, balança, pH e TDS.</td><td>Define kit de sensores e calibração necessária.</td></tr>
+  </table>
+
+  <h2>4. Planos comerciais</h2>
+
+  <h3>Plano Essencial</h3>
+  <p>Indicado para o produtor que quer começar com controle de produção e gestão básica, sem investimento alto em câmeras e sensores completos.</p>
+  <ul>
+    <li>Aplicativo configurado.</li>
+    <li>Cadastros operacionais básicos.</li>
+    <li>Controle de lotes, ovos, estoque, alimentação e financeiro básico.</li>
+    <li>1 integração inicial com ESP32, quando contratada.</li>
+    <li>Suporte remoto básico.</li>
+  </ul>
+  <p><strong>Faixa sugerida:</strong> implantação de R$790 a R$1.490 + assinatura de R$99 a R$149/mês.</p>
+
+  <h3>Plano Controle</h3>
+  <p>Indicado para a maioria dos pequenos produtores. Entrega gestão, automação inicial e sensores principais.</p>
+  <ul>
+    <li>Tudo do Essencial.</li>
+    <li>Controlador ESP32 configurado.</li>
+    <li>Sensor de ambiente.</li>
+    <li>Controle de iluminação e/ou ventilação simples.</li>
+    <li>Painel de hardware no aplicativo.</li>
+    <li>Treinamento de uso.</li>
+  </ul>
+  <p><strong>Oferta referência:</strong> implantação Pix R$1.990 + assinatura R$199/mês.</p>
+
+  <h3>Plano Monitorado</h3>
+  <p>Indicado para o produtor que quer gestão, automação e acompanhamento visual por câmeras.</p>
+  <ul>
+    <li>Tudo do Plano Controle.</li>
+    <li>Até 2 câmeras IP, conforme proposta fechada.</li>
+    <li>Configuração de acesso às câmeras.</li>
+    <li>Organização de rede local e pontos críticos.</li>
+    <li>Suporte remoto prioritário.</li>
+  </ul>
+  <p><strong>Oferta referência:</strong> implantação Pix R$3.990 + assinatura R$299/mês.</p>
+
+  <h3>Plano Completo</h3>
+  <p>Indicado para operação maior, com necessidade de sensores, câmeras, balança e automação mais ampla.</p>
+  <ul>
+    <li>App completo.</li>
+    <li>Sensores de ambiente, água, nível e balança, conforme contratação.</li>
+    <li>Até 4 câmeras, conforme proposta fechada.</li>
+    <li>Treinamento presencial.</li>
+    <li>Documentação da instalação.</li>
+    <li>Revisão após 30 dias.</li>
+  </ul>
+  <p><strong>Faixa sugerida:</strong> implantação de R$5.990 a R$9.900 + assinatura de R$399 a R$699/mês.</p>
+
+  <h2>5. Modalidade com comodato</h2>
+  <p>Na modalidade de comodato, os equipamentos principais permanecem pertencendo à prestadora do serviço. O cliente paga adesão/instalação reduzida e uma mensalidade maior, com prazo mínimo contratual.</p>
+  <table>
+    <tr><th>Plano</th><th>Adesão sugerida</th><th>Mensalidade sugerida</th><th>Prazo mínimo</th></tr>
+    <tr><td>Comodato Essencial</td><td>R$490 a R$990</td><td>R$189 a R$249</td><td>24 meses</td></tr>
+    <tr><td>Comodato Monitorado</td><td>R$990 a R$1.990</td><td>R$349 a R$549</td><td>24 meses</td></tr>
+    <tr><td>Comodato Completo</td><td>R$1.990 a R$3.990</td><td>R$699 a R$1.190</td><td>24 meses</td></tr>
+  </table>
+  <p>Cancelamento antecipado deve prever devolução dos equipamentos, multa proporcional e cobrança por danos, mau uso, rompimento de cabos, raio, umidade indevida ou alteração por terceiros.</p>
+
+  <h2>6. Formas de pagamento</h2>
+  <p>Os valores em Pix representam o valor líquido da proposta. Pagamentos em débito, crédito à vista ou parcelado já devem incluir a taxa da maquininha para preservar a margem da implantação.</p>
+
+  <table>
+    <tr><th>Oferta</th><th>Pix</th><th>Débito</th><th>Crédito à vista</th><th>Crédito 12x</th></tr>
+    <tr><td>Implantação Plano Controle</td><td>R$1.990,00</td><td>R$2.017,64</td><td>R$2.054,72</td><td>12x R$189,31</td></tr>
+    <tr><td>Implantação Plano Monitorado</td><td>R$3.990,00</td><td>R$4.045,42</td><td>R$4.119,77</td><td>12x R$379,57</td></tr>
+    <tr><td>Adesão Comodato Monitorado</td><td>R$1.490,00</td><td>R$1.510,70</td><td>R$1.538,46</td><td>12x R$141,74</td></tr>
+  </table>
+
+  <p class="muted">Base usada: Pix 0,00%, débito 1,37%, crédito à vista 3,15% e crédito 12x 12,40%. Caso a taxa da maquininha mude, recalcular antes do fechamento.</p>
+
+  <h2>7. Itens adicionais</h2>
+  <table>
+    <tr><th>Item adicional</th><th>Valor sugerido</th></tr>
+    <tr><td>Câmera IP instalada adicional</td><td>R$550 a R$950</td></tr>
+    <tr><td>Sensor ambiente adicional</td><td>R$250 a R$450</td></tr>
+    <tr><td>Sensor de água completo adicional</td><td>R$650 a R$1.300</td></tr>
+    <tr><td>Balança integrada adicional</td><td>R$700 a R$1.800</td></tr>
+    <tr><td>Canal de relé adicional</td><td>R$150 a R$350</td></tr>
+    <tr><td>Cabo adicional instalado</td><td>R$5 a R$12 por metro</td></tr>
+    <tr><td>Conectorização RJ45</td><td>R$15 a R$30 por ponta</td></tr>
+    <tr><td>Hora técnica remota avulsa</td><td>R$80 a R$150</td></tr>
+    <tr><td>Hora técnica presencial</td><td>R$120 a R$220 + deslocamento</td></tr>
+  </table>
+
+  <h2>8. Deslocamento e materiais</h2>
+  <table>
+    <tr><th>Tipo</th><th>Regra sugerida</th></tr>
+    <tr><td>Até 20 km ida/volta</td><td>Incluso na instalação.</td></tr>
+    <tr><td>Acima de 20 km</td><td>R$1,50 a R$2,50 por km rodado.</td></tr>
+    <tr><td>Pedágio, estacionamento ou balsa</td><td>Repasse integral.</td></tr>
+    <tr><td>Diária técnica fora da cidade</td><td>R$350 a R$600.</td></tr>
+    <tr><td>Materiais extras</td><td>Cabos, conduítes, conectores, caixas, fontes e suportes cobrados conforme necessidade.</td></tr>
+  </table>
+
+  <h2>9. Garantia e suporte</h2>
+  <ul>
+    <li>Garantia de configuração: 30 dias.</li>
+    <li>Garantia de instalação: 90 dias para defeitos de montagem executada pela equipe.</li>
+    <li>Garantia de equipamentos: conforme fabricante ou fornecedor.</li>
+    <li>Suporte remoto conforme plano contratado.</li>
+    <li>Visitas presenciais corretivas ou preventivas conforme contrato.</li>
+  </ul>
+  <p>Não estão cobertos: raio, queda de energia, falta de internet, umidade indevida, mau uso, alteração por terceiros, corte de cabo, pragas, danos físicos, falta de aterramento ou instalação elétrica fora de padrão.</p>
+
+  <h2>10. Condições para implantação</h2>
+  <ul>
+    <li>Cliente deve indicar pontos de energia e locais dos equipamentos.</li>
+    <li>Cliente deve autorizar fixações, furos, passagem de cabos e acesso à rede, quando necessário.</li>
+    <li>Instalações em rede elétrica 127/220 V devem respeitar normas e podem exigir eletricista habilitado.</li>
+    <li>Câmeras dependem de rede local estável.</li>
+    <li>Alertas dependem de energia, internet e permissões do celular.</li>
+  </ul>
+
+  <h2>11. Aceite da proposta</h2>
+  <p>Ao aprovar esta proposta, o cliente autoriza o início do planejamento da implantação, compra/separação de equipamentos, agendamento técnico e configuração inicial do SELETO conforme o plano escolhido.</p>
+
+  <div class="signature">
+    <div>
+      <div class="line">Contratante</div>
+      <p>Nome:</p>
+      <p>CPF/CNPJ:</p>
+      <p>Data:</p>
+    </div>
+    <div>
+      <div class="line">SELETO</div>
+      <p>Responsável:</p>
+      <p>Contato:</p>
+      <p>Data:</p>
+    </div>
+  </div>
+</body>
+</html>

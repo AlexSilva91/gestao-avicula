@@ -1,5 +1,13 @@
 # Image Attribution
 
+## SELETO_LOGO.png
+
+- Title: SELETO app cover and brand logo
+- Author: Generated with OpenAI image generation, directed by Codex
+- Source: Local generated asset
+- License: Project-owned generated asset
+- Changes: Replaced the previous SELETO logo with the refreshed app cover/logo using the same rustic rural style and the new tagline.
+
 ## free_range_chickens.jpg
 
 - Title: Free range chicken flock.jpg

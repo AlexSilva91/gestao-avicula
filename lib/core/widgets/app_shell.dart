@@ -48,7 +48,7 @@ final _appUpdateNoticeProvider = StreamProvider<AppUpdateNotice?>((ref) {
       versionCode: latestCode,
       message: values['app_update_message']?.trim().isNotEmpty == true
           ? values['app_update_message']!.trim()
-          : 'Há uma nova versão do GRANJA SELETO disponível.',
+          : 'Há uma nova versão do SELETO disponível.',
       url: values['app_update_url']?.trim() ?? '',
     );
   });

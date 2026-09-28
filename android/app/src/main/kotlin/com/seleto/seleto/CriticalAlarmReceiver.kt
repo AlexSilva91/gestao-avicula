@@ -24,7 +24,7 @@ class CriticalAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val appContext = context.applicationContext
         val id = intent.getIntExtra("id", System.currentTimeMillis().toInt())
-        val title = intent.getStringExtra("title") ?: "GRANJA SELETO"
+        val title = intent.getStringExtra("title") ?: "SELETO"
         val body = intent.getStringExtra("body") ?: "Alerta operacional"
         val durationMillis = intent.getLongExtra(
             "durationMillis",
@@ -89,7 +89,7 @@ class CriticalAlarmReceiver : BroadcastReceiver() {
             .build()
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Alertas sonoros GRANJA SELETO",
+            "Alertas sonoros SELETO",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Alertas operacionais com som, vibracao e prioridade de alarme"

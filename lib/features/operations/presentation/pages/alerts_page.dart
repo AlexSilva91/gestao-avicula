@@ -1206,7 +1206,7 @@ class _CreateAlertDialogState extends State<_CreateAlertDialog> {
                           weekdays: weekdays,
                         );
                     await NotificationService().testCriticalAlert(
-                      title: 'GRANJA SELETO · Teste: ${title.text.trim()}',
+                      title: 'SELETO · Teste: ${title.text.trim()}',
                       body: message.text.trim().isEmpty
                           ? 'Teste do alerta criado.'
                           : message.text.trim(),
@@ -1282,7 +1282,7 @@ class _AlertInfoCardState extends State<_AlertInfoCard> {
   Future<void> _test() async {
     try {
       await NotificationService().testCriticalAlert(
-        title: 'GRANJA SELETO · Teste de alerta',
+        title: 'SELETO · Teste de alerta',
         body: 'Alerta sonoro de teste dos alertas agendados.',
       );
       if (!mounted) return;

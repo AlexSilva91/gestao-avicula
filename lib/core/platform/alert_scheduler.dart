@@ -41,7 +41,7 @@ Future<void> schedulePersistedAlerts(
       if (useCriticalAlerts) {
         await service.schedule(
           id: id,
-          title: 'GRANJA SELETO · ${event.title}',
+          title: 'SELETO · ${event.title}',
           body: body,
           at: occurrence,
           urgent: true,
@@ -49,7 +49,7 @@ Future<void> schedulePersistedAlerts(
       } else {
         await service.scheduleMessage(
           id: id,
-          title: 'GRANJA SELETO · ${event.title}',
+          title: 'SELETO · ${event.title}',
           body: body,
           at: occurrence,
         );

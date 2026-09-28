@@ -10,7 +10,7 @@ class SeletoApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => MaterialApp.router(
-    title: 'GRANJA SELETO',
+    title: 'SELETO',
     debugShowCheckedModeBanner: false,
     theme: SeletoTheme.light,
     darkTheme: SeletoTheme.dark,

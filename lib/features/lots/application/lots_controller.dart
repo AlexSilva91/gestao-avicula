@@ -39,7 +39,7 @@ class LotsController {
         NotificationService().nativeSupported) {
       final enabled = await NotificationService().prepareMessages();
       if (!enabled) {
-        throw StateError('Permita notificações para o GRANJA SELETO.');
+        throw StateError('Permita notificações para o SELETO.');
       }
     }
     final lotId = await ref

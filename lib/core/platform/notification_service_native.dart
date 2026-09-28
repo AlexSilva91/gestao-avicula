@@ -32,12 +32,12 @@ class NotificationReadiness {
 
   List<String> get missingItems => [
     if (!nativeSupported) 'Abra o app instalado no Android.',
-    if (!notificationsEnabled) 'Permita notificações para o GRANJA SELETO.',
+    if (!notificationsEnabled) 'Permita notificações para o SELETO.',
     if (!exactAlarmsAllowed) 'Permita alarmes e lembretes exatos.',
     if (!notificationPolicyAccess)
-      'Permita que o GRANJA SELETO interrompa o modo silencioso/Não perturbe.',
+      'Permita que o SELETO interrompa o modo silencioso/Não perturbe.',
     if (!batteryOptimizationIgnored)
-      'Permita que o GRANJA SELETO ignore a otimização de bateria.',
+      'Permita que o SELETO ignore a otimização de bateria.',
     if (!alarmChannelReady) 'Mantenha o canal de alertas sonoros ativo.',
   ];
 }
@@ -163,7 +163,7 @@ class NotificationService {
     await android.createNotificationChannel(
       const AndroidNotificationChannel(
         _channelId,
-        'Alertas sonoros GRANJA SELETO',
+        'Alertas sonoros SELETO',
         description:
             'Alertas operacionais com som, vibração e prioridade de alarme',
         importance: Importance.max,
@@ -184,7 +184,7 @@ class NotificationService {
     await android.createNotificationChannel(
       const AndroidNotificationChannel(
         _messageChannelId,
-        'Mensagens GRANJA SELETO',
+        'Mensagens SELETO',
         description: 'Mensagens operacionais agendadas',
         importance: Importance.high,
         playSound: true,
@@ -195,7 +195,7 @@ class NotificationService {
 
   Future<void> testCriticalAlert({String? title, String? body}) => schedule(
     id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
-    title: title ?? 'GRANJA SELETO · Teste de alerta',
+    title: title ?? 'SELETO · Teste de alerta',
     body:
         body ??
         'Se você ouviu som e sentiu vibração, o alerta crítico está pronto.',
@@ -238,7 +238,7 @@ class NotificationService {
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
-          'Alertas sonoros GRANJA SELETO',
+          'Alertas sonoros SELETO',
           channelDescription: 'Fases, iluminação, estoque, pedidos e entregas',
           importance: Importance.max,
           priority: Priority.max,
@@ -280,7 +280,7 @@ class NotificationService {
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
           _messageChannelId,
-          'Mensagens GRANJA SELETO',
+          'Mensagens SELETO',
           channelDescription: 'Mensagens operacionais agendadas',
           importance: Importance.high,
           priority: Priority.high,
@@ -301,7 +301,7 @@ class NotificationService {
   }) async {
     if (!Platform.isAndroid) return;
     if (!await prepareMessages()) {
-      throw StateError('Permita notificações para o GRANJA SELETO.');
+      throw StateError('Permita notificações para o SELETO.');
     }
     await scheduleMessage(
       id: DateTime.now().millisecondsSinceEpoch.remainder(2147483647),

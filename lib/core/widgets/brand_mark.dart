@@ -18,7 +18,7 @@ class BrandMark extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'GRANJA SELETO',
+              'SELETO',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
