@@ -62,7 +62,7 @@ const char* ntpServer2 = "time.nist.gov";
 constexpr long gmtOffsetSeconds = -3 * 60 * 60;
 constexpr int daylightOffsetSeconds = 0;
 constexpr uint16_t httpPort = 80;
-constexpr uint32_t wifiConnectTimeoutMs = 15000;
+constexpr uint32_t wifiConnectTimeoutMs = 25000;
 constexpr uint32_t scheduleCheckIntervalMs = 1000;
 constexpr uint32_t manualOverrideMs = 5UL * 60UL * 1000UL;
 constexpr uint32_t remoteSyncIntervalMs = 180UL * 1000UL;
@@ -601,6 +601,7 @@ class NetworkService {
 
   void begin() {
     WiFi.mode(WIFI_AP_STA);
+    WiFi.setHostname(Config::deviceId);
     WiFi.softAP(Config::setupApSsid, Config::setupApPassword);
     connect(storage_.loadWifi());
   }
@@ -609,6 +610,8 @@ class NetworkService {
     if (!credentials.isValid()) return false;
 
     WiFi.mode(WIFI_AP_STA);
+    WiFi.setHostname(Config::deviceId);
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
     WiFi.begin(credentials.ssid.c_str(), credentials.password.c_str());
     const uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED &&
@@ -622,7 +625,7 @@ class NetworkService {
 
   bool saveAndReconnect(const String& ssid, const String& password) {
     storage_.saveWifi(ssid, password);
-    WiFi.disconnect(false, true);
+    WiFi.disconnect(false, false);
     delay(500);
     WifiCredentials credentials{ssid, password};
     return connect(credentials);
@@ -642,6 +645,10 @@ class NetworkService {
 
   String ssid() const {
     return WiFi.SSID();
+  }
+
+  int statusCode() const {
+    return static_cast<int>(WiFi.status());
   }
 
  private:
@@ -863,6 +870,7 @@ class ApiServer {
     json += ",\"app\":\"GRANJA_SELETO\"";
     json += ",\"role\":\"RELAY_CONTROLLER\"";
     json += ",\"wifiConnected\":" + boolJson(network_.connected());
+    json += ",\"wifiStatus\":" + String(network_.statusCode());
     json += ",\"wifiSsid\":" + quoteJson(network_.ssid());
     json += ",\"ip\":" + quoteJson(network_.localIp());
     json += ",\"setupApSsid\":" + quoteJson(Config::setupApSsid);
@@ -1085,6 +1093,8 @@ class ApiServer {
     json += boolJson(connected);
     json += ",\"wifiConnected\":";
     json += boolJson(network_.connected());
+    json += ",\"wifiStatus\":";
+    json += String(network_.statusCode());
     json += ",\"ip\":";
     json += quoteJson(network_.localIp());
     json += ",\"setupApIp\":";
@@ -1274,6 +1284,7 @@ class BluetoothBridge {
     json += ",\"deviceId\":" + quoteJson(Config::deviceId);
     json += ",\"transport\":\"bluetooth\"";
     json += ",\"wifiConnected\":" + boolJson(network_.connected());
+    json += ",\"wifiStatus\":" + String(network_.statusCode());
     json += ",\"ip\":" + quoteJson(network_.localIp());
     json += ",\"setupApIp\":" + quoteJson(network_.setupIp());
     json += ",\"bluetoothName\":" + quoteJson(Config::bluetoothName);
@@ -1375,6 +1386,8 @@ class BluetoothBridge {
     json += boolJson(connected);
     json += ",\"wifiConnected\":";
     json += boolJson(network_.connected());
+    json += ",\"wifiStatus\":";
+    json += String(network_.statusCode());
     json += ",\"ip\":";
     json += quoteJson(network_.localIp());
     json += "}";

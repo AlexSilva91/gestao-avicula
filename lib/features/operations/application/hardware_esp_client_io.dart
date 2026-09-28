@@ -93,6 +93,7 @@ class HardwareEspClient {
 
   static const _probeTimeout = Duration(milliseconds: 850);
   static const _requestTimeout = Duration(seconds: 8);
+  static const _wifiConfigTimeout = Duration(seconds: 35);
   static const _knownSetupEndpoint = 'http://192.168.4.1';
   static const _networkChannel = MethodChannel('seleto/network');
 
@@ -209,7 +210,7 @@ class HardwareEspClient {
     return _postForm('$normalized/api/wifi', {
       'ssid': ssid,
       'password': password,
-    });
+    }, timeout: _wifiConfigTimeout);
   }
 
   Future<EspRelayResult> setRelay({
@@ -397,8 +398,9 @@ class HardwareEspClient {
 
   Future<Map<String, Object?>> _postForm(
     String url,
-    Map<String, String> fields,
-  ) async {
+    Map<String, String> fields, {
+    Duration timeout = _requestTimeout,
+  }) async {
     if (Platform.isAndroid && _isLocalEndpoint(url)) {
       final body = fields.entries
           .map(
@@ -412,11 +414,12 @@ class HardwareEspClient {
         url: url,
         body: body,
         contentType: 'application/x-www-form-urlencoded; charset=utf-8',
+        timeout: timeout,
       );
     }
     final client = HttpClient();
     final boundToWifi = await _bindWifiIfLocalEndpoint(url);
-    client.connectionTimeout = _requestTimeout;
+    client.connectionTimeout = timeout;
     try {
       final body = fields.entries
           .map(
@@ -426,9 +429,7 @@ class HardwareEspClient {
           )
           .join('&');
       final encodedBody = utf8.encode(body);
-      final request = await client
-          .postUrl(Uri.parse(url))
-          .timeout(_requestTimeout);
+      final request = await client.postUrl(Uri.parse(url)).timeout(timeout);
       request.headers.contentType = ContentType(
         'application',
         'x-www-form-urlencoded',
@@ -436,8 +437,8 @@ class HardwareEspClient {
       );
       request.contentLength = encodedBody.length;
       request.add(encodedBody);
-      final response = await request.close().timeout(_requestTimeout);
-      return _decodeResponse(response);
+      final response = await request.close().timeout(timeout);
+      return _decodeResponse(response, timeout: timeout);
     } finally {
       client.close(force: true);
       if (boundToWifi) await _clearNetworkBinding();
@@ -445,9 +446,10 @@ class HardwareEspClient {
   }
 
   Future<Map<String, Object?>> _decodeResponse(
-    HttpClientResponse response,
-  ) async {
-    final body = await utf8.decodeStream(response).timeout(_requestTimeout);
+    HttpClientResponse response, {
+    Duration timeout = _requestTimeout,
+  }) async {
+    final body = await utf8.decodeStream(response).timeout(timeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException('ESP respondeu ${response.statusCode}: $body');
     }
@@ -463,6 +465,7 @@ class HardwareEspClient {
     required String url,
     String body = '',
     String contentType = 'application/json',
+    Duration timeout = _requestTimeout,
   }) async {
     final uri = Uri.parse(url);
     final port = uri.hasPort ? uri.port : 80;
@@ -473,7 +476,7 @@ class HardwareEspClient {
     final boundToWifi = await _bindWifiIfLocalEndpoint(url);
     Socket? socket;
     try {
-      socket = await Socket.connect(uri.host, port, timeout: _requestTimeout);
+      socket = await Socket.connect(uri.host, port, timeout: timeout);
       final bodyBytes = utf8.encode(body);
       final request = StringBuffer()
         ..write('$method $path HTTP/1.0\r\n')
@@ -488,10 +491,10 @@ class HardwareEspClient {
       request.write('\r\n');
       socket.add(utf8.encode(request.toString()));
       if (bodyBytes.isNotEmpty) socket.add(bodyBytes);
-      await socket.flush().timeout(_requestTimeout);
+      await socket.flush().timeout(timeout);
 
       final responseBytes = <int>[];
-      await for (final chunk in socket.timeout(_requestTimeout)) {
+      await for (final chunk in socket.timeout(timeout)) {
         responseBytes.addAll(chunk);
       }
       final response = utf8.decode(responseBytes);

@@ -134,6 +134,7 @@ class _HardwareIntegrationsPageState
   bool lightingEnabled = false;
   bool saving = false;
   bool initialized = false;
+  bool wifiProvisionPasswordHidden = true;
   String lightingStatus = 'Aguardando teste';
   String? lightingConnectionResult;
   bool espDiscoveryStarted = false;
@@ -189,6 +190,8 @@ class _HardwareIntegrationsPageState
     wifiProvisionEndpoint.text =
         values['hardware_esp_setup_endpoint']?.trim() ?? '192.168.4.1';
     wifiProvisionSsid.text = values['hardware_esp_wifi_ssid']?.trim() ?? '';
+    wifiProvisionPassword.text =
+        values['hardware_esp_wifi_password']?.trim() ?? '';
     for (final channel in config.lightingChannels) {
       final index = channel.index - 1;
       if (index < 0 || index >= 4) continue;
@@ -284,8 +287,13 @@ class _HardwareIntegrationsPageState
                   endpointController: wifiProvisionEndpoint,
                   ssidController: wifiProvisionSsid,
                   passwordController: wifiProvisionPassword,
+                  passwordHidden: wifiProvisionPasswordHidden,
                   busy: saving || espScanning,
                   onConfigure: _configureEspWifi,
+                  onTogglePassword: () => setState(
+                    () => wifiProvisionPasswordHidden =
+                        !wifiProvisionPasswordHidden,
+                  ),
                   onHelp: _showEspWifiHelp,
                 ),
                 const SizedBox(height: 16),
@@ -1324,6 +1332,7 @@ class _HardwareIntegrationsPageState
       final controller = ref.read(operationsControllerProvider);
       await controller.saveSetting('hardware_esp_setup_endpoint', endpoint);
       await controller.saveSetting('hardware_esp_wifi_ssid', ssid);
+      await controller.saveSetting('hardware_esp_wifi_password', password);
 
       var statusMessage =
           'Credenciais enviadas; aguardando confirmação de rede.';
@@ -1343,7 +1352,6 @@ class _HardwareIntegrationsPageState
         resultMessage = 'OK Wi-Fi: ESP conectado em $normalizedIp.';
       }
 
-      wifiProvisionPassword.clear();
       if (!mounted) return;
       setState(() {
         espTerminalTitle = connected ? 'WIFI CONFIGURADO' : 'WIFI SALVO NO ESP';
@@ -1670,16 +1678,20 @@ class _EspWifiProvisionPanel extends StatelessWidget {
     required this.endpointController,
     required this.ssidController,
     required this.passwordController,
+    required this.passwordHidden,
     required this.busy,
     required this.onConfigure,
+    required this.onTogglePassword,
     required this.onHelp,
   });
 
   final TextEditingController endpointController;
   final TextEditingController ssidController;
   final TextEditingController passwordController;
+  final bool passwordHidden;
   final bool busy;
   final VoidCallback onConfigure;
+  final VoidCallback onTogglePassword;
   final VoidCallback onHelp;
 
   @override
@@ -1757,10 +1769,21 @@ class _EspWifiProvisionPanel extends StatelessWidget {
                 final passwordField = TextField(
                   controller: passwordController,
                   enabled: !busy,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: passwordHidden,
+                  decoration: InputDecoration(
                     labelText: 'Senha',
-                    prefixIcon: Icon(Icons.lock_outline),
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      onPressed: busy ? null : onTogglePassword,
+                      icon: Icon(
+                        passwordHidden
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                      tooltip: passwordHidden
+                          ? 'Mostrar senha'
+                          : 'Ocultar senha',
+                    ),
                   ),
                 );
                 if (compact) {
@@ -1785,7 +1808,7 @@ class _EspWifiProvisionPanel extends StatelessWidget {
             _InfoStrip(
               icon: Icons.security_outlined,
               text:
-                  'Use com o celular conectado ao AP GRANJA-SELETO-SETUP. A senha nao fica salva no app.',
+                  'Use com o celular conectado ao AP GRANJA-SELETO-SETUP. A senha pode ser exibida ou ocultada neste campo.',
             ),
             const SizedBox(height: 10),
             Wrap(
