@@ -11,6 +11,10 @@ import '../../../../core/widgets/seleto_widgets.dart';
 import '../../application/hardware_esp_client.dart';
 import '../../application/operations_controller.dart';
 
+const _ventilationChannelCount = 8;
+const _ventilationRelayOffset = 4;
+const _ventilationDefaultPins = ['18', '5', '17', '16', '4', '25', '2', '15'];
+
 class HardwareIntegrationSettings {
   const HardwareIntegrationSettings({
     required this.scaleEnabled,
@@ -24,6 +28,8 @@ class HardwareIntegrationSettings {
     required this.lightingEndpoint,
     required this.lightingRelayPin,
     required this.lightingChannels,
+    required this.ventilationEnabled,
+    required this.ventilationChannels,
   });
 
   final bool scaleEnabled;
@@ -37,6 +43,8 @@ class HardwareIntegrationSettings {
   final String lightingEndpoint;
   final String lightingRelayPin;
   final List<LightingChannelConfig> lightingChannels;
+  final bool ventilationEnabled;
+  final List<LightingChannelConfig> ventilationChannels;
 
   factory HardwareIntegrationSettings.fromSettings(List<AppSetting> settings) {
     final values = {for (final setting in settings) setting.key: setting.value};
@@ -83,6 +91,21 @@ class HardwareIntegrationSettings {
                 },
             enabled:
                 values['hardware_lighting_channel_${i}_enabled'] != 'false',
+          ),
+      ],
+      ventilationEnabled: values['hardware_ventilation_enabled'] == 'true',
+      ventilationChannels: [
+        for (var i = 1; i <= _ventilationChannelCount; i++)
+          LightingChannelConfig(
+            index: i,
+            name:
+                values['hardware_ventilation_channel_${i}_name']?.trim() ??
+                'Ventilador $i',
+            pin:
+                values['hardware_ventilation_channel_${i}_pin']?.trim() ??
+                _ventilationDefaultPins[i - 1],
+            enabled:
+                values['hardware_ventilation_channel_${i}_enabled'] != 'false',
           ),
       ],
     );
@@ -166,6 +189,25 @@ class _HardwareIntegrationsPageState
   final lightingChannelMorningEnabled = List.generate(4, (index) => true);
   final lightingChannelEveningEnabled = List.generate(4, (index) => true);
   final generalScheduleChannels = List.generate(4, (index) => true);
+  final ventilationChannelNames = List.generate(
+    _ventilationChannelCount,
+    (index) => TextEditingController(text: 'Ventilador ${index + 1}'),
+  );
+  final ventilationChannelPins = [
+    for (final pin in _ventilationDefaultPins) TextEditingController(text: pin),
+  ];
+  final ventilationChannelEnabled = List.generate(
+    _ventilationChannelCount,
+    (index) => true,
+  );
+  final ventilationChannelOn = List.generate(
+    _ventilationChannelCount,
+    (index) => false,
+  );
+  final ventilationChannelStatus = List.generate(
+    _ventilationChannelCount,
+    (index) => 'Ventilador ${index + 1} aguardando teste',
+  );
   bool generalMorningEnabled = true;
   bool generalEveningEnabled = true;
   String scaleConnection = 'WIFI';
@@ -173,10 +215,12 @@ class _HardwareIntegrationsPageState
   String lightingConnection = 'WIFI';
   bool scaleEnabled = false;
   bool lightingEnabled = false;
+  bool ventilationEnabled = false;
   bool saving = false;
   bool initialized = false;
   String scaleStatus = 'Aguardando teste';
   String lightingStatus = 'Aguardando teste';
+  String ventilationStatus = 'Aguardando configuração';
   bool scaleLiveReading = false;
   Timer? scaleReadTimer;
   int scaleSampleCount = 0;
@@ -226,6 +270,12 @@ class _HardwareIntegrationsPageState
     for (final controller in lightingChannelEveningOffTimes) {
       controller.dispose();
     }
+    for (final controller in ventilationChannelNames) {
+      controller.dispose();
+    }
+    for (final controller in ventilationChannelPins) {
+      controller.dispose();
+    }
     generalMorningOnTime.dispose();
     generalMorningOffTime.dispose();
     generalEveningOnTime.dispose();
@@ -250,6 +300,7 @@ class _HardwareIntegrationsPageState
     lightingConnection = config.lightingConnection;
     lightingEndpoint.text = config.lightingEndpoint;
     lightingRelayPin.text = config.lightingRelayPin;
+    ventilationEnabled = config.ventilationEnabled;
     wifiProvisionEndpoint.text =
         values['hardware_esp_setup_endpoint']?.trim() ?? '192.168.4.1';
     wifiProvisionSsid.text = values['hardware_esp_wifi_ssid']?.trim() ?? '';
@@ -303,11 +354,18 @@ class _HardwareIntegrationsPageState
           values['hardware_lighting_general_channel_${i + 1}_selected'] !=
           'false';
     }
+    for (final channel in config.ventilationChannels) {
+      final index = channel.index - 1;
+      if (index < 0 || index >= ventilationChannelNames.length) continue;
+      ventilationChannelNames[index].text = channel.name;
+      ventilationChannelPins[index].text = channel.pin;
+      ventilationChannelEnabled[index] = channel.enabled;
+    }
   }
 
   @override
   Widget build(BuildContext context) => AppShell(
-    title: 'Iluminação',
+    title: 'Iluminação e ventilação',
     child: ref
         .watch(appSettingsProvider)
         .when(
@@ -348,6 +406,8 @@ class _HardwareIntegrationsPageState
                 ),
                 const SizedBox(height: 16),
                 _lightingPanel(context),
+                const SizedBox(height: 16),
+                _ventilationPanel(context),
               ],
             );
           },
@@ -661,6 +721,248 @@ class _HardwareIntegrationsPageState
           ],
         ),
       ],
+    );
+  }
+
+  Widget _ventilationPanel(BuildContext context) {
+    final labels = [
+      for (var i = 0; i < ventilationChannelNames.length; i++)
+        ventilationChannelNames[i].text.trim().isEmpty
+            ? 'Ventilador ${i + 1}'
+            : ventilationChannelNames[i].text.trim(),
+    ];
+    final pins = [
+      for (final controller in ventilationChannelPins)
+        controller.text.trim().isEmpty ? '-' : controller.text.trim(),
+    ];
+    final enabledCount = ventilationChannelEnabled
+        .where((value) => value)
+        .length;
+    final onCount = ventilationChannelOn.where((value) => value).length;
+    return _IntegrationPanel(
+      icon: Icons.air_outlined,
+      title: 'Ventilação',
+      status: ventilationStatus,
+      children: [
+        _InfoStrip(
+          icon: Icons.settings_input_component_outlined,
+          text:
+              'Preparado para módulo de relé de 4 a 8 canais. No ESP, a ventilação usa os canais 5 a 12 e GPIOs livres, sem alterar os canais 1 a 4 da iluminação.',
+        ),
+        const SizedBox(height: 12),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          secondary: const Icon(Icons.air_outlined),
+          title: const Text('Ativar controle de ventilação'),
+          subtitle: Text(
+            '$enabledCount/$_ventilationChannelCount canal(is) configurados, $onCount ligado(s)',
+          ),
+          value: ventilationEnabled,
+          onChanged: saving
+              ? null
+              : (value) => setState(() => ventilationEnabled = value),
+        ),
+        const SizedBox(height: 8),
+        _VentilationChannelBoard(
+          labels: labels,
+          pins: pins,
+          enabled: ventilationChannelEnabled,
+          on: ventilationChannelOn,
+          onOpen: _openVentilationChannelSheet,
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed: saving ? null : _saveVentilation,
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('Salvar ventilação'),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: saving || !ventilationEnabled
+                  ? null
+                  : () => _testVentilationConnection(turnOn: false),
+              icon: const Icon(Icons.wifi),
+              label: const Text('Testar configuração'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openVentilationChannelSheet(int index) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          void updateSheet(VoidCallback update) {
+            setState(update);
+            setSheetState(() {});
+          }
+
+          final espChannel = _ventilationRelayOffset + index + 1;
+          final label = ventilationChannelNames[index].text.trim().isEmpty
+              ? 'Ventilador ${index + 1}'
+              : ventilationChannelNames[index].text.trim();
+          final colors = Theme.of(sheetContext).colorScheme;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              12,
+              16,
+              MediaQuery.viewInsetsOf(sheetContext).bottom + 16,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colors.outlineVariant,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Icon(
+                        ventilationChannelOn[index]
+                            ? Icons.air
+                            : Icons.air_outlined,
+                        color: ventilationChannelOn[index]
+                            ? colors.primary
+                            : colors.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: Theme.of(sheetContext).textTheme.titleLarge,
+                        ),
+                      ),
+                      Switch(
+                        value: ventilationChannelEnabled[index],
+                        onChanged: saving
+                            ? null
+                            : (value) => updateSheet(
+                                () => ventilationChannelEnabled[index] = value,
+                              ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _InfoStrip(
+                    icon: ventilationChannelStatus[index].contains('FALHA')
+                        ? Icons.error_outline
+                        : Icons.info_outline,
+                    text:
+                        '${ventilationChannelStatus[index]} • Canal ESP $espChannel',
+                  ),
+                  const SizedBox(height: 12),
+                  LayoutBuilder(
+                    builder: (context, box) => box.maxWidth > 520
+                        ? Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: ventilationChannelNames[index],
+                                  enabled: !saving,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Nome do ventilador/exaustor',
+                                    prefixIcon: Icon(Icons.label_outline),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: 150,
+                                child: TextField(
+                                  controller: ventilationChannelPins[index],
+                                  enabled: !saving,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'GPIO',
+                                    prefixIcon: Icon(
+                                      Icons.settings_input_component_outlined,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            children: [
+                              TextField(
+                                controller: ventilationChannelNames[index],
+                                enabled: !saving,
+                                decoration: const InputDecoration(
+                                  labelText: 'Nome do ventilador/exaustor',
+                                  prefixIcon: Icon(Icons.label_outline),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: ventilationChannelPins[index],
+                                enabled: !saving,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'GPIO',
+                                  prefixIcon: Icon(
+                                    Icons.settings_input_component_outlined,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: saving
+                            ? null
+                            : () => unawaited(
+                                _testVentilationChannel(index, true),
+                              ),
+                        icon: const Icon(Icons.power_settings_new),
+                        label: const Text('Ligar'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: saving
+                            ? null
+                            : () => unawaited(
+                                _testVentilationChannel(index, false),
+                              ),
+                        icon: const Icon(Icons.power_off_outlined),
+                        label: const Text('Desligar'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: saving
+                            ? null
+                            : () => unawaited(_saveVentilation()),
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('Salvar'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -1143,6 +1445,81 @@ class _HardwareIntegrationsPageState
     }
   }
 
+  Future<void> _saveVentilation() async {
+    final pinError = _validateVentilationPins();
+    if (pinError != null) {
+      setState(() => ventilationStatus = pinError);
+      return;
+    }
+
+    setState(() => saving = true);
+    try {
+      final controller = ref.read(operationsControllerProvider);
+      final updates = {
+        'hardware_ventilation_enabled': ventilationEnabled.toString(),
+      };
+      for (var i = 0; i < _ventilationChannelCount; i++) {
+        final number = i + 1;
+        updates['hardware_ventilation_channel_${number}_name'] =
+            ventilationChannelNames[i].text.trim().isEmpty
+            ? 'Ventilador $number'
+            : ventilationChannelNames[i].text.trim();
+        updates['hardware_ventilation_channel_${number}_pin'] =
+            ventilationChannelPins[i].text.trim();
+        updates['hardware_ventilation_channel_${number}_enabled'] =
+            ventilationChannelEnabled[i].toString();
+      }
+      for (final entry in updates.entries) {
+        await controller.saveSetting(entry.key, entry.value);
+      }
+      if (mounted) {
+        setState(() {
+          ventilationStatus =
+              'Ventilação salva nos canais ESP 5 a 12, sem alterar iluminação.';
+        });
+        _snack('Ventilação salva.');
+      }
+    } catch (error) {
+      if (mounted) await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  String? _validateVentilationPins() {
+    const reservedPins = {
+      '23',
+      '22',
+      '21',
+      '19',
+      '32',
+      '33',
+      '13',
+      '14',
+      '26',
+      '27',
+      '34',
+      '35',
+      '36',
+      '39',
+    };
+    final used = <String>{};
+    for (var i = 0; i < _ventilationChannelCount; i++) {
+      if (!ventilationChannelEnabled[i]) continue;
+      final pin = ventilationChannelPins[i].text.trim();
+      if (pin.isEmpty) {
+        return 'FALHA: informe o GPIO do ventilador ${i + 1}.';
+      }
+      if (reservedPins.contains(pin)) {
+        return 'FALHA: GPIO $pin já está reservado para iluminação ou sensores.';
+      }
+      if (!used.add(pin)) {
+        return 'FALHA: GPIO $pin repetido na ventilação.';
+      }
+    }
+    return null;
+  }
+
   Future<void> _applyGeneralLightingSchedule({required bool syncAfter}) async {
     final selectedIndexes = [
       for (var i = 0; i < 4; i++)
@@ -1574,6 +1951,93 @@ class _HardwareIntegrationsPageState
         lightingConnectionResult = 'FALHA Wi-Fi: agenda não confirmada.';
       });
       _appendEspLog('ERR> sync agenda falhou: $error');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _testVentilationConnection({required bool turnOn}) async {
+    final firstEnabled = ventilationChannelEnabled.indexWhere((value) => value);
+    if (firstEnabled < 0) {
+      setState(() {
+        ventilationStatus = 'FALHA: ative pelo menos um canal de ventilação.';
+      });
+      return;
+    }
+    await _testVentilationChannel(firstEnabled, turnOn);
+  }
+
+  Future<void> _testVentilationChannel(int index, bool turnOn) async {
+    if (!ventilationEnabled) {
+      setState(() {
+        ventilationStatus = 'FALHA: ative o controle de ventilação.';
+        ventilationChannelStatus[index] = 'FALHA: ventilação desativada.';
+      });
+      return;
+    }
+    if (!lightingEnabled || lightingEndpoint.text.trim().isEmpty) {
+      setState(() {
+        ventilationStatus = 'FALHA: configure o controlador ESP32 primeiro.';
+        ventilationChannelStatus[index] = 'FALHA: endpoint do ESP ausente.';
+      });
+      return;
+    }
+    if (lightingConnection != 'WIFI') {
+      setState(() {
+        ventilationStatus = 'FALHA: teste de ventilação requer Wi-Fi.';
+        ventilationChannelStatus[index] = 'FALHA: conexão Wi-Fi necessária.';
+      });
+      return;
+    }
+    if (!ventilationChannelEnabled[index]) {
+      setState(() {
+        ventilationChannelStatus[index] = 'FALHA: canal de ventilação inativo.';
+      });
+      return;
+    }
+    final pinError = _validateVentilationPins();
+    if (pinError != null) {
+      setState(() {
+        ventilationStatus = pinError;
+        ventilationChannelStatus[index] = pinError;
+      });
+      return;
+    }
+
+    setState(() => saving = true);
+    try {
+      final espChannel = _ventilationRelayOffset + index + 1;
+      final result = await espClient.setRelay(
+        endpoint: lightingEndpoint.text.trim(),
+        channel: espChannel,
+        turnOn: turnOn,
+      );
+      await ref
+          .read(operationsControllerProvider)
+          .saveSetting(
+            'hardware_ventilation_channel_${index + 1}_last_test_state',
+            turnOn ? 'ON' : 'OFF',
+          );
+      if (!mounted) return;
+      setState(() {
+        ventilationChannelOn[index] = result.on;
+        ventilationChannelStatus[index] = turnOn
+            ? 'OK: canal ESP $espChannel ligado no GPIO ${ventilationChannelPins[index].text.trim()}.'
+            : 'OK: canal ESP $espChannel desligado no GPIO ${ventilationChannelPins[index].text.trim()}.';
+        ventilationStatus = 'Ventilação testada no canal ESP $espChannel.';
+      });
+      _appendEspLog('ESP> ${result.message}');
+      _appendEspPayload(result.payload);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        final espChannel = _ventilationRelayOffset + index + 1;
+        ventilationChannelStatus[index] =
+            'FALHA: ESP não confirmou o canal $espChannel.';
+        ventilationStatus = 'Falha ao acionar ventilação.';
+      });
+      _appendEspLog('ERR> ventilação falhou: $error');
+      if (mounted) await showOperationError(context, error);
     } finally {
       if (mounted) setState(() => saving = false);
     }
@@ -3048,6 +3512,205 @@ class _SmallStatusPill extends StatelessWidget {
   }
 }
 
+class _VentilationChannelBoard extends StatelessWidget {
+  const _VentilationChannelBoard({
+    required this.labels,
+    required this.pins,
+    required this.enabled,
+    required this.on,
+    required this.onOpen,
+  });
+
+  final List<String> labels;
+  final List<String> pins;
+  final List<bool> enabled;
+  final List<bool> on;
+  final ValueChanged<int> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.air_outlined, color: colors.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Canais de ventilação',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        LayoutBuilder(
+          builder: (context, box) {
+            final columns = box.maxWidth >= 960
+                ? 4
+                : box.maxWidth >= 620
+                ? 3
+                : 2;
+            return GridView.builder(
+              itemCount: _ventilationChannelCount,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: box.maxWidth < 430 ? 1.25 : 1.55,
+              ),
+              itemBuilder: (context, index) => _VentilationChannelCard(
+                index: index,
+                label: labels[index],
+                pin: pins[index],
+                enabled: enabled[index],
+                on: on[index],
+                onOpen: () => onOpen(index),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _VentilationChannelCard extends StatelessWidget {
+  const _VentilationChannelCard({
+    required this.index,
+    required this.label,
+    required this.pin,
+    required this.enabled,
+    required this.on,
+    required this.onOpen,
+  });
+
+  final int index;
+  final String label;
+  final String pin;
+  final bool enabled;
+  final bool on;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = on
+        ? colors.primary
+        : enabled
+        ? colors.onSurface
+        : colors.onSurfaceVariant;
+    final espChannel = _ventilationRelayOffset + index + 1;
+    return Material(
+      color: colors.surface.withValues(alpha: .94),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(
+          color: on
+              ? colors.primary.withValues(alpha: .60)
+              : colors.outlineVariant,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(on ? Icons.air : Icons.air_outlined, color: color),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  Icon(
+                    enabled
+                        ? Icons.check_circle_outline
+                        : Icons.pause_circle_outline,
+                    size: 14,
+                    color: enabled ? colors.primary : colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      enabled ? 'ativo' : 'inativo',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: enabled
+                            ? colors.primary
+                            : colors.onSurfaceVariant,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'ESP $espChannel',
+                    maxLines: 1,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(
+                    Icons.settings_input_component_outlined,
+                    size: 14,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'GPIO $pin',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    on ? 'ON' : 'OFF',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _LightingChannelBoard extends StatelessWidget {
   const _LightingChannelBoard({
     required this.labels,
@@ -3496,7 +4159,7 @@ class _IntegrationHeader extends StatelessWidget {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(
-              'Controle de iluminação',
+              'Controle de iluminação e ventilação',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             _StatusChip(

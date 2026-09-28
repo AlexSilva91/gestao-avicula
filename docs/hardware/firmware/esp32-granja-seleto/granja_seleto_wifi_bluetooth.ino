@@ -1,8 +1,9 @@
 /*
-  GRANJA SELETO - Controlador ESP32 de rele 4 canais
+  GRANJA SELETO - Controlador ESP32 de reles para iluminacao e ventilacao
 
   Funcao principal:
-    - Controlar modulo rele de 4 canais.
+    - Controlar modulo rele de iluminacao de 4 canais.
+    - Reservar canais adicionais para ventilacao, sem alterar a iluminacao.
     - Permitir teste independente de cada canal.
     - Receber agenda diaria do app, salvar cache local na flash e executar.
     - Manter horario por NTP quando houver Wi-Fi.
@@ -67,7 +68,10 @@ constexpr uint32_t scheduleCheckIntervalMs = 1000;
 constexpr uint32_t manualOverrideMs = 5UL * 60UL * 1000UL;
 
 constexpr bool relayActiveLow = true;
-constexpr uint8_t relayPins[] = {23, 22, 21, 19};
+// Canais 1-4: iluminacao existente. Nao alterar sem reconfigurar o app.
+// Canais 5-12: ventilacao. GPIOs escolhidos fora das portas ja reservadas
+// para iluminacao, balanca, ambiente e agua.
+constexpr uint8_t relayPins[] = {23, 22, 21, 19, 18, 5, 17, 16, 4, 25, 2, 15};
 constexpr uint8_t relayCount = sizeof(relayPins) / sizeof(relayPins[0]);
 constexpr uint8_t scheduleSlotCount = 2;
 

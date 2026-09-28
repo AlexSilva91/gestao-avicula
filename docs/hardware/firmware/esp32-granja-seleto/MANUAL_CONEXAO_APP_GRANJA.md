@@ -9,7 +9,7 @@ O firmware permite controlar o ESP32 de duas formas:
 - Wi-Fi: o app informa o IP/endpoint do ESP32.
 - Bluetooth: o app informa o identificador Bluetooth do ESP32.
 
-> Observação importante: por enquanto o firmware está focado no módulo relé de 4 canais. A tela de Integrações do app GRANJA SELETO procura o ESP32 automaticamente, testa `/api/status`, exibe a resposta em um terminal visual, permite testar cada canal separadamente e envia a agenda diária para o ESP salvar em cache local.
+> Observação importante: o firmware mantém a iluminação nos canais 1 a 4 e já reserva canais adicionais para ventilação. A tela de Integrações do app GRANJA SELETO procura o ESP32 automaticamente, testa `/api/status`, exibe a resposta em um terminal visual, permite testar cada canal separadamente e envia a agenda diária de iluminação para o ESP salvar em cache local.
 
 ## 1. Materiais
 
@@ -18,7 +18,8 @@ O firmware permite controlar o ESP32 de duas formas:
 - IDE do Arduino.
 - Celular Android com o app GRANJA SELETO instalado.
 - Rede Wi-Fi 2.4 GHz.
-- Módulo relé de 4 canais 5 V/3.3 V compatível.
+- Módulo relé de 4 canais 5 V/3.3 V compatível para iluminação.
+- Um ou mais módulos relé para ventilação, podendo chegar a 8 canais adicionais.
 
 ## 2. Preparar a IDE do Arduino
 
@@ -198,14 +199,27 @@ Exemplo:
 http://192.168.0.50
 ```
 
-13. Preencha os GPIOs dos canais conforme o firmware:
+13. Preencha os GPIOs dos canais de iluminação conforme o firmware:
 
-| Canal | GPIO padrão |
-| --- | --- |
-| 1 | 23 |
-| 2 | 22 |
-| 3 | 21 |
-| 4 | 19 |
+| Canal ESP | Uso | GPIO padrão |
+| --- | --- | --- |
+| 1 | Iluminação 1 | 23 |
+| 2 | Iluminação 2 | 22 |
+| 3 | Iluminação 3 | 21 |
+| 4 | Iluminação 4 | 19 |
+
+Os canais de ventilação ficam reservados separadamente e não usam GPIOs já ocupados pela iluminação, balança, ambiente ou água:
+
+| Canal ESP | Uso | GPIO padrão |
+| --- | --- | --- |
+| 5 | Ventilação 1 | 18 |
+| 6 | Ventilação 2 | 5 |
+| 7 | Ventilação 3 | 17 |
+| 8 | Ventilação 4 | 16 |
+| 9 | Ventilação 5 | 4 |
+| 10 | Ventilação 6 | 25 |
+| 11 | Ventilação 7 | 2 |
+| 12 | Ventilação 8 | 15 |
 
 14. Em cada canal, configure as janelas de agenda:
    - `Manhã`: exemplo `Liga às 04:30` e `Desliga às 06:10`.
@@ -375,7 +389,8 @@ WIFI Nome da Rede|Senha da Rede
 GRANJA_SELETO_RELE
 ```
 
-7. Configure os canais GPIO `23`, `22`, `21` e `19`.
+7. Configure os canais de iluminação com GPIO `23`, `22`, `21` e `19`.
+   A ventilação usa os canais ESP 5 a 12 no bloco próprio da interface.
 8. Toque em `Salvar`.
 9. Toque em `Testar Bluetooth`.
 10. Teste os canais.
@@ -401,7 +416,15 @@ GRANJA_SELETO_RELE
 | AP de configuração | `GRANJA-SELETO-SETUP` |
 | Senha do AP | `seleto1234` |
 | IP do AP | `192.168.4.1` |
-| Canal 1 | GPIO 23 |
-| Canal 2 | GPIO 22 |
-| Canal 3 | GPIO 21 |
-| Canal 4 | GPIO 19 |
+| Canal 1 - iluminação | GPIO 23 |
+| Canal 2 - iluminação | GPIO 22 |
+| Canal 3 - iluminação | GPIO 21 |
+| Canal 4 - iluminação | GPIO 19 |
+| Canal 5 - ventilação | GPIO 18 |
+| Canal 6 - ventilação | GPIO 5 |
+| Canal 7 - ventilação | GPIO 17 |
+| Canal 8 - ventilação | GPIO 16 |
+| Canal 9 - ventilação | GPIO 4 |
+| Canal 10 - ventilação | GPIO 25 |
+| Canal 11 - ventilação | GPIO 2 |
+| Canal 12 - ventilação | GPIO 15 |
