@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
@@ -21,7 +23,7 @@ class _CameraMonitorPageState extends ConsumerState<CameraMonitorPage> {
 
   @override
   Widget build(BuildContext context) => AppShell(
-    title: 'Câmeras ONVIF',
+    title: 'Câmeras RTSP',
     child: ref
         .watch(appSettingsProvider)
         .when(
@@ -218,58 +220,55 @@ class _LiveCameraTile extends StatefulWidget {
 }
 
 class _LiveCameraTileState extends State<_LiveCameraTile> {
-  final _client = OnvifClient();
-  Timer? _timer;
-  String? _snapshotUrl;
-  int _tick = 0;
-  bool _loading = true;
+  late final Player _player;
+  late final VideoController _videoController;
+  StreamSubscription<String>? _errorSubscription;
+  bool _opening = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _resolve();
+    _player = Player();
+    _videoController = VideoController(_player);
+    _errorSubscription = _player.stream.error.listen((error) {
+      if (mounted) setState(() => _error = error);
+    });
+    _openStream();
   }
 
   @override
   void didUpdateWidget(covariant _LiveCameraTile oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.camera.id != widget.camera.id ||
-        oldWidget.camera.snapshotUrl != widget.camera.snapshotUrl) {
-      _timer?.cancel();
-      _snapshotUrl = null;
-      _tick = 0;
-      _resolve();
+        oldWidget.camera.rtspUrl != widget.camera.rtspUrl) {
+      _openStream();
     }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    unawaited(_errorSubscription?.cancel());
+    unawaited(_player.dispose());
     super.dispose();
   }
 
-  Future<void> _resolve() async {
+  Future<void> _openStream() async {
     setState(() {
-      _loading = true;
+      _opening = true;
       _error = null;
     });
-    final result = await _client.resolveSnapshot(widget.camera);
-    if (!mounted) return;
-    if (!result.ok || result.snapshotUrl == null) {
+    try {
+      await _player.open(Media(widget.camera.rtspUrl), play: true);
+      if (!mounted) return;
+      setState(() => _opening = false);
+    } catch (error) {
+      if (!mounted) return;
       setState(() {
-        _loading = false;
-        _error = result.message;
+        _opening = false;
+        _error = error.toString();
       });
-      return;
     }
-    setState(() {
-      _loading = false;
-      _snapshotUrl = result.snapshotUrl;
-    });
-    _timer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
-      if (mounted) setState(() => _tick++);
-    });
   }
 
   @override
@@ -291,31 +290,20 @@ class _LiveCameraTileState extends State<_LiveCameraTile> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (_snapshotUrl != null)
-                Image.network(
-                  _cacheBustedUrl(_snapshotUrl!, _tick),
-                  headers: _client.imageHeaders(widget.camera),
-                  fit: BoxFit.cover,
-                  gaplessPlayback: true,
-                  errorBuilder: (_, error, _) => _CameraMessage(
-                    icon: Icons.videocam_off_outlined,
-                    text: 'Sem imagem',
-                    detail: error.toString(),
-                  ),
-                )
-              else if (_loading)
+              Video(controller: _videoController, fit: BoxFit.cover),
+              if (_opening)
                 const Center(
                   child: SizedBox(
                     width: 24,
                     height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                )
-              else
+                ),
+              if (_error != null)
                 _CameraMessage(
-                  icon: Icons.wifi_tethering_error_rounded,
-                  text: 'ONVIF indisponível',
-                  detail: _error ?? 'Falha ao obter snapshot.',
+                  icon: Icons.videocam_off_outlined,
+                  text: 'Sem transmissão RTSP',
+                  detail: _error!,
                 ),
               Positioned(
                 left: 0,
@@ -367,13 +355,6 @@ class _LiveCameraTileState extends State<_LiveCameraTile> {
         ),
       ),
     );
-  }
-
-  String _cacheBustedUrl(String value, int tick) {
-    final uri = Uri.parse(value);
-    return uri
-        .replace(queryParameters: {...uri.queryParameters, '_seleto': '$tick'})
-        .toString();
   }
 }
 
@@ -433,7 +414,7 @@ class _EmptyCameraState extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'Nenhum canal ONVIF configurado.',
+            'Nenhum canal RTSP configurado.',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 4),

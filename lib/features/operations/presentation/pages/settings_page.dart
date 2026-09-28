@@ -377,7 +377,7 @@ class _CameraSettingsCard extends StatelessWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Câmeras ONVIF',
+                          'Câmeras RTSP',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ),
@@ -386,7 +386,7 @@ class _CameraSettingsCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Cadastre canais por IP, usuário, senha e porta opcional. A visualização abre em tela dedicada compacta.',
+                    'Cadastre canais no formato rtsp://LOGIN:SENHA@IP_CAMERA. A visualização abre em tela dedicada compacta.',
                   ),
                   const SizedBox(height: 10),
                   Wrap(
@@ -418,7 +418,7 @@ class _CameraSettingsCard extends StatelessWidget {
                         ),
                         title: Text(camera.name),
                         subtitle: Text(
-                          '${camera.host}${camera.port == null ? '' : ':${camera.port}'} · usuário ${camera.username}',
+                          camera.maskedRtspUrl,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -426,9 +426,9 @@ class _CameraSettingsCard extends StatelessWidget {
                           spacing: 2,
                           children: [
                             IconButton(
-                              tooltip: 'Testar ONVIF',
-                              icon: const Icon(Icons.network_check),
-                              onPressed: () => _test(context, cameras, camera),
+                              tooltip: 'Copiar RTSP',
+                              icon: const Icon(Icons.content_copy),
+                              onPressed: () => _copyRtsp(context, camera),
                             ),
                             IconButton(
                               tooltip: 'Editar',
@@ -484,7 +484,7 @@ class _CameraSettingsCard extends StatelessWidget {
                   TextField(
                     controller: host,
                     decoration: const InputDecoration(
-                      labelText: 'IP ou host',
+                      labelText: 'IP da câmera',
                       hintText: '192.168.1.50',
                     ),
                   ),
@@ -514,8 +514,8 @@ class _CameraSettingsCard extends StatelessWidget {
                     controller: port,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: 'Porta ONVIF opcional',
-                      hintText: '80',
+                      labelText: 'Porta RTSP opcional',
+                      hintText: '554',
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -523,7 +523,7 @@ class _CameraSettingsCard extends StatelessWidget {
                     controller: snapshot,
                     decoration: const InputDecoration(
                       labelText: 'URL de snapshot opcional',
-                      hintText: 'Preencha só se a câmera exigir caminho manual',
+                      hintText: 'Preencha só se quiser imagem de prévia',
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -582,30 +582,12 @@ class _CameraSettingsCard extends StatelessWidget {
     snapshot.dispose();
   }
 
-  Future<void> _test(
-    BuildContext context,
-    List<OnvifCameraConfig> cameras,
-    OnvifCameraConfig camera,
-  ) async {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(
-      SnackBar(content: Text('Testando ${camera.name} via ONVIF...')),
-    );
-    final result = await OnvifClient().resolveSnapshot(camera);
+  Future<void> _copyRtsp(BuildContext context, OnvifCameraConfig camera) async {
+    await Clipboard.setData(ClipboardData(text: camera.rtspUrl));
     if (!context.mounted) return;
-    if (result.ok && result.snapshotUrl != null) {
-      final updated = camera.copyWith(snapshotUrl: result.snapshotUrl);
-      await _save(context, [
-        for (final current in cameras)
-          if (current.id == camera.id) updated else current,
-      ]);
-    }
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(result.message),
-        backgroundColor: result.ok ? null : Theme.of(context).colorScheme.error,
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('RTSP de ${camera.name} copiado.')));
   }
 
   Future<void> _remove(

@@ -58,6 +58,9 @@ dependencies:
   excel: ^4.0.6
   connectivity_plus: ^7.3.1
   http: ^1.6.0
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_video: ^1.0.7
 
 dev_dependencies:
   flutter_test:

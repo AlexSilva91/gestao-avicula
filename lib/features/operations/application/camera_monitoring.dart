@@ -32,15 +32,30 @@ class OnvifCameraConfig {
   final String? snapshotUrl;
   final bool enabled;
 
+  String get rtspUrl {
+    final cleanHost = _cleanHost(host);
+    final cleanUser = Uri.encodeComponent(username.trim());
+    final cleanPassword = Uri.encodeComponent(password);
+    final credentials = cleanUser.isEmpty
+        ? ''
+        : '$cleanUser${password.isEmpty ? '' : ':$cleanPassword'}@';
+    final cleanPort = port == null ? '' : ':$port';
+    return 'rtsp://$credentials$cleanHost$cleanPort';
+  }
+
+  String get maskedRtspUrl {
+    final cleanHost = _cleanHost(host);
+    final credentials = username.trim().isEmpty
+        ? ''
+        : '${username.trim()}:${password.isEmpty ? '' : '****'}@';
+    final cleanPort = port == null ? '' : ':$port';
+    return 'rtsp://$credentials$cleanHost$cleanPort';
+  }
+
   Uri get deviceServiceUri {
-    final cleanHost = host
-        .trim()
-        .replaceFirst(RegExp(r'^https?://'), '')
-        .split('/')
-        .first;
     return Uri(
       scheme: 'http',
-      host: cleanHost,
+      host: _cleanHost(host),
       port: port ?? 80,
       path: '/onvif/device_service',
     );
@@ -91,6 +106,16 @@ class OnvifCameraConfig {
         enabled: json['enabled'] != false,
       );
 }
+
+String _cleanHost(String value) => value
+    .trim()
+    .replaceFirst(RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://'), '')
+    .split('@')
+    .last
+    .split('/')
+    .first
+    .split(':')
+    .first;
 
 List<OnvifCameraConfig> onvifCamerasFromSettings(List<AppSetting> settings) {
   final value = settings
