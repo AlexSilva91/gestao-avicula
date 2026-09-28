@@ -257,6 +257,10 @@ class _HomeSensorSnapshot {
     required this.lightingReady,
     required this.lightingEnabledCount,
     required this.lightingOnCount,
+    required this.ventilationEnabled,
+    required this.ventilationReady,
+    required this.ventilationEnabledCount,
+    required this.ventilationOnCount,
   });
 
   final double? scaleWeightKg;
@@ -273,6 +277,10 @@ class _HomeSensorSnapshot {
   final bool lightingReady;
   final int lightingEnabledCount;
   final int lightingOnCount;
+  final bool ventilationEnabled;
+  final bool ventilationReady;
+  final int ventilationEnabledCount;
+  final int ventilationOnCount;
 
   factory _HomeSensorSnapshot.fromSettings(List<AppSetting> settings) {
     final values = {for (final setting in settings) setting.key: setting.value};
@@ -285,6 +293,17 @@ class _HomeSensorSnapshot {
       }
       if (values['hardware_lighting_channel_${i}_last_test_state'] == 'ON') {
         onCount++;
+      }
+    }
+    final ventilationEnabled = values['hardware_ventilation_enabled'] == 'true';
+    var ventilationEnabledCount = 0;
+    var ventilationOnCount = 0;
+    for (var i = 1; i <= 8; i++) {
+      if (values['hardware_ventilation_channel_${i}_enabled'] != 'false') {
+        ventilationEnabledCount++;
+      }
+      if (values['hardware_ventilation_channel_${i}_last_test_state'] == 'ON') {
+        ventilationOnCount++;
       }
     }
     return _HomeSensorSnapshot(
@@ -318,6 +337,16 @@ class _HomeSensorSnapshot {
           (values['hardware_lighting_endpoint'] ?? '').trim().isNotEmpty,
       lightingEnabledCount: enabledCount,
       lightingOnCount: onCount,
+      ventilationEnabled: ventilationEnabled,
+      ventilationReady:
+          ventilationEnabled &&
+          ((values['hardware_ventilation_endpoint'] ??
+                  values['hardware_lighting_endpoint'] ??
+                  '')
+              .trim()
+              .isNotEmpty),
+      ventilationEnabledCount: ventilationEnabledCount,
+      ventilationOnCount: ventilationOnCount,
     );
   }
 }
@@ -413,6 +442,19 @@ class _HomeSensorDeck extends StatelessWidget {
                           snapshot.environmentHumidityPercent != null,
                       route: '/hardware-environment',
                       child: _HomeEnvironmentPreview(snapshot: snapshot),
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _HomeSensorCard(
+                      title: 'Ventilação',
+                      subtitle: snapshot.ventilationReady
+                          ? '${snapshot.ventilationOnCount}/8 ligados'
+                          : 'Pendente',
+                      icon: Icons.air_outlined,
+                      active: snapshot.ventilationReady,
+                      route: '/hardware-ventilation',
+                      child: _HomeVentilationPreview(snapshot: snapshot),
                     ),
                   ),
                   SizedBox(
@@ -637,6 +679,187 @@ class _HomeWaterPreview extends StatelessWidget {
       ),
     );
   }
+}
+
+class _HomeVentilationPreview extends StatefulWidget {
+  const _HomeVentilationPreview({required this.snapshot});
+
+  final _HomeSensorSnapshot snapshot;
+
+  @override
+  State<_HomeVentilationPreview> createState() =>
+      _HomeVentilationPreviewState();
+}
+
+class _HomeVentilationPreviewState extends State<_HomeVentilationPreview>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 820),
+    );
+    if (_active) controller.repeat();
+  }
+
+  bool get _active =>
+      widget.snapshot.ventilationEnabled &&
+      widget.snapshot.ventilationOnCount > 0;
+
+  @override
+  void didUpdateWidget(covariant _HomeVentilationPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_active && !controller.isAnimating) {
+      controller.repeat();
+    } else if (!_active && controller.isAnimating) {
+      controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = _active ? scheme.primary : scheme.onSurfaceVariant;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: CustomPaint(
+            painter: _HomeVentilationAirPainter(
+              color: scheme.primary,
+              active: _active,
+            ),
+          ),
+        ),
+        Center(
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              for (var i = 0; i < 8; i++)
+                SizedBox(
+                  width: 31,
+                  height: 31,
+                  child: AnimatedBuilder(
+                    animation: controller,
+                    builder: (context, _) => Transform.rotate(
+                      angle: controller.value * math.pi * 2,
+                      child: CustomPaint(
+                        painter: _HomeFanPainter(
+                          color: color,
+                          active:
+                              _active && i < widget.snapshot.ventilationOnCount,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: _HomeMiniBadge(
+            icon: Icons.air_outlined,
+            label:
+                '${widget.snapshot.ventilationEnabledCount}/8 ativos  ${widget.snapshot.ventilationOnCount}/8 ON',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HomeFanPainter extends CustomPainter {
+  const _HomeFanPainter({required this.color, required this.active});
+
+  final Color color;
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.shortestSide / 2;
+    final ring = Paint()
+      ..color = color.withValues(alpha: active ? .44 : .22)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final blade = Paint()
+      ..color = color.withValues(alpha: active ? .64 : .24)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, radius - 2, ring);
+    for (var i = 0; i < 3; i++) {
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate((math.pi * 2 / 3) * i);
+      final path = Path()
+        ..moveTo(0, -3)
+        ..quadraticBezierTo(radius * .45, -radius * .20, radius * .60, -1)
+        ..quadraticBezierTo(radius * .34, radius * .18, 3, 5)
+        ..quadraticBezierTo(-3, 2, 0, -3);
+      canvas.drawPath(path, blade);
+      canvas.restore();
+    }
+    canvas.drawCircle(
+      center,
+      radius * .15,
+      Paint()..color = color.withValues(alpha: active ? .85 : .45),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _HomeFanPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.active != active;
+}
+
+class _HomeVentilationAirPainter extends CustomPainter {
+  const _HomeVentilationAirPainter({required this.color, required this.active});
+
+  final Color color;
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: active ? .16 : .05)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    for (var i = 0; i < 4; i++) {
+      final y = size.height * (.22 + i * .16);
+      final path = Path()
+        ..moveTo(size.width * .08, y)
+        ..cubicTo(
+          size.width * .30,
+          y - 12,
+          size.width * .48,
+          y + 12,
+          size.width * .70,
+          y,
+        )
+        ..cubicTo(
+          size.width * .80,
+          y - 7,
+          size.width * .90,
+          y - 3,
+          size.width * .95,
+          y,
+        );
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HomeVentilationAirPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.active != active;
 }
 
 class _HomeMiniBadge extends StatelessWidget {

@@ -77,6 +77,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, _) => const EnvironmentSensorPage(),
       ),
       GoRoute(
+        path: '/hardware-ventilation',
+        builder: (_, _) => const VentilationSensorPage(),
+      ),
+      GoRoute(
         path: '/hardware-water',
         builder: (_, _) => const WaterReservoirSensorPage(),
       ),

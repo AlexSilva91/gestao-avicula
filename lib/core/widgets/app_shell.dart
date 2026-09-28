@@ -178,6 +178,13 @@ const _destinationSections = <_DestinationSection>[
       'settings.view',
     ),
     _DestinationItem(
+      Icons.air_outlined,
+      Icons.air,
+      'Ventilação',
+      '/hardware-ventilation',
+      'settings.view',
+    ),
+    _DestinationItem(
       Icons.water_outlined,
       Icons.water,
       'Água',
