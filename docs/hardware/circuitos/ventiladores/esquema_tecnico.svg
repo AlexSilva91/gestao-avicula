@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <style>
+      .bg{fill:#f4f7f5}.card{fill:#fff;stroke:#cbd8d1;stroke-width:2}.title{font:800 38px Arial;fill:#12382d}.sub{font:18px Arial;fill:#53665c}.h{font:800 24px Arial;fill:#12382d}.t{font:16px Arial;fill:#31483e}.pin{font:800 15px Arial;fill:#122b24}.esp{fill:#dff4ec;stroke:#1c7a5a;stroke-width:3}.relay{fill:#fff0c7;stroke:#b1720f;stroke-width:3}.fan{fill:#e8f8ff;stroke:#0f6e8f;stroke-width:3}.danger{fill:#fff0f0;stroke:#d93030;stroke-width:2}.wire{fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}.thin{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}.red{stroke:#d72638}.black{stroke:#111827}.green{stroke:#16803c}.blue{stroke:#2563eb}.orange{stroke:#ea580c}.yellow{stroke:#d69400}.purple{stroke:#7c3aed}.cyan{stroke:#0891b2}.gray{stroke:#718096}.dash{stroke-dasharray:8 8}
+    </style>
+  </defs>
+  <rect class="bg" width="1600" height="1000"/>
+  <text class="title" x="54" y="58">Circuito ventiladores - ESP32 + modulo rele</text>
+  <text class="sub" x="54" y="92">Mesmo modelo da iluminacao: o ESP32 aciona o rele, e o rele liga/desliga cada ventilador.</text>
+
+  <rect class="card" x="72" y="128" width="1456" height="690" rx="18"/>
+
+  <rect class="esp" x="112" y="210" width="300" height="500" rx="22"/>
+  <text class="h" x="216" y="250">ESP32</text>
+  <text class="pin" x="156" y="316">5V/VIN</text>
+  <text class="pin" x="156" y="354">GND</text>
+  <text class="pin" x="156" y="406">GPIO18</text>
+  <text class="pin" x="156" y="448">GPIO5</text>
+  <text class="pin" x="156" y="490">GPIO17</text>
+  <text class="pin" x="156" y="532">GPIO16</text>
+  <text class="pin" x="156" y="574">GPIO4</text>
+  <text class="pin" x="156" y="616">GPIO25</text>
+  <text class="pin" x="156" y="658">GPIO2</text>
+  <text class="pin" x="156" y="692">GPIO15</text>
+
+  <rect class="relay" x="552" y="176" width="366" height="568" rx="22"/>
+  <text class="h" x="636" y="218">Modulo rele 8 canais</text>
+  <text class="pin" x="596" y="316">VCC</text>
+  <text class="pin" x="596" y="354">GND</text>
+  <text class="pin" x="596" y="406">IN1</text>
+  <text class="pin" x="596" y="448">IN2</text>
+  <text class="pin" x="596" y="490">IN3</text>
+  <text class="pin" x="596" y="532">IN4</text>
+  <text class="pin" x="596" y="574">IN5</text>
+  <text class="pin" x="596" y="616">IN6</text>
+  <text class="pin" x="596" y="658">IN7</text>
+  <text class="pin" x="596" y="700">IN8</text>
+  <text class="pin" x="796" y="282">COM/NO 1</text>
+  <text class="pin" x="796" y="338">COM/NO 2</text>
+  <text class="pin" x="796" y="394">COM/NO 3</text>
+  <text class="pin" x="796" y="450">COM/NO 4</text>
+  <text class="pin" x="796" y="506">COM/NO 5</text>
+  <text class="pin" x="796" y="562">COM/NO 6</text>
+  <text class="pin" x="796" y="618">COM/NO 7</text>
+  <text class="pin" x="796" y="674">COM/NO 8</text>
+
+  <path class="wire red" d="M244 312H552"/>
+  <path class="wire black" d="M244 350H552"/>
+  <path class="wire green" d="M244 402H552"/>
+  <path class="wire blue" d="M244 444H552"/>
+  <path class="wire orange" d="M244 486H552"/>
+  <path class="wire yellow" d="M244 528H552"/>
+  <path class="wire purple" d="M244 570H552"/>
+  <path class="wire cyan" d="M244 612H552"/>
+  <path class="wire gray" d="M244 654H552"/>
+  <path class="wire black" d="M244 688H552"/>
+
+  <g transform="translate(1060 240)">
+    <rect class="fan" x="0" y="0" width="260" height="52" rx="14"/>
+    <rect class="fan" x="0" y="56" width="260" height="52" rx="14"/>
+    <rect class="fan" x="0" y="112" width="260" height="52" rx="14"/>
+    <rect class="fan" x="0" y="168" width="260" height="52" rx="14"/>
+    <rect class="fan" x="0" y="224" width="260" height="52" rx="14"/>
+    <rect class="fan" x="0" y="280" width="260" height="52" rx="14"/>
+    <rect class="fan" x="0" y="336" width="260" height="52" rx="14"/>
+    <rect class="fan" x="0" y="392" width="260" height="52" rx="14"/>
+    <text class="pin" x="46" y="33">Ventilador 1</text>
+    <text class="pin" x="46" y="89">Ventilador 2</text>
+    <text class="pin" x="46" y="145">Ventilador 3</text>
+    <text class="pin" x="46" y="201">Ventilador 4</text>
+    <text class="pin" x="46" y="257">Ventilador 5</text>
+    <text class="pin" x="46" y="313">Ventilador 6</text>
+    <text class="pin" x="46" y="369">Ventilador 7</text>
+    <text class="pin" x="46" y="425">Ventilador 8</text>
+  </g>
+
+  <path class="wire red" d="M918 266H1060"/>
+  <path class="wire red" d="M918 322H1060"/>
+  <path class="wire red" d="M918 378H1060"/>
+  <path class="wire red" d="M918 434H1060"/>
+  <path class="wire red" d="M918 490H1060"/>
+  <path class="wire red" d="M918 546H1060"/>
+  <path class="wire red" d="M918 602H1060"/>
+  <path class="wire red" d="M918 658H1060"/>
+
+  <path class="thin black" d="M1320 266H1434V658H1320"/>
+  <path class="thin black" d="M1320 322H1434"/>
+  <path class="thin black" d="M1320 378H1434"/>
+  <path class="thin black" d="M1320 434H1434"/>
+  <path class="thin black" d="M1320 490H1434"/>
+  <path class="thin black" d="M1320 546H1434"/>
+  <path class="thin black" d="M1320 602H1434"/>
+  <text class="pin" x="1368" y="238">Neutro</text>
+
+  <path class="thin red dash" d="M996 724H1434V266"/>
+  <text class="pin" x="998" y="754">Fase 127/220 V passa pelo COM/NO de cada rele</text>
+
+  <rect class="danger" x="72" y="846" width="1456" height="96" rx="16"/>
+  <text class="h" x="104" y="882">Atencao</text>
+  <text class="t" x="104" y="912">Desenho simplificado, igual ao modelo das luzes. Use rele e cabos dimensionados para a corrente real do ventilador.</text>
+  <text class="t" x="104" y="934">Para motor 127/220 V maior, a montagem final deve ser validada por eletricista habilitado.</text>
+</svg>
