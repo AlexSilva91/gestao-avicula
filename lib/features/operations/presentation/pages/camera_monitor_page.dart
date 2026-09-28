@@ -20,6 +20,8 @@ class CameraMonitorPage extends ConsumerStatefulWidget {
 class _CameraMonitorPageState extends ConsumerState<CameraMonitorPage> {
   String? _selectedId;
   final _audioEnabledId = ValueNotifier<String?>(null);
+  final Set<String> _closedCameraIds = <String>{};
+  bool _controlsExpanded = false;
   int? _gridColumns;
 
   @override
@@ -40,21 +42,23 @@ class _CameraMonitorPageState extends ConsumerState<CameraMonitorPage> {
             final cameras = onvifCamerasFromSettings(
               settings,
             ).where((camera) => camera.enabled).toList(growable: false);
-            final selected = cameras
-                .where((camera) => camera.id == _selectedId)
-                .firstOrNull;
+            final cameraIds = cameras.map((camera) => camera.id).toSet();
+            _closedCameraIds.removeWhere((id) => !cameraIds.contains(id));
+            final openCameraIds = cameraIds
+                .where((id) => !_closedCameraIds.contains(id))
+                .toSet();
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _CameraToolbar(
                   cameras: cameras,
-                  selected: selected,
+                  openCameraIds: openCameraIds,
+                  expanded: _controlsExpanded,
+                  onExpandedChanged: () =>
+                      setState(() => _controlsExpanded = !_controlsExpanded),
                   gridColumns: _gridColumns,
                   onGridColumnsChanged: (columns) =>
                       setState(() => _gridColumns = columns),
-                  onSelected: (camera) => setState(() {
-                    _selectedId = camera.id;
-                  }),
                 ),
                 const SizedBox(height: 10),
                 if (cameras.isEmpty)
@@ -62,10 +66,12 @@ class _CameraMonitorPageState extends ConsumerState<CameraMonitorPage> {
                 else
                   _CameraGrid(
                     cameras: cameras,
+                    openCameraIds: openCameraIds,
                     selectedId: _selectedId,
                     audioEnabledId: _audioEnabledId,
                     configuredColumns: _gridColumns,
                     onTap: (camera) => setState(() => _selectedId = camera.id),
+                    onToggleCamera: _toggleCamera,
                     onPopup: (camera) => _openPopup(context, camera),
                   ),
               ],
@@ -73,6 +79,19 @@ class _CameraMonitorPageState extends ConsumerState<CameraMonitorPage> {
           },
         ),
   );
+
+  void _toggleCamera(OnvifCameraConfig camera, bool open) {
+    setState(() {
+      if (open) {
+        _closedCameraIds.remove(camera.id);
+        _selectedId = camera.id;
+      } else {
+        _closedCameraIds.add(camera.id);
+        if (_selectedId == camera.id) _selectedId = null;
+        if (_audioEnabledId.value == camera.id) _audioEnabledId.value = null;
+      }
+    });
+  }
 
   Future<void> _openPopup(
     BuildContext context,
@@ -88,9 +107,12 @@ class _CameraMonitorPageState extends ConsumerState<CameraMonitorPage> {
             child: _LiveCameraTile(
               camera: camera,
               audioEnabledId: _audioEnabledId,
+              visible: !_closedCameraIds.contains(camera.id),
               large: true,
               selected: true,
               onTap: () {},
+              onVisibility: () =>
+                  _toggleCamera(camera, _closedCameraIds.contains(camera.id)),
               onPopup: null,
             ),
           ),
@@ -103,17 +125,19 @@ class _CameraMonitorPageState extends ConsumerState<CameraMonitorPage> {
 class _CameraToolbar extends StatelessWidget {
   const _CameraToolbar({
     required this.cameras,
-    required this.selected,
+    required this.openCameraIds,
+    required this.expanded,
+    required this.onExpandedChanged,
     required this.gridColumns,
     required this.onGridColumnsChanged,
-    required this.onSelected,
   });
 
   final List<OnvifCameraConfig> cameras;
-  final OnvifCameraConfig? selected;
+  final Set<String> openCameraIds;
+  final bool expanded;
+  final VoidCallback onExpandedChanged;
   final int? gridColumns;
   final ValueChanged<int?> onGridColumnsChanged;
-  final ValueChanged<OnvifCameraConfig> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -121,70 +145,156 @@ class _CameraToolbar extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: scheme.surface.withValues(alpha: .92),
+        color: scheme.surface.withValues(alpha: .95),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: scheme.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            _CameraMetric(
-              icon: Icons.videocam_outlined,
-              value: '${cameras.length}',
-              label: 'ativas',
-            ),
-            _CameraMetric(
-              icon: Icons.view_comfy_alt_outlined,
-              value: gridColumns == null ? 'auto' : '${gridColumns}x',
-              label: 'grade',
-            ),
-            _GridLayoutPicker(
+        padding: const EdgeInsets.all(8),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 720;
+            final header = _CameraControlHeader(
+              cameras: cameras,
+              openCameraIds: openCameraIds,
+              expanded: expanded,
+              onExpandedChanged: onExpandedChanged,
+            );
+            final layout = _GridLayoutPicker(
               value: gridColumns,
               onChanged: onGridColumnsChanged,
-            ),
-            if (cameras.isNotEmpty)
-              ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 210, maxWidth: 320),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: scheme.surfaceContainerHighest.withValues(
-                      alpha: .55,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
+            );
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                header,
+                AnimatedCrossFade(
+                  firstChild: const SizedBox.shrink(),
+                  secondChild: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: compact
+                        ? layout
+                        : Align(
+                            alignment: Alignment.centerLeft,
+                            child: SizedBox(width: 304, child: layout),
+                          ),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<OnvifCameraConfig>(
-                        value: selected,
-                        isExpanded: true,
-                        borderRadius: BorderRadius.circular(8),
-                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                        hint: Text('Selecionar canal', style: text.labelLarge),
-                        items: [
-                          for (final camera in cameras)
-                            DropdownMenuItem(
-                              value: camera,
-                              child: Text(
-                                camera.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                        onChanged: (camera) {
-                          if (camera != null) onSelected(camera);
-                        },
-                      ),
+                  crossFadeState: expanded
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  duration: const Duration(milliseconds: 180),
+                  sizeCurve: Curves.easeOutCubic,
+                ),
+                if (cameras.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      'Nenhum canal ativo cadastrado.',
+                      style: text.bodySmall?.copyWith(color: scheme.outline),
                     ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _CameraControlHeader extends StatelessWidget {
+  const _CameraControlHeader({
+    required this.cameras,
+    required this.openCameraIds,
+    required this.expanded,
+    required this.onExpandedChanged,
+  });
+
+  final List<OnvifCameraConfig> cameras;
+  final Set<String> openCameraIds;
+  final bool expanded;
+  final VoidCallback onExpandedChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onExpandedChanged,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: Row(
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.primary,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Icon(
+                    Icons.video_camera_back_rounded,
+                    color: scheme.onPrimary,
+                    size: 18,
                   ),
                 ),
               ),
-          ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Monitoramento ao vivo',
+                      style: text.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      '${openCameraIds.length} de ${cameras.length} canal(is) na tela',
+                      style: text.labelSmall?.copyWith(color: scheme.outline),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _CameraMetric(
+                icon: Icons.visibility_outlined,
+                value: '${openCameraIds.length}',
+                label: 'abertos',
+              ),
+              const SizedBox(width: 6),
+              IconButton.outlined(
+                tooltip: expanded ? 'Recolher controles' : 'Expandir controles',
+                onPressed: onExpandedChanged,
+                icon: AnimatedRotation(
+                  turns: expanded ? .5 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: const Icon(Icons.keyboard_arrow_down_rounded),
+                ),
+                constraints: const BoxConstraints.tightFor(
+                  width: 34,
+                  height: 34,
+                ),
+                padding: EdgeInsets.zero,
+                style: IconButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -208,29 +318,53 @@ class _GridLayoutPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: .5),
+        color: scheme.surfaceContainerHighest.withValues(alpha: .42),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: scheme.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final option in _options) ...[
-                _GridLayoutButton(
-                  option: option,
-                  selected: option.columns == value,
-                  onPressed: () => onChanged(option.columns),
+        padding: const EdgeInsets.all(7),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.dashboard_customize_outlined,
+                  size: 16,
+                  color: scheme.onSurfaceVariant,
                 ),
-                if (option != _options.last) const SizedBox(width: 4),
+                const SizedBox(width: 6),
+                Text(
+                  'Layout da grade',
+                  style: text.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ],
-            ],
-          ),
+            ),
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final option in _options) ...[
+                    _GridLayoutButton(
+                      option: option,
+                      selected: option.columns == value,
+                      onPressed: () => onChanged(option.columns),
+                    ),
+                    if (option != _options.last) const SizedBox(width: 5),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -274,8 +408,8 @@ class _GridLayoutButton extends StatelessWidget {
           onTap: onPressed,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
-            width: option.columns == null ? 68 : 52,
-            height: 54,
+            width: option.columns == null ? 62 : 46,
+            height: 48,
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(7),
@@ -410,18 +544,22 @@ class _CameraMetric extends StatelessWidget {
 class _CameraGrid extends StatelessWidget {
   const _CameraGrid({
     required this.cameras,
+    required this.openCameraIds,
     required this.selectedId,
     required this.audioEnabledId,
     required this.configuredColumns,
     required this.onTap,
+    required this.onToggleCamera,
     required this.onPopup,
   });
 
   final List<OnvifCameraConfig> cameras;
+  final Set<String> openCameraIds;
   final String? selectedId;
   final ValueNotifier<String?> audioEnabledId;
   final int? configuredColumns;
   final ValueChanged<OnvifCameraConfig> onTap;
+  final void Function(OnvifCameraConfig camera, bool open) onToggleCamera;
   final ValueChanged<OnvifCameraConfig> onPopup;
 
   @override
@@ -444,9 +582,12 @@ class _CameraGrid extends StatelessWidget {
         return _LiveCameraTile(
           camera: camera,
           audioEnabledId: audioEnabledId,
+          visible: openCameraIds.contains(camera.id),
           selected: camera.id == selectedId,
           large: cameras.length == 1,
           onTap: () => onTap(camera),
+          onVisibility: () =>
+              onToggleCamera(camera, !openCameraIds.contains(camera.id)),
           onPopup: () => onPopup(camera),
         );
       },
@@ -479,17 +620,21 @@ class _LiveCameraTile extends StatefulWidget {
   const _LiveCameraTile({
     required this.camera,
     required this.audioEnabledId,
+    required this.visible,
     required this.selected,
     required this.large,
     required this.onTap,
+    required this.onVisibility,
     required this.onPopup,
   });
 
   final OnvifCameraConfig camera;
   final ValueNotifier<String?> audioEnabledId;
+  final bool visible;
   final bool selected;
   final bool large;
   final VoidCallback onTap;
+  final VoidCallback onVisibility;
   final VoidCallback? onPopup;
 
   @override
@@ -508,7 +653,7 @@ class _LiveCameraTileState extends State<_LiveCameraTile> {
     _videoController = VideoController(_player);
     widget.audioEnabledId.addListener(_handleAudioChanged);
     unawaited(_applyAudioState());
-    _openStream();
+    if (widget.visible) _openStream();
   }
 
   @override
@@ -516,7 +661,12 @@ class _LiveCameraTileState extends State<_LiveCameraTile> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.camera.id != widget.camera.id ||
         oldWidget.camera.rtspUrl != widget.camera.rtspUrl) {
+      if (widget.visible) _openStream();
+    }
+    if (!oldWidget.visible && widget.visible) {
       _openStream();
+    } else if (oldWidget.visible && !widget.visible) {
+      unawaited(_stopStream());
     }
     if (oldWidget.audioEnabledId != widget.audioEnabledId) {
       oldWidget.audioEnabledId.removeListener(_handleAudioChanged);
@@ -544,6 +694,12 @@ class _LiveCameraTileState extends State<_LiveCameraTile> {
       if (!mounted) return;
       setState(() => _opening = false);
     }
+  }
+
+  Future<void> _stopStream() async {
+    await _player.stop();
+    if (!mounted) return;
+    setState(() => _opening = false);
   }
 
   Future<void> _applyAudioState() async {
@@ -586,8 +742,11 @@ class _LiveCameraTileState extends State<_LiveCameraTile> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Video(controller: _videoController, fit: BoxFit.cover),
-              if (_opening)
+              if (widget.visible)
+                Video(controller: _videoController, fit: BoxFit.cover)
+              else
+                const _ClosedCameraBackdrop(),
+              if (widget.visible && _opening)
                 Positioned.fill(
                   child: ColoredBox(
                     color: Colors.black26,
@@ -650,9 +809,11 @@ class _LiveCameraTileState extends State<_LiveCameraTile> {
                 bottom: 8,
                 child: _CameraActions(
                   audioEnabled: _audioEnabled,
+                  videoVisible: widget.visible,
                   onAudio: () => widget.audioEnabledId.value = _audioEnabled
                       ? null
                       : widget.camera.id,
+                  onVisibility: widget.onVisibility,
                   onPopup: widget.onPopup,
                 ),
               ),
@@ -705,15 +866,51 @@ class _CameraLiveDot extends StatelessWidget {
   );
 }
 
+class _ClosedCameraBackdrop extends StatelessWidget {
+  const _ClosedCameraBackdrop();
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Colors.black, Colors.grey.shade900, Colors.black],
+      ),
+    ),
+    child: Center(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: .08),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white24),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(14),
+          child: Icon(
+            Icons.visibility_off_rounded,
+            color: Colors.white70,
+            size: 28,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class _CameraActions extends StatelessWidget {
   const _CameraActions({
     required this.audioEnabled,
+    required this.videoVisible,
     required this.onAudio,
+    required this.onVisibility,
     required this.onPopup,
   });
 
   final bool audioEnabled;
+  final bool videoVisible;
   final VoidCallback onAudio;
+  final VoidCallback onVisibility;
   final VoidCallback? onPopup;
 
   @override
@@ -729,12 +926,21 @@ class _CameraActions extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _RoundCameraButton(
+            tooltip: videoVisible ? 'Fechar imagem' : 'Abrir imagem',
+            icon: videoVisible
+                ? Icons.visibility_rounded
+                : Icons.visibility_off_rounded,
+            selected: videoVisible,
+            onPressed: onVisibility,
+          ),
+          const SizedBox(width: 2),
+          _RoundCameraButton(
             tooltip: audioEnabled ? 'Desativar áudio' : 'Ativar áudio',
             icon: audioEnabled
                 ? Icons.volume_up_rounded
                 : Icons.volume_off_rounded,
             selected: audioEnabled,
-            onPressed: onAudio,
+            onPressed: videoVisible ? onAudio : () {},
           ),
           if (onPopup != null) ...[
             const SizedBox(width: 2),
