@@ -289,10 +289,13 @@ class _HomeSensorSnapshot {
     var onCount = 0;
     final lightingChannelOn = <bool>[];
     for (var i = 1; i <= 4; i++) {
-      if (values['hardware_lighting_channel_${i}_enabled'] != 'false') {
+      final channelEnabled =
+          values['hardware_lighting_channel_${i}_enabled'] != 'false';
+      if (channelEnabled) {
         enabledCount++;
       }
       final isOn =
+          channelEnabled &&
           values['hardware_lighting_channel_${i}_last_test_state'] == 'ON';
       lightingChannelOn.add(isOn);
       if (isOn) {
@@ -304,10 +307,13 @@ class _HomeSensorSnapshot {
     var ventilationOnCount = 0;
     final ventilationChannelOn = <bool>[];
     for (var i = 1; i <= 8; i++) {
-      if (values['hardware_ventilation_channel_${i}_enabled'] != 'false') {
+      final channelEnabled =
+          values['hardware_ventilation_channel_${i}_enabled'] != 'false';
+      if (channelEnabled) {
         ventilationEnabledCount++;
       }
       final isOn =
+          channelEnabled &&
           values['hardware_ventilation_channel_${i}_last_test_state'] == 'ON';
       ventilationChannelOn.add(isOn);
       if (isOn) {

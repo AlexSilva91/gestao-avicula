@@ -221,6 +221,12 @@ class _HardwareIntegrationsPageState
           values['hardware_lighting_channel_${channel.index}_evening_off_time']
               ?.trim() ??
           '20:00';
+      final lastState =
+          values['hardware_lighting_channel_${channel.index}_last_test_state'];
+      lightingChannelOn[index] = lastState == 'ON';
+      if (lastState == 'ON' || lastState == 'OFF') {
+        lightingChannelStatus[index] = 'Último estado: $lastState';
+      }
     }
     generalMorningEnabled =
         values['hardware_lighting_general_morning_enabled'] != 'false';
@@ -299,7 +305,10 @@ class _HardwareIntegrationsPageState
             : lightingChannelNames[i].text.trim(),
     ];
     final enabledCount = lightingChannelEnabled.where((value) => value).length;
-    final onCount = lightingChannelOn.where((value) => value).length;
+    final onCount = [
+      for (var i = 0; i < lightingChannelOn.length; i++)
+        lightingChannelEnabled[i] && lightingChannelOn[i],
+    ].where((value) => value).length;
 
     return _IntegrationPanel(
       icon: Icons.lightbulb_outline,
@@ -1177,6 +1186,7 @@ class _HardwareIntegrationsPageState
           channel: channel,
           turnOn: turnOn,
         );
+        turnOn = result.on;
         _appendEspLog('ESP> ${result.message}');
         _appendEspPayload(result.payload);
       }
@@ -1468,6 +1478,23 @@ class _HardwareIntegrationsPageState
 
   Future<void> _applyEspProbe(EspDeviceProbe probe) async {
     final endpoint = probe.endpoint;
+    final relayStates = _relayStatesFromPayload(probe.payload);
+    final controller = ref.read(operationsControllerProvider);
+    for (final entry in relayStates.entries) {
+      final channel = entry.key;
+      final state = entry.value ? 'ON' : 'OFF';
+      if (channel >= 1 && channel <= 4) {
+        await controller.saveSetting(
+          'hardware_lighting_channel_${channel}_last_test_state',
+          state,
+        );
+      } else if (channel >= 5 && channel <= 12) {
+        await controller.saveSetting(
+          'hardware_ventilation_channel_${channel - 4}_last_test_state',
+          state,
+        );
+      }
+    }
     setState(() {
       lightingEnabled = true;
       lightingConnection = 'WIFI';
@@ -1475,9 +1502,28 @@ class _HardwareIntegrationsPageState
       lightingConnectionResult = 'OK Wi-Fi: ${probe.message}.';
       lightingStatus = 'Controlador conectado em $endpoint.';
       espTerminalTitle = 'ESP CONECTADO';
+      for (var i = 0; i < lightingChannelOn.length; i++) {
+        final state = relayStates[i + 1];
+        if (state == null) continue;
+        lightingChannelOn[i] = state;
+        lightingChannelStatus[i] = 'Estado real ESP: ${state ? 'ON' : 'OFF'}';
+      }
     });
     _appendEspLog('ESP> ${probe.message}');
     _appendEspPayload(probe.payload);
+  }
+
+  Map<int, bool> _relayStatesFromPayload(Map<String, Object?> payload) {
+    final rawRelays = payload['relays'];
+    if (rawRelays is! List) return const {};
+    final states = <int, bool>{};
+    for (final relay in rawRelays) {
+      if (relay is! Map) continue;
+      final channel = int.tryParse((relay['channel'] ?? '').toString());
+      if (channel == null) continue;
+      states[channel] = relay['on'] == true;
+    }
+    return states;
   }
 
   String _currentWifiEndpoint() {
@@ -2226,8 +2272,8 @@ class _LightingInstrumentPainter extends CustomPainter {
     );
     for (var i = 0; i < 4; i++) {
       final x = size.width * (.18 + i * .213);
-      final on = i < channelOn.length && channelOn[i];
       final active = i < channelEnabled.length && channelEnabled[i];
+      final on = active && i < channelOn.length && channelOn[i];
       final onColor = const Color(0xFFFFB020);
       final idleColor = color;
       final lampPaint = Paint()
@@ -2572,12 +2618,17 @@ class _LightingChannelCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final activeColor = on ? colors.primary : colors.onSurfaceVariant;
+    final effectiveOn = enabled && on;
+    final activeColor = effectiveOn
+        ? colors.primary
+        : enabled
+        ? colors.onSurface
+        : colors.onSurfaceVariant;
     return Material(
       color: colors.surface.withValues(alpha: .94),
       shape: RoundedRectangleBorder(
         side: BorderSide(
-          color: on
+          color: effectiveOn
               ? colors.primary.withValues(alpha: .60)
               : colors.outlineVariant,
         ),
@@ -2594,7 +2645,7 @@ class _LightingChannelCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(
-                    on ? Icons.lightbulb : Icons.lightbulb_outline,
+                    effectiveOn ? Icons.lightbulb : Icons.lightbulb_outline,
                     size: 19,
                     color: activeColor,
                   ),
@@ -2640,7 +2691,7 @@ class _LightingChannelCard extends StatelessWidget {
                   ),
                   const Spacer(),
                   Text(
-                    on ? 'ON' : 'OFF',
+                    effectiveOn ? 'ON' : 'OFF',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: activeColor,
                       fontWeight: FontWeight.w800,

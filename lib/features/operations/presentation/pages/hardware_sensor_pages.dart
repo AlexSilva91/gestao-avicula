@@ -74,6 +74,17 @@ class _EnvironmentSensorPageState extends ConsumerState<EnvironmentSensorPage> {
     if (initialized) return;
     initialized = true;
     endpoint.text = _sensorEndpoint(settings, 'hardware_environment_endpoint');
+    temperatureC = _settingDouble(
+      settings,
+      'hardware_environment_last_temperature_c',
+    );
+    humidityPercent = _settingDouble(
+      settings,
+      'hardware_environment_last_humidity_percent',
+    );
+    if (temperatureC != null || humidityPercent != null) {
+      status = 'Última leitura carregada';
+    }
   }
 
   @override
@@ -219,6 +230,22 @@ class _WaterReservoirSensorPageState
     if (initialized) return;
     initialized = true;
     endpoint.text = _sensorEndpoint(settings, 'hardware_water_endpoint');
+    levelPercent = _settingDouble(
+      settings,
+      'hardware_water_last_level_percent',
+    );
+    temperatureC = _settingDouble(
+      settings,
+      'hardware_water_last_temperature_c',
+    );
+    ph = _settingDouble(settings, 'hardware_water_last_ph');
+    tdsPpm = _settingDouble(settings, 'hardware_water_last_tds_ppm');
+    if (levelPercent != null ||
+        temperatureC != null ||
+        ph != null ||
+        tdsPpm != null) {
+      status = 'Última leitura carregada';
+    }
   }
 
   @override
@@ -391,6 +418,11 @@ class _WaterQualitySensorPageState
       settings,
       'hardware_water_quality_endpoint',
     );
+    ph = _settingDouble(settings, 'hardware_water_last_ph');
+    tdsPpm = _settingDouble(settings, 'hardware_water_last_tds_ppm');
+    if (ph != null || tdsPpm != null) {
+      status = 'Última leitura carregada';
+    }
   }
 
   @override
@@ -582,7 +614,10 @@ class _VentilationSensorPageState extends ConsumerState<VentilationSensorPage> {
           data: (settings) {
             _hydrate(settings);
             final enabledCount = channelEnabled.where((value) => value).length;
-            final onCount = channelOn.where((value) => value).length;
+            final onCount = [
+              for (var i = 0; i < channelOn.length; i++)
+                channelEnabled[i] && channelOn[i],
+            ].where((value) => value).length;
             return _SensorExperience(
               icon: Icons.air_outlined,
               title: 'Ventilação inteligente',
@@ -592,6 +627,7 @@ class _VentilationSensorPageState extends ConsumerState<VentilationSensorPage> {
                 enabled: ventilationEnabled,
                 onCount: onCount,
                 channelOn: channelOn,
+                channelEnabled: channelEnabled,
                 channels: _ventilationChannelCount,
               ),
               metrics: [
@@ -954,12 +990,12 @@ class _VentilationSensorPageState extends ConsumerState<VentilationSensorPage> {
           .read(operationsControllerProvider)
           .saveSetting(
             'hardware_ventilation_channel_${index + 1}_last_test_state',
-            turnOn ? 'ON' : 'OFF',
+            result.on ? 'ON' : 'OFF',
           );
       if (!mounted) return;
       setState(() {
         channelOn[index] = result.on;
-        channelStatus[index] = turnOn
+        channelStatus[index] = result.on
             ? 'OK: canal ESP $espChannel ligado no GPIO ${channelPins[index].text.trim()}.'
             : 'OK: canal ESP $espChannel desligado no GPIO ${channelPins[index].text.trim()}.';
         status = 'Ventilação testada no canal ESP $espChannel.';
@@ -983,12 +1019,14 @@ class _VentilationInstrument extends StatelessWidget {
     required this.enabled,
     required this.onCount,
     required this.channelOn,
+    required this.channelEnabled,
     required this.channels,
   });
 
   final bool enabled;
   final int onCount;
   final List<bool> channelOn;
+  final List<bool> channelEnabled;
   final int channels;
 
   @override
@@ -1025,7 +1063,12 @@ class _VentilationInstrument extends StatelessWidget {
                     for (var i = 0; i < channels; i++)
                       _AnimatedFan(
                         size: fanSize,
-                        active: active && i < channelOn.length && channelOn[i],
+                        active:
+                            active &&
+                            i < channelEnabled.length &&
+                            channelEnabled[i] &&
+                            i < channelOn.length &&
+                            channelOn[i],
                         label: '${i + 1}',
                       ),
                   ],
@@ -1289,7 +1332,8 @@ class _VentilationChannelTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final color = on
+    final effectiveOn = enabled && on;
+    final color = effectiveOn
         ? colors.primary
         : enabled
         ? colors.onSurface
@@ -1299,7 +1343,7 @@ class _VentilationChannelTile extends StatelessWidget {
       color: colors.surface.withValues(alpha: .94),
       shape: RoundedRectangleBorder(
         side: BorderSide(
-          color: on
+          color: effectiveOn
               ? colors.primary.withValues(alpha: .60)
               : colors.outlineVariant,
         ),
@@ -1315,7 +1359,10 @@ class _VentilationChannelTile extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(on ? Icons.air : Icons.air_outlined, color: color),
+                  Icon(
+                    effectiveOn ? Icons.air : Icons.air_outlined,
+                    color: color,
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -1384,7 +1431,7 @@ class _VentilationChannelTile extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    on ? 'ON' : 'OFF',
+                    effectiveOn ? 'ON' : 'OFF',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: color,
                       fontWeight: FontWeight.w900,
@@ -2466,6 +2513,12 @@ String _setting(List<AppSetting> settings, String key) {
     if (setting.key == key) return setting.value.trim();
   }
   return '';
+}
+
+double? _settingDouble(List<AppSetting> settings, String key) {
+  final value = _setting(settings, key);
+  if (value.isEmpty) return null;
+  return double.tryParse(value.replaceAll(',', '.'));
 }
 
 String _sensorEndpoint(List<AppSetting> settings, String preferredKey) {
