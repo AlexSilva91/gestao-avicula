@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/constants/app_version.dart';
 import '../../../../core/database/app_database.dart';
@@ -13,6 +15,7 @@ import '../../../../core/sync/seleto_sync_service.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
+import '../../application/camera_monitoring.dart';
 import '../../application/operations_controller.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -43,6 +46,8 @@ class SettingsPage extends ConsumerWidget {
         ),
         const SizedBox(height: 16),
         _AppUpdateCard(ref: ref),
+        const SizedBox(height: 16),
+        _CameraSettingsCard(ref: ref),
         const SizedBox(height: 16),
         _NotificationsCard(ref: ref),
       ],
@@ -343,6 +348,291 @@ class _SettingTile extends StatelessWidget {
   );
 }
 
+class _CameraSettingsCard extends StatelessWidget {
+  const _CameraSettingsCard({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) => ref
+      .watch(appSettingsProvider)
+      .when(
+        loading: () => const Card(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: CircularProgressIndicator(),
+          ),
+        ),
+        error: (_, _) => const SeletoAsyncError(),
+        data: (settings) {
+          final cameras = onvifCamerasFromSettings(settings);
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.videocam_outlined),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Câmeras ONVIF',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ),
+                      Chip(label: Text('${cameras.length} canal(is)')),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Cadastre canais por IP, usuário, senha e porta opcional. A visualização abre em tela dedicada compacta.',
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: () => _edit(context, cameras),
+                        icon: const Icon(Icons.add_a_photo_outlined),
+                        label: const Text('Adicionar câmera'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => context.go('/cameras'),
+                        icon: const Icon(Icons.grid_view_rounded),
+                        label: const Text('Abrir monitoramento'),
+                      ),
+                    ],
+                  ),
+                  if (cameras.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    for (final camera in cameras)
+                      ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          camera.enabled
+                              ? Icons.videocam_outlined
+                              : Icons.videocam_off_outlined,
+                        ),
+                        title: Text(camera.name),
+                        subtitle: Text(
+                          '${camera.host}${camera.port == null ? '' : ':${camera.port}'} · usuário ${camera.username}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Wrap(
+                          spacing: 2,
+                          children: [
+                            IconButton(
+                              tooltip: 'Testar ONVIF',
+                              icon: const Icon(Icons.network_check),
+                              onPressed: () => _test(context, cameras, camera),
+                            ),
+                            IconButton(
+                              tooltip: 'Editar',
+                              icon: const Icon(Icons.edit),
+                              onPressed: () =>
+                                  _edit(context, cameras, editing: camera),
+                            ),
+                            IconButton(
+                              tooltip: 'Remover',
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () =>
+                                  _remove(context, cameras, camera),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      );
+
+  Future<void> _edit(
+    BuildContext context,
+    List<OnvifCameraConfig> cameras, {
+    OnvifCameraConfig? editing,
+  }) async {
+    final name = TextEditingController(text: editing?.name ?? '');
+    final host = TextEditingController(text: editing?.host ?? '');
+    final username = TextEditingController(text: editing?.username ?? 'admin');
+    final password = TextEditingController(text: editing?.password ?? '');
+    final port = TextEditingController(text: editing?.port?.toString() ?? '');
+    final snapshot = TextEditingController(text: editing?.snapshotUrl ?? '');
+    var enabled = editing?.enabled ?? true;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(editing == null ? 'Adicionar câmera' : 'Editar câmera'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: name,
+                    decoration: const InputDecoration(labelText: 'Nome'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: host,
+                    decoration: const InputDecoration(
+                      labelText: 'IP ou host',
+                      hintText: '192.168.1.50',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: username,
+                          decoration: const InputDecoration(
+                            labelText: 'Usuário',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: password,
+                          obscureText: true,
+                          decoration: const InputDecoration(labelText: 'Senha'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: port,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Porta ONVIF opcional',
+                      hintText: '80',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: snapshot,
+                    decoration: const InputDecoration(
+                      labelText: 'URL de snapshot opcional',
+                      hintText: 'Preencha só se a câmera exigir caminho manual',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: enabled,
+                    title: const Text('Canal ativo'),
+                    onChanged: (value) => setState(() => enabled = value),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final cleanHost = host.text.trim();
+                if (cleanHost.isEmpty) return;
+                final camera = OnvifCameraConfig(
+                  id: editing?.id ?? const Uuid().v4(),
+                  name: name.text.trim().isEmpty ? cleanHost : name.text.trim(),
+                  host: cleanHost,
+                  username: username.text.trim().isEmpty
+                      ? 'admin'
+                      : username.text.trim(),
+                  password: password.text,
+                  port: int.tryParse(port.text.trim()),
+                  snapshotUrl: snapshot.text.trim().isEmpty
+                      ? null
+                      : snapshot.text.trim(),
+                  enabled: enabled,
+                );
+                final next = [
+                  for (final current in cameras)
+                    if (current.id != camera.id) current,
+                  camera,
+                ];
+                await _save(context, next);
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        ),
+      ),
+    );
+    name.dispose();
+    host.dispose();
+    username.dispose();
+    password.dispose();
+    port.dispose();
+    snapshot.dispose();
+  }
+
+  Future<void> _test(
+    BuildContext context,
+    List<OnvifCameraConfig> cameras,
+    OnvifCameraConfig camera,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(content: Text('Testando ${camera.name} via ONVIF...')),
+    );
+    final result = await OnvifClient().resolveSnapshot(camera);
+    if (!context.mounted) return;
+    if (result.ok && result.snapshotUrl != null) {
+      final updated = camera.copyWith(snapshotUrl: result.snapshotUrl);
+      await _save(context, [
+        for (final current in cameras)
+          if (current.id == camera.id) updated else current,
+      ]);
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: result.ok ? null : Theme.of(context).colorScheme.error,
+      ),
+    );
+  }
+
+  Future<void> _remove(
+    BuildContext context,
+    List<OnvifCameraConfig> cameras,
+    OnvifCameraConfig camera,
+  ) async {
+    await _save(
+      context,
+      cameras.where((current) => current.id != camera.id).toList(),
+    );
+  }
+
+  Future<void> _save(
+    BuildContext context,
+    List<OnvifCameraConfig> cameras,
+  ) async {
+    try {
+      await ref
+          .read(operationsControllerProvider)
+          .saveSetting(onvifCamerasSettingKey, encodeOnvifCameras(cameras));
+    } catch (error) {
+      if (context.mounted) await showOperationError(context, error);
+    }
+  }
+}
+
 class _BackupCard extends StatelessWidget {
   const _BackupCard({required this.ref});
   final WidgetRef ref;
@@ -597,6 +887,8 @@ class _SyncServerPanel extends StatefulWidget {
 class _SyncServerPanelState extends State<_SyncServerPanel> {
   static const _encoder = JsonEncoder.withIndent('  ');
   Map<String, dynamic>? _result;
+  Map<String, dynamic>? _health;
+  bool _checkingHealth = false;
   bool _testing = false;
   bool _syncing = false;
 
@@ -604,6 +896,8 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final result = _result;
+    final health = _health;
+    final healthOk = health?['status'] == 'sucesso';
     return DecoratedBox(
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow.withValues(alpha: .72),
@@ -629,16 +923,73 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Destino remoto: coleções do servidor PostgreSQL com os nomes das tabelas locais.',
+              'Destino remoto: tabelas PostgreSQL equivalentes ao banco local.',
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 10),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: healthOk
+                    ? scheme.primaryContainer.withValues(alpha: .52)
+                    : scheme.errorContainer.withValues(alpha: .42),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      healthOk
+                          ? Icons.check_circle_outline
+                          : Icons.error_outline,
+                      size: 18,
+                      color: healthOk
+                          ? scheme.onPrimaryContainer
+                          : scheme.onErrorContainer,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        health == null
+                            ? 'Saúde remota ainda não verificada.'
+                            : healthOk
+                            ? 'Servidor remoto online · ${health['latenciaMs']} ms'
+                            : 'Servidor remoto indisponível · ${health['latenciaMs']} ms',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: healthOk
+                              ? scheme.onPrimaryContainer
+                              : scheme.onErrorContainer,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
+                OutlinedButton.icon(
+                  onPressed: _checkingHealth || _testing || _syncing
+                      ? null
+                      : _checkHealth,
+                  icon: _checkingHealth
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.health_and_safety_outlined),
+                  label: Text(_checkingHealth ? 'Checando...' : 'Saúde remota'),
+                ),
                 OutlinedButton.icon(
                   onPressed: _testing || _syncing ? null : _test,
                   icon: _testing
@@ -684,6 +1035,23 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
         ),
       ),
     );
+  }
+
+  Future<void> _checkHealth() async {
+    setState(() => _checkingHealth = true);
+    try {
+      final result = await widget.ref
+          .read(seletoSyncServiceProvider)
+          .checkRemoteHealth();
+      if (mounted) {
+        setState(() {
+          _health = result;
+          _result = result;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _checkingHealth = false);
+    }
   }
 
   Future<void> _test() async {

@@ -22,6 +22,7 @@ class AuthController extends ChangeNotifier {
   int _sessionGeneration = 0;
   bool _disposed = false;
   Timer? _presenceTimer;
+  static const _presenceInterval = Duration(seconds: 8);
   bool get isAuthenticated => session != null;
   Future<bool> hasUsers() => _repository.hasUsers();
   Future<String?> rememberedUsername() => _repository.rememberedUsername();
@@ -129,7 +130,7 @@ class AuthController extends ChangeNotifier {
     final userId = session?.userId;
     if (userId == null) return;
     unawaited(_repository.touchPresence(userId));
-    _presenceTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    _presenceTimer = Timer.periodic(_presenceInterval, (_) {
       unawaited(_repository.touchPresence(userId));
     });
   }

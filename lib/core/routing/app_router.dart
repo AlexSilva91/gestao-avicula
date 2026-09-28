@@ -10,6 +10,7 @@ import '../../features/users/presentation/pages/users_page.dart';
 import '../../features/operations/presentation/pages/audit_page.dart';
 import '../../features/operations/presentation/pages/alerts_page.dart';
 import '../../features/operations/presentation/pages/calendar_page.dart';
+import '../../features/operations/presentation/pages/camera_monitor_page.dart';
 import '../../features/operations/presentation/pages/commercial_page.dart';
 import '../../features/operations/presentation/pages/egg_stock_page.dart';
 import '../../features/operations/presentation/pages/feed_page.dart';
@@ -83,6 +84,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/hardware-water-quality',
         builder: (_, _) => const WaterReservoirSensorPage(),
       ),
+      GoRoute(path: '/cameras', builder: (_, _) => const CameraMonitorPage()),
       GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
       GoRoute(path: '/audit', builder: (_, _) => const AuditPage()),
       GoRoute(path: '/alerts', builder: (_, _) => const AlertsPage()),

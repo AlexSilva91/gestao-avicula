@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,7 +46,7 @@ class SyncServerException implements Exception {
   String toString() => message;
 }
 
-class SeletoSyncService extends ChangeNotifier {
+class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   SeletoSyncService(
     this._database, {
     http.Client? httpClient,
@@ -63,7 +63,9 @@ class SeletoSyncService extends ChangeNotifier {
   final Uri _baseUri;
   final String _syncToken;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  Timer? _presenceTimer;
   Future<SyncResult>? _activeSync;
+  Future<void>? _activePresence;
   _SyncScope? _scope;
   DateTime? _lastAttemptAt;
   bool _started = false;
@@ -75,7 +77,9 @@ class SeletoSyncService extends ChangeNotifier {
   static const _lastLocalHashKey = 'seleto.sync.last_local_hash';
   static const _lastRemoteHashKey = 'seleto.sync.last_remote_hash';
   static const _minimumSyncInterval = Duration(minutes: 5);
+  static const _presenceInterval = Duration(seconds: 8);
   static const _networkTimeout = Duration(seconds: 10);
+  static const _presenceTimeout = Duration(seconds: 4);
   static const _defaultBaseUrl = String.fromEnvironment(
     'SELETO_SYNC_BASE_URL',
     defaultValue: 'http://solveontecnology.com.br:5005',
@@ -100,9 +104,16 @@ class SeletoSyncService extends ChangeNotifier {
       _hasSuccessfulSync = false;
     }
     _scope = next;
+    if (_started) _startPresenceHeartbeat();
   }
 
   void clearUserScope() {
+    final oldScope = _scope;
+    if (oldScope != null) {
+      unawaited(_sendPresence(online: false, scopeOverride: oldScope));
+    }
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
     _scope = null;
     _lastAttemptAt = null;
     _hasSuccessfulSync = false;
@@ -111,14 +122,17 @@ class SeletoSyncService extends ChangeNotifier {
   Future<void> start() async {
     if (_started) return;
     _started = true;
+    WidgetsBinding.instance.addObserver(this);
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
       results,
     ) {
       if (_scope != null &&
           results.any((result) => result != ConnectivityResult.none)) {
+        _startPresenceHeartbeat();
         unawaited(syncNow(reason: 'connectivity'));
       }
     });
+    _startPresenceHeartbeat();
   }
 
   Future<SyncResult> syncNow({String reason = 'manual', bool force = false}) {
@@ -206,9 +220,28 @@ class SeletoSyncService extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    WidgetsBinding.instance.removeObserver(this);
+    _presenceTimer?.cancel();
     unawaited(_connectivitySubscription?.cancel());
     if (_ownsHttpClient) _httpClient.close();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_scope == null) return;
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _startPresenceHeartbeat();
+        unawaited(syncNow(reason: 'app_resumed'));
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        _presenceTimer?.cancel();
+        _presenceTimer = null;
+        unawaited(_sendPresence(online: false, appState: state.name));
+    }
   }
 
   void _setResult(SyncResult result) {
@@ -256,6 +289,7 @@ class SeletoSyncService extends ChangeNotifier {
         'preferLocalOnFirstSync': lastRemoteHash == null,
         'payload': localPayload,
       });
+      unawaited(_sendPresence(online: true, appState: 'sync_$reason'));
       final status = response['status']?.toString() ?? 'idle';
       final remotePayload = _payloadFromResponse(response);
       final remoteHash = response['payloadHash']?.toString();
@@ -306,8 +340,8 @@ class SeletoSyncService extends ChangeNotifier {
       'endpoint': _baseUri.toString(),
       'tokenConfiguradoNoApp': _syncToken.isNotEmpty,
       'backup': {
-        'modelo': 'snapshot_json_postgresql',
-        'colecoes': _syncCollectionKeys,
+        'modelo': 'tabelas_postgresql',
+        'tabelas': _syncTables.map((spec) => spec.remoteTable).toList(),
       },
     };
     try {
@@ -323,7 +357,7 @@ class SeletoSyncService extends ChangeNotifier {
       result
         ..['status'] = 'sucesso'
         ..['health'] = health
-        ..['snapshot'] = status;
+        ..['escopo'] = status;
       return result;
     } on SyncServerException catch (error) {
       result['erro'] = {
@@ -337,6 +371,40 @@ class SeletoSyncService extends ChangeNotifier {
         'mensagem': error.toString(),
       };
       return result;
+    }
+  }
+
+  Future<Map<String, dynamic>> checkRemoteHealth() async {
+    final checkedAt = DateTime.now();
+    final started = DateTime.now();
+    try {
+      final health = await _getJson('/health');
+      return {
+        'status': 'sucesso',
+        'endpoint': _baseUri.toString(),
+        'latenciaMs': DateTime.now().difference(started).inMilliseconds,
+        'verificadoEm': checkedAt.toIso8601String(),
+        'health': health,
+      };
+    } on SyncServerException catch (error) {
+      return {
+        'status': 'erro',
+        'endpoint': _baseUri.toString(),
+        'latenciaMs': DateTime.now().difference(started).inMilliseconds,
+        'verificadoEm': checkedAt.toIso8601String(),
+        'erro': {
+          'codigo': 'http-${error.statusCode ?? 'erro'}',
+          'mensagem': error.message,
+        },
+      };
+    } catch (error) {
+      return {
+        'status': 'erro',
+        'endpoint': _baseUri.toString(),
+        'latenciaMs': DateTime.now().difference(started).inMilliseconds,
+        'verificadoEm': checkedAt.toIso8601String(),
+        'erro': {'mensagem': error.toString()},
+      };
     }
   }
 
@@ -363,6 +431,16 @@ class SeletoSyncService extends ChangeNotifier {
     final response = await _httpClient
         .post(_endpoint(path), headers: _headers(), body: jsonEncode(body))
         .timeout(_networkTimeout);
+    return _decodeResponse(response);
+  }
+
+  Future<Map<String, dynamic>> _postPresenceJson(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final response = await _httpClient
+        .post(_endpoint(path), headers: _headers(), body: jsonEncode(body))
+        .timeout(_presenceTimeout);
     return _decodeResponse(response);
   }
 
@@ -408,6 +486,94 @@ class SeletoSyncService extends ChangeNotifier {
     'failed' || 'erro' || 'error' => SyncStatus.failed,
     _ => SyncStatus.idle,
   };
+
+  void _startPresenceHeartbeat() {
+    if (!_started || _scope == null || !_isConfigured) return;
+    _presenceTimer?.cancel();
+    unawaited(_sendPresence(online: true, appState: 'active'));
+    _presenceTimer = Timer.periodic(_presenceInterval, (_) {
+      unawaited(_sendPresence(online: true, appState: 'active'));
+    });
+  }
+
+  Future<void> _sendPresence({
+    required bool online,
+    _SyncScope? scopeOverride,
+    String appState = 'active',
+  }) async {
+    if (!_isConfigured) return;
+    final scope = scopeOverride ?? _scope;
+    if (scope == null) return;
+    final activePresence = _activePresence;
+    if (activePresence != null && online) return activePresence;
+    final request = _sendPresenceRequest(
+      online: online,
+      scope: scope,
+      appState: appState,
+    );
+    if (online) {
+      final tracked = request.whenComplete(() => _activePresence = null);
+      _activePresence = tracked;
+      return tracked;
+    }
+    return request;
+  }
+
+  Future<void> _sendPresenceRequest({
+    required bool online,
+    required _SyncScope scope,
+    required String appState,
+  }) async {
+    try {
+      if (online && !await _hasConnection()) return;
+      final response = await _postPresenceJson('/sync/v1/presence', {
+        'scopeKey': scope.key,
+        'tenantId': scope.tenantId,
+        'userId': scope.userId,
+        'isSuperAdmin': scope.isSuperAdmin,
+        'deviceId': await _deviceId(),
+        'state': online ? 'online' : 'offline',
+        'appState': appState,
+        'clientTime': DateTime.now().toIso8601String(),
+      });
+      await _applyPresenceResponse(response, scope);
+    } catch (_) {
+      // Presenca nao pode derrubar login/sincronizacao; o proximo heartbeat corrige.
+    }
+  }
+
+  Future<void> _applyPresenceResponse(
+    Map<String, dynamic> response,
+    _SyncScope scope,
+  ) async {
+    final activeUsers = response['activeUsers'];
+    if (activeUsers is! List) return;
+    await _database.transaction(() async {
+      for (final item in activeUsers.whereType<Map>()) {
+        final row = item.cast<String, dynamic>();
+        final userId = row['userId']?.toString();
+        if (userId == null || userId.isEmpty) continue;
+        if (!scope.isSuperAdmin &&
+            (row['tenantId']?.toString() ?? defaultTenantId) !=
+                scope.tenantId) {
+          continue;
+        }
+        final lastSeenAt = _parseDateTime(row['lastSeenAt']);
+        if (lastSeenAt == null) continue;
+        await (_database.update(_database.users)
+              ..where((user) => user.id.equals(userId)))
+            .write(UsersCompanion(lastSeenAt: Value(lastSeenAt)));
+      }
+    });
+  }
+
+  DateTime? _parseDateTime(Object? value) {
+    if (value is DateTime) return value;
+    if (value is String && value.trim().isNotEmpty) {
+      return DateTime.tryParse(value.trim());
+    }
+    return null;
+  }
 
   Future<Map<String, dynamic>> _localPayload(_SyncScope scope) async {
     final backup = jsonDecode(

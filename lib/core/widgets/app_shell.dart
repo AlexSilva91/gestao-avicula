@@ -184,6 +184,13 @@ const _destinationSections = <_DestinationSection>[
       '/hardware-water',
       'settings.view',
     ),
+    _DestinationItem(
+      Icons.videocam_outlined,
+      Icons.videocam,
+      'Câmeras',
+      '/cameras',
+      'settings.view',
+    ),
   ]),
   _DestinationSection('COMERCIAL', [
     _DestinationItem(
@@ -287,6 +294,7 @@ String _backgroundForPath(String path) {
       path == '/hardware-environment' ||
       path == '/hardware-water' ||
       path == '/hardware-water-quality' ||
+      path == '/cameras' ||
       path == '/settings' ||
       path == '/audit') {
     return 'assets/images/backgrounds/bg_management.png';
