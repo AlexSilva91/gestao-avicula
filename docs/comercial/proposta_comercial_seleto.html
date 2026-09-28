@@ -4,31 +4,32 @@
   <meta charset="utf-8">
   <title>Proposta Comercial - SELETO</title>
   <style>
-    @page { size: A4; margin: 1.7cm; }
+    @page { size: A4; margin: 1.55cm; }
     body {
       font-family: Arial, Helvetica, sans-serif;
       color: #1f2a24;
-      line-height: 1.38;
-      font-size: 11.5pt;
+      line-height: 1.34;
+      font-size: 10.8pt;
+      margin: 0;
     }
     h1, h2, h3 {
       color: #183c2b;
       margin-bottom: 0.25em;
     }
     h1 {
-      font-size: 25pt;
+      font-size: 23pt;
       letter-spacing: 0;
       margin-top: 0;
     }
     h2 {
-      font-size: 16pt;
-      border-bottom: 1px solid #d9c58a;
-      padding-bottom: 4px;
-      margin-top: 1.1em;
+      font-size: 14.5pt;
+      border-bottom: 1.3pt solid #d9b24c;
+      padding-bottom: 0.12cm;
+      margin-top: 0.85cm;
     }
     h3 {
-      font-size: 13pt;
-      margin-top: 0.9em;
+      font-size: 12.2pt;
+      margin-top: 0.55cm;
     }
     p { margin: 0.35em 0; }
     ul { margin-top: 0.25em; }
@@ -36,8 +37,8 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      margin: 0.6em 0 1em;
-      font-size: 10pt;
+      margin: 0.45cm 0 0.65cm;
+      font-size: 9.5pt;
     }
     th {
       background: #193d2b;
@@ -46,44 +47,108 @@
     }
     th, td {
       border: 1px solid #d8decd;
-      padding: 7px 8px;
+      padding: 0.16cm 0.2cm;
       vertical-align: top;
     }
     .cover {
       text-align: center;
-      padding-top: 0.2cm;
+      height: 25.2cm;
+      padding-top: 2.7cm;
       page-break-after: always;
+      break-after: page;
+      border-top: 0.25cm solid #183c2b;
+      border-bottom: 0.12cm solid #d9b24c;
+      box-sizing: border-box;
     }
     .logo {
-      width: 310px;
+      width: 6.8cm;
+      max-width: 6.8cm;
       height: auto;
-      margin: 0 auto 0.5cm;
+      margin: 1.2cm auto 0.65cm;
+      display: block;
+    }
+    .cover-kicker {
+      color: #8a6619;
+      font-size: 10pt;
+      font-weight: bold;
+      letter-spacing: 1.6pt;
+      text-transform: uppercase;
+      margin-top: 0.15cm;
+    }
+    .cover-title {
+      color: #183c2b;
+      font-size: 25pt;
+      margin: 0.22cm 0 0.12cm;
+      font-weight: bold;
     }
     .subtitle {
-      font-size: 14pt;
+      font-size: 12.8pt;
       color: #4a5a4f;
-      margin-bottom: 0.5cm;
+      margin-bottom: 0.55cm;
     }
     .proposal-box {
-      border: 2px solid #d9b24c;
+      border: 1.4pt solid #d9b24c;
       background: #fbfaf4;
-      padding: 14px 18px;
-      margin: 0.8cm auto;
-      max-width: 15cm;
+      padding: 0.35cm 0.45cm;
+      margin: 0.7cm auto 0.4cm;
+      width: 14.2cm;
       text-align: left;
     }
+    .proposal-box table {
+      margin: 0;
+      font-size: 10.4pt;
+    }
+    .proposal-box td {
+      border: 0;
+      border-bottom: 1px solid #eadfb9;
+      padding: 0.11cm 0;
+    }
+    .proposal-box tr:last-child td { border-bottom: 0; }
+    .proposal-label {
+      width: 3.2cm;
+      color: #183c2b;
+      font-weight: bold;
+    }
     .muted { color: #59665d; }
+    .cover-note {
+      width: 13.6cm;
+      margin: 0.35cm auto 0;
+      font-size: 9.5pt;
+      color: #59665d;
+    }
     .highlight {
       background: #f5efd7;
       border-left: 5px solid #c59026;
-      padding: 10px 12px;
-      margin: 0.8em 0;
+      padding: 0.28cm 0.34cm;
+      margin: 0.45cm 0;
+    }
+    .summary-grid {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0.22cm;
+      margin: 0.15cm 0 0.45cm;
+    }
+    .summary-grid td {
+      width: 33.33%;
+      border: 1px solid #d8decd;
+      background: #fbfaf4;
+      padding: 0.28cm;
+    }
+    .summary-title {
+      display: block;
+      color: #183c2b;
+      font-weight: bold;
+      margin-bottom: 0.12cm;
+    }
+    .content-start {
+      page-break-before: always;
+      break-before: page;
     }
     .signature {
       margin-top: 1.2cm;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1cm;
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 1cm 0;
     }
     .line {
       border-top: 1px solid #59665d;
@@ -94,22 +159,48 @@
 </head>
 <body>
   <section class="cover">
-    <img class="logo" src="../../SELETO_LOGO.png" alt="Logo SELETO">
-    <h1>Proposta Comercial</h1>
-    <p class="subtitle"><strong>SELETO</strong><br>Controle e automação para granjas inteligentes.</p>
+    <img class="logo" src="../../assets/images/seleto_logo_proposta.png" width="300" height="300" alt="Logo SELETO">
+    <p class="cover-kicker">Controle e automação para granjas inteligentes</p>
+    <p class="cover-title">Proposta Comercial</p>
+    <p class="subtitle"><strong>SELETO</strong> | Gestão, sensores, câmeras e automação rural</p>
     <div class="proposal-box">
-      <p><strong>Cliente:</strong> ___________________________________________</p>
-      <p><strong>Propriedade:</strong> _______________________________________</p>
-      <p><strong>Responsável:</strong> ________________________________________</p>
-      <p><strong>Data:</strong> ____ / ____ / ______</p>
-      <p><strong>Validade da proposta:</strong> 15 dias</p>
+      <table>
+        <tr>
+          <td class="proposal-label">Cliente</td>
+          <td>&nbsp;</td>
+        </tr>
+        <tr>
+          <td class="proposal-label">Propriedade</td>
+          <td>&nbsp;</td>
+        </tr>
+        <tr>
+          <td class="proposal-label">Responsável</td>
+          <td>&nbsp;</td>
+        </tr>
+        <tr>
+          <td class="proposal-label">Data</td>
+          <td>&nbsp;</td>
+        </tr>
+        <tr>
+          <td class="proposal-label">Validade</td>
+          <td>15 dias</td>
+        </tr>
+      </table>
     </div>
-    <p class="muted">Documento editável para adaptação conforme diagnóstico, distância, quantidade de galpões, câmeras, sensores, automações e nível de suporte contratado.</p>
+    <p class="cover-note">Documento editável para adaptação conforme diagnóstico, distância, quantidade de galpões, câmeras, sensores, automações e nível de suporte contratado.</p>
   </section>
 
-  <h2>1. Contexto do cliente</h2>
+  <h2 class="content-start">1. Contexto do cliente</h2>
   <p>Pequenas e médias granjas normalmente crescem antes de terem uma estrutura digital de controle. A rotina passa a depender de anotações em caderno, mensagens de WhatsApp, planilhas soltas e conferências manuais. Isso dificulta saber, com segurança, quanto foi produzido, quanto foi vendido, quanto de ração foi consumido, quais lotes estão performando melhor e se água, ambiente, iluminação e ventilação estão dentro do esperado.</p>
   <p>Além disso, quando o produtor não está presente, falhas simples podem virar prejuízo: reservatório baixo, excesso de calor, ventilador desligado, iluminação fora do horário, câmera sem acesso, estoque de ração desatualizado ou falta de registro de mortalidade e coleta.</p>
+
+  <table class="summary-grid">
+    <tr>
+      <td><span class="summary-title">Gestão</span>Produção, estoque, lotes, alimentação, vendas e financeiro em uma rotina organizada.</td>
+      <td><span class="summary-title">Monitoramento</span>Câmeras, sensores e alertas para acompanhar pontos críticos mesmo fora da propriedade.</td>
+      <td><span class="summary-title">Automação</span>Controle de luz, ventilação e acionamentos por ESP32 e relés, conforme viabilidade técnica.</td>
+    </tr>
+  </table>
 
   <div class="highlight">
     <strong>Dor principal atendida:</strong> reduzir perda de controle operacional e dar ao produtor uma central simples para acompanhar produção, sensores, câmeras, automações, estoque e rotina da granja.
@@ -257,19 +348,21 @@
   <h2>11. Aceite da proposta</h2>
   <p>Ao aprovar esta proposta, o cliente autoriza o início do planejamento da implantação, compra/separação de equipamentos, agendamento técnico e configuração inicial do SELETO conforme o plano escolhido.</p>
 
-  <div class="signature">
-    <div>
+  <table class="signature">
+    <tr>
+      <td>
       <div class="line">Contratante</div>
       <p>Nome:</p>
       <p>CPF/CNPJ:</p>
       <p>Data:</p>
-    </div>
-    <div>
+      </td>
+      <td>
       <div class="line">SELETO</div>
       <p>Responsável:</p>
       <p>Contato:</p>
       <p>Data:</p>
-    </div>
-  </div>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
