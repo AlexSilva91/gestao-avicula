@@ -283,11 +283,15 @@ class HardwareEspClient {
     required String state,
   }) async {
     Object? lastError;
-    final normalized = _normalizeEndpoint(endpoint);
+    var commandEndpoint = _normalizeEndpoint(endpoint);
+    if (state == 'off') {
+      final probe = await discover(onLog: (_) {});
+      if (probe != null) commandEndpoint = probe.endpoint;
+    }
     for (var attempt = 1; attempt <= 3; attempt++) {
       try {
         return await _sendRelayOnce(
-          endpoint: normalized,
+          endpoint: commandEndpoint,
           channel: channel,
           state: state,
         );
@@ -299,7 +303,7 @@ class HardwareEspClient {
     }
 
     final probe = await discover(onLog: (_) {});
-    if (probe != null && probe.endpoint != normalized) {
+    if (probe != null && probe.endpoint != commandEndpoint) {
       try {
         return await _sendRelayOnce(
           endpoint: probe.endpoint,
