@@ -91,8 +91,8 @@ class EspChannelSchedule {
 class HardwareEspClient {
   const HardwareEspClient();
 
-  static const _probeTimeout = Duration(milliseconds: 850);
-  static const _requestTimeout = Duration(seconds: 8);
+  static const _probeTimeout = Duration(milliseconds: 1500);
+  static const _requestTimeout = Duration(seconds: 12);
   static const _wifiConfigTimeout = Duration(seconds: 35);
   static const _knownSetupEndpoint = 'http://192.168.4.1';
   static const _networkChannel = MethodChannel('seleto/network');
