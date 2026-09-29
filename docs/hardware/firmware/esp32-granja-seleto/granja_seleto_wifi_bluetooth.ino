@@ -609,23 +609,30 @@ class NetworkService {
     connect(storage_.loadWifi());
   }
 
+  void loop() {
+    if (pendingConnect_) {
+      pendingConnect_ = false;
+      beginStationConnect(pendingCredentials_);
+    }
+    if (!connecting_) return;
+    if (connected()) {
+      connecting_ = false;
+      Serial.print("Wi-Fi conectado. IP: ");
+      Serial.println(localIp());
+      return;
+    }
+    if (millis() - connectStartedMs_ > Config::wifiConnectTimeoutMs) {
+      connecting_ = false;
+      Serial.print("Falha ao conectar Wi-Fi. Status: ");
+      Serial.println(statusCode());
+    }
+  }
+
   bool connect(const WifiCredentials& credentials) {
     if (!credentials.isValid()) return false;
-
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.setSleep(false);
-    WiFi.setAutoReconnect(true);
-    WiFi.setHostname(Config::deviceId);
-    ensureSetupAp();
-    WiFi.begin(credentials.ssid.c_str(), credentials.password.c_str());
-    const uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED &&
-           millis() - start < Config::wifiConnectTimeoutMs) {
-      delay(250);
-      Serial.print(".");
-    }
-    Serial.println();
-    return WiFi.status() == WL_CONNECTED;
+    pendingCredentials_ = credentials;
+    pendingConnect_ = true;
+    return true;
   }
 
   bool saveAndReconnect(const String& ssid, const String& password) {
@@ -656,9 +663,25 @@ class NetworkService {
 
  private:
   StorageService& storage_;
+  WifiCredentials pendingCredentials_;
+  bool pendingConnect_ = false;
+  bool connecting_ = false;
+  uint32_t connectStartedMs_ = 0;
 
   void ensureSetupAp() {
     WiFi.softAP(Config::setupApSsid, Config::setupApPassword);
+  }
+
+  void beginStationConnect(const WifiCredentials& credentials) {
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.setSleep(false);
+    WiFi.setAutoReconnect(true);
+    WiFi.setHostname(Config::deviceId);
+    WiFi.begin(credentials.ssid.c_str(), credentials.password.c_str());
+    connectStartedMs_ = millis();
+    connecting_ = true;
+    Serial.print("Conectando Wi-Fi: ");
+    Serial.println(credentials.ssid);
   }
 };
 
@@ -1095,10 +1118,12 @@ class ApiServer {
       sendJson("{\"ok\":false,\"error\":\"missing_ssid\"}", 400);
       return;
     }
-    const bool connected = network_.saveAndReconnect(ssid, password);
-    if (connected) clock_.begin();
+    const bool accepted = network_.saveAndReconnect(ssid, password);
+    if (network_.connected()) clock_.begin();
     String json = "{\"ok\":";
-    json += boolJson(connected);
+    json += boolJson(accepted);
+    json += ",\"accepted\":";
+    json += boolJson(accepted);
     json += ",\"wifiConnected\":";
     json += boolJson(network_.connected());
     json += ",\"wifiStatus\":";
@@ -1108,7 +1133,7 @@ class ApiServer {
     json += ",\"setupApIp\":";
     json += quoteJson(network_.setupIp());
     json += "}";
-    sendJson(json, connected ? 200 : 202);
+    sendJson(json, accepted ? 202 : 400);
   }
 
   void handleNotFound() {
@@ -1388,10 +1413,12 @@ class BluetoothBridge {
     }
     const String ssid = payload.substring(0, separator);
     const String password = payload.substring(separator + 1);
-    const bool connected = network_.saveAndReconnect(ssid, password);
-    if (connected) clock_.begin();
+    const bool accepted = network_.saveAndReconnect(ssid, password);
+    if (network_.connected()) clock_.begin();
     String json = "{\"ok\":";
-    json += boolJson(connected);
+    json += boolJson(accepted);
+    json += ",\"accepted\":";
+    json += boolJson(accepted);
     json += ",\"wifiConnected\":";
     json += boolJson(network_.connected());
     json += ",\"wifiStatus\":";
@@ -1474,6 +1501,7 @@ void setup() {
 }
 
 void loop() {
+  network.loop();
   api.loop();
   bluetooth.loop();
   scheduler.loop();

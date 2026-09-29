@@ -1319,7 +1319,7 @@ class _HardwareIntegrationsPageState
     _appendEspLog('APP> enviando rede "$ssid" para $endpoint');
 
     try {
-      final payload = await espClient.configureWifi(
+      var payload = await espClient.configureWifi(
         endpoint: endpoint,
         ssid: ssid,
         password: password,
@@ -1327,8 +1327,25 @@ class _HardwareIntegrationsPageState
       if (!mounted) return;
 
       _appendEspPayload(payload);
-      final connected =
-          payload['wifiConnected'] == true || payload['ok'] == true;
+      for (
+        var attempt = 1;
+        attempt <= 12 && payload['wifiConnected'] != true;
+        attempt++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 2500));
+        if (!mounted) return;
+        try {
+          final probe = await espClient.ping(endpoint);
+          payload = probe.payload;
+          _appendEspLog('ESP> aguardando DHCP... tentativa $attempt/12');
+          _appendEspPayload(payload);
+        } catch (error) {
+          _appendEspLog(
+            'ESP> aguardando resposta do AP... tentativa $attempt/12',
+          );
+        }
+      }
+      final connected = payload['wifiConnected'] == true;
       final ip = (payload['ip'] ?? '').toString().trim();
       final setupApIp = (payload['setupApIp'] ?? '').toString().trim();
       final normalizedIp = ip.isEmpty
