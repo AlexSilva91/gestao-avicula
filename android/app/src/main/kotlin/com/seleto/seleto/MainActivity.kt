@@ -3,6 +3,7 @@ package com.seleto.seleto
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.LinkAddress
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.PowerManager
@@ -81,6 +82,7 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "bindProcessToWifi" -> result.success(bindProcessToWifi())
+                "wifiIpv4Address" -> result.success(wifiIpv4Address())
                 "clearNetworkBinding" -> {
                     clearNetworkBinding()
                     result.success(null)
@@ -101,6 +103,23 @@ class MainActivity : FlutterActivity() {
             }
         }
         return false
+    }
+
+    private fun wifiIpv4Address(): String? {
+        val connectivityManager =
+            getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        for (network in connectivityManager.allNetworks) {
+            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: continue
+            if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) continue
+            val linkProperties = connectivityManager.getLinkProperties(network) ?: continue
+            for (address: LinkAddress in linkProperties.linkAddresses) {
+                val host = address.address.hostAddress ?: continue
+                if (host.contains(":")) continue
+                if (host.startsWith("169.") || host == "127.0.0.1") continue
+                return host
+            }
+        }
+        return null
     }
 
     private fun clearNetworkBinding() {

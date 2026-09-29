@@ -103,7 +103,7 @@ class HardwareEspClient {
   Future<EspDeviceProbe?> discover({
     void Function(String message)? onLog,
   }) async {
-    onLog?.call('SYS> iniciando descoberta automatica do ESP32');
+    onLog?.call('SYS> testando AP do ESP e Wi-Fi atual');
 
     final directProbe = await _tryProbe(_knownSetupEndpoint);
     if (directProbe != null) {
@@ -113,13 +113,15 @@ class HardwareEspClient {
 
     final baseHosts = await _localSubnetBaseHosts();
     if (baseHosts.isEmpty) {
-      onLog?.call('SYS> rede local nao identificada');
+      onLog?.call('SYS> Wi-Fi atual nao identificado');
       onLog?.call('SYS> conecte no Wi-Fi GRANJA-SELETO-SETUP e tente de novo');
       return null;
     }
 
     for (final baseHost in baseHosts) {
-      onLog?.call('SCAN> varrendo $baseHost.1 ate $baseHost.254');
+      onLog?.call(
+        'SCAN> varrendo somente Wi-Fi atual $baseHost.1 ate $baseHost.254',
+      );
       final probe = await _scanSubnet(baseHost, onLog: onLog);
       if (probe != null) return probe;
     }
@@ -390,6 +392,18 @@ class HardwareEspClient {
   }
 
   Future<List<String>> _localSubnetBaseHosts() async {
+    if (Platform.isAndroid) {
+      try {
+        final wifiIp = await _networkChannel.invokeMethod<String>(
+          'wifiIpv4Address',
+        );
+        final base = _baseHostFromIpv4(wifiIp);
+        return base == null ? const [] : [base];
+      } catch (_) {
+        return const [];
+      }
+    }
+
     final interfaces = await NetworkInterface.list(
       includeLinkLocal: false,
       type: InternetAddressType.IPv4,
@@ -404,6 +418,13 @@ class HardwareEspClient {
       }
     }
     return bases.toList()..sort();
+  }
+
+  String? _baseHostFromIpv4(String? address) {
+    final parts = address?.split('.') ?? const [];
+    if (parts.length != 4) return null;
+    if (parts.first == '127' || parts.first == '169') return null;
+    return '${parts[0]}.${parts[1]}.${parts[2]}';
   }
 
   Future<Map<String, Object?>> _getJson(String url) async {
