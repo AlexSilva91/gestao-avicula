@@ -605,7 +605,7 @@ class NetworkService {
     WiFi.setSleep(false);
     WiFi.setAutoReconnect(true);
     WiFi.setHostname(Config::deviceId);
-    WiFi.softAP(Config::setupApSsid, Config::setupApPassword);
+    ensureSetupAp();
     connect(storage_.loadWifi());
   }
 
@@ -616,7 +616,7 @@ class NetworkService {
     WiFi.setSleep(false);
     WiFi.setAutoReconnect(true);
     WiFi.setHostname(Config::deviceId);
-    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    ensureSetupAp();
     WiFi.begin(credentials.ssid.c_str(), credentials.password.c_str());
     const uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED &&
@@ -630,8 +630,6 @@ class NetworkService {
 
   bool saveAndReconnect(const String& ssid, const String& password) {
     storage_.saveWifi(ssid, password);
-    WiFi.disconnect(false, false);
-    delay(500);
     WifiCredentials credentials{ssid, password};
     return connect(credentials);
   }
@@ -658,6 +656,10 @@ class NetworkService {
 
  private:
   StorageService& storage_;
+
+  void ensureSetupAp() {
+    WiFi.softAP(Config::setupApSsid, Config::setupApPassword);
+  }
 };
 
 class RemoteSyncService {
