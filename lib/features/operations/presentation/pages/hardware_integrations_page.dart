@@ -91,6 +91,10 @@ class _HardwareIntegrationsPageState
   final wifiProvisionEndpoint = TextEditingController(text: '192.168.4.1');
   final wifiProvisionSsid = TextEditingController();
   final wifiProvisionPassword = TextEditingController();
+  final remoteSyncUrl = TextEditingController(
+    text: 'http://solveontecnology.com.br:5005/iot/v1/esp/sync',
+  );
+  final remoteSyncToken = TextEditingController();
   final lightingChannelNames = List.generate(
     4,
     (index) => TextEditingController(text: 'Canal ${index + 1}'),
@@ -135,6 +139,9 @@ class _HardwareIntegrationsPageState
   bool saving = false;
   bool initialized = false;
   bool wifiProvisionPasswordHidden = true;
+  bool remoteSyncEnabled = true;
+  bool remoteSyncTokenHidden = true;
+  String espControlPriority = 'local';
   String lightingStatus = 'Aguardando teste';
   String? lightingConnectionResult;
   bool espDiscoveryStarted = false;
@@ -153,6 +160,8 @@ class _HardwareIntegrationsPageState
     wifiProvisionEndpoint.dispose();
     wifiProvisionSsid.dispose();
     wifiProvisionPassword.dispose();
+    remoteSyncUrl.dispose();
+    remoteSyncToken.dispose();
     for (final controller in lightingChannelNames) {
       controller.dispose();
     }
@@ -192,6 +201,18 @@ class _HardwareIntegrationsPageState
     wifiProvisionSsid.text = values['hardware_esp_wifi_ssid']?.trim() ?? '';
     wifiProvisionPassword.text =
         values['hardware_esp_wifi_password']?.trim() ?? '';
+    remoteSyncEnabled =
+        values['hardware_esp_remote_sync_enabled']?.trim() != 'false';
+    remoteSyncUrl.text =
+        values['hardware_esp_remote_sync_url']?.trim().isNotEmpty == true
+        ? values['hardware_esp_remote_sync_url']!.trim()
+        : 'http://solveontecnology.com.br:5005/iot/v1/esp/sync';
+    remoteSyncToken.text =
+        values['hardware_esp_remote_sync_token']?.trim() ?? '';
+    espControlPriority =
+        values['hardware_esp_control_priority']?.trim() == 'remote'
+        ? 'remote'
+        : 'local';
     for (final channel in config.lightingChannels) {
       final index = channel.index - 1;
       if (index < 0 || index >= 4) continue;
@@ -295,6 +316,24 @@ class _HardwareIntegrationsPageState
                         !wifiProvisionPasswordHidden,
                   ),
                   onHelp: _showEspWifiHelp,
+                ),
+                const SizedBox(height: 12),
+                _EspRemoteSyncPanel(
+                  enabled: remoteSyncEnabled,
+                  priority: espControlPriority,
+                  urlController: remoteSyncUrl,
+                  tokenController: remoteSyncToken,
+                  tokenHidden: remoteSyncTokenHidden,
+                  busy: saving || espScanning,
+                  onEnabledChanged: (value) =>
+                      setState(() => remoteSyncEnabled = value),
+                  onPriorityChanged: (value) =>
+                      setState(() => espControlPriority = value),
+                  onToggleToken: () => setState(
+                    () => remoteSyncTokenHidden = !remoteSyncTokenHidden,
+                  ),
+                  onRead: _readEspRemoteSync,
+                  onSave: _configureEspRemoteSync,
                 ),
                 const SizedBox(height: 16),
                 _lightingPanel(context),
@@ -1405,6 +1444,112 @@ class _HardwareIntegrationsPageState
     }
   }
 
+  Future<void> _readEspRemoteSync() async {
+    final endpoint = _currentWifiEndpoint().isNotEmpty
+        ? _currentWifiEndpoint()
+        : wifiProvisionEndpoint.text.trim().isEmpty
+        ? '192.168.4.1'
+        : wifiProvisionEndpoint.text.trim();
+
+    setState(() {
+      saving = true;
+      espTerminalTitle = 'REMOTE SYNC ESP';
+    });
+    _appendEspLog('APP> lendo sincronizacao remota em $endpoint');
+
+    try {
+      final payload = await espClient.readRemoteSync(endpoint);
+      if (!mounted) return;
+      _appendEspPayload(payload);
+      final remote = payload['remoteSync'];
+      if (remote is Map) {
+        remoteSyncEnabled = remote['enabled'] != false;
+        final url = (remote['url'] ?? '').toString().trim();
+        if (url.isNotEmpty) remoteSyncUrl.text = url;
+        final priority = (remote['priority'] ?? '').toString().trim();
+        espControlPriority = priority == 'remote' ? 'remote' : 'local';
+      }
+      setState(() {
+        espTerminalTitle = 'REMOTE SYNC OK';
+        lightingStatus =
+            'Sincronizacao remota lida. Prioridade local continua ${espControlPriority == 'local' ? 'ativa' : 'desativada'}.';
+      });
+      _snack('Configuração remota lida do ESP.');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        espTerminalTitle = 'FALHA REMOTE SYNC';
+        lightingStatus = 'Falha ao ler sincronização remota do ESP.';
+      });
+      _appendEspLog('ERR> leitura remote sync falhou: $error');
+      await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _configureEspRemoteSync() async {
+    final endpoint = _currentWifiEndpoint().isNotEmpty
+        ? _currentWifiEndpoint()
+        : wifiProvisionEndpoint.text.trim().isEmpty
+        ? '192.168.4.1'
+        : wifiProvisionEndpoint.text.trim();
+    final url = remoteSyncUrl.text.trim();
+    final token = remoteSyncToken.text.trim();
+    if (remoteSyncEnabled && url.isEmpty) {
+      _snack('Informe a URL do servidor remoto.');
+      return;
+    }
+
+    setState(() {
+      saving = true;
+      espTerminalTitle = 'CONFIG REMOTE SYNC';
+    });
+    _appendEspLog(
+      'APP> salvando remote sync no ESP; prioridade $espControlPriority',
+    );
+
+    try {
+      final payload = await espClient.configureRemoteSync(
+        endpoint: endpoint,
+        enabled: remoteSyncEnabled,
+        url: url,
+        token: token,
+        priority: espControlPriority,
+      );
+      final controller = ref.read(operationsControllerProvider);
+      await controller.saveSetting(
+        'hardware_esp_remote_sync_enabled',
+        remoteSyncEnabled ? 'true' : 'false',
+      );
+      await controller.saveSetting('hardware_esp_remote_sync_url', url);
+      await controller.saveSetting('hardware_esp_remote_sync_token', token);
+      await controller.saveSetting(
+        'hardware_esp_control_priority',
+        espControlPriority,
+      );
+      if (!mounted) return;
+      _appendEspPayload(payload);
+      setState(() {
+        espTerminalTitle = 'REMOTE SYNC CONFIGURADO';
+        lightingStatus = espControlPriority == 'local'
+            ? 'Prioridade local ativa; servidor remoto fica como sincronização/fallback.'
+            : 'Prioridade remota salva; comandos locais ainda funcionam quando usados.';
+      });
+      _snack('Sincronização remota configurada.');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        espTerminalTitle = 'FALHA CONFIG REMOTE';
+        lightingStatus = 'Falha ao configurar sincronização remota.';
+      });
+      _appendEspLog('ERR> config remote sync falhou: $error');
+      await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
   Future<void> _showEspWifiHelp() async {
     await showDialog<void>(
       context: context,
@@ -1848,6 +1993,144 @@ class _EspWifiProvisionPanel extends StatelessWidget {
                   onPressed: busy ? null : onHelp,
                   icon: const Icon(Icons.help_outline),
                   label: const Text('Como conectar'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EspRemoteSyncPanel extends StatelessWidget {
+  const _EspRemoteSyncPanel({
+    required this.enabled,
+    required this.priority,
+    required this.urlController,
+    required this.tokenController,
+    required this.tokenHidden,
+    required this.busy,
+    required this.onEnabledChanged,
+    required this.onPriorityChanged,
+    required this.onToggleToken,
+    required this.onRead,
+    required this.onSave,
+  });
+
+  final bool enabled;
+  final String priority;
+  final TextEditingController urlController;
+  final TextEditingController tokenController;
+  final bool tokenHidden;
+  final bool busy;
+  final ValueChanged<bool> onEnabledChanged;
+  final ValueChanged<String> onPriorityChanged;
+  final VoidCallback onToggleToken;
+  final VoidCallback onRead;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .32),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.cloud_sync_outlined, color: colors.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Sincronização remota do ESP',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Switch(
+                  value: enabled,
+                  onChanged: busy ? null : onEnabledChanged,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                  value: 'local',
+                  icon: Icon(Icons.lan_outlined),
+                  label: Text('Local'),
+                ),
+                ButtonSegment(
+                  value: 'remote',
+                  icon: Icon(Icons.cloud_outlined),
+                  label: Text('Remoto'),
+                ),
+              ],
+              selected: {priority},
+              onSelectionChanged: busy
+                  ? null
+                  : (values) => onPriorityChanged(values.first),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: urlController,
+              enabled: enabled && !busy,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                labelText: 'URL do servidor remoto',
+                prefixIcon: Icon(Icons.link_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: tokenController,
+              enabled: enabled && !busy,
+              obscureText: tokenHidden,
+              decoration: InputDecoration(
+                labelText: 'Token remoto',
+                prefixIcon: const Icon(Icons.key_outlined),
+                suffixIcon: IconButton(
+                  onPressed: busy ? null : onToggleToken,
+                  icon: Icon(
+                    tokenHidden
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
+                  tooltip: tokenHidden ? 'Mostrar token' : 'Ocultar token',
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            _InfoStrip(
+              icon: Icons.route_outlined,
+              text: priority == 'local'
+                  ? 'Prioridade local ativa: o app comanda direto o ESP quando estiver na mesma rede. O servidor fica como sincronização e fallback.'
+                  : 'Prioridade remota salva: use quando o ESP não estiver acessível localmente. Os comandos locais continuam disponíveis.',
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: busy ? null : onSave,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Salvar remoto'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: busy ? null : onRead,
+                  icon: const Icon(Icons.manage_search_outlined),
+                  label: const Text('Ler do ESP'),
                 ),
               ],
             ),
