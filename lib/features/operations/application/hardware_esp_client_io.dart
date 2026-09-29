@@ -22,14 +22,30 @@ class EspEnvironmentReading {
   const EspEnvironmentReading({
     required this.airTemperatureC,
     required this.airHumidityPercent,
+    required this.zones,
     required this.message,
     required this.payload,
   });
 
   final double airTemperatureC;
   final double airHumidityPercent;
+  final List<EspEnvironmentZoneReading> zones;
   final String message;
   final Map<String, Object?> payload;
+}
+
+class EspEnvironmentZoneReading {
+  const EspEnvironmentZoneReading({
+    required this.id,
+    required this.label,
+    required this.temperatureC,
+    required this.humidityPercent,
+  });
+
+  final String id;
+  final String label;
+  final double temperatureC;
+  final double humidityPercent;
 }
 
 class EspWaterReading {
@@ -38,6 +54,7 @@ class EspWaterReading {
     required this.temperatureC,
     required this.ph,
     required this.tdsPpm,
+    required this.chlorineOrpMv,
     required this.message,
     required this.payload,
   });
@@ -46,6 +63,7 @@ class EspWaterReading {
   final double temperatureC;
   final double ph;
   final double tdsPpm;
+  final double? chlorineOrpMv;
   final String message;
   final Map<String, Object?> payload;
 }
@@ -177,11 +195,13 @@ class HardwareEspClient {
     final payload = await _getJson('$normalized/api/environment');
     final temperature = _doubleValue(payload['airTemperatureC']);
     final humidity = _doubleValue(payload['airHumidityPercent']);
+    final zones = _environmentZones(payload, temperature, humidity);
     return EspEnvironmentReading(
       airTemperatureC: temperature,
       airHumidityPercent: humidity,
+      zones: zones,
       message:
-          'Ambiente: ${temperature.toStringAsFixed(1)} °C / ${humidity.toStringAsFixed(1)}%',
+          'Ambiente: ${zones.length} ponto(s) / ${temperature.toStringAsFixed(1)} °C / ${humidity.toStringAsFixed(1)}%',
       payload: payload,
     );
   }
@@ -193,13 +213,20 @@ class HardwareEspClient {
     final temperature = _doubleValue(payload['temperatureC']);
     final ph = _doubleValue(payload['ph']);
     final tds = _doubleValue(payload['tdsPpm']);
+    final chlorineOrp = _optionalDoubleValue(
+      payload['chlorineOrpMv'] ??
+          payload['orpMv'] ??
+          payload['chlorineMv'] ??
+          payload['cloroOrpMv'],
+    );
     return EspWaterReading(
       levelPercent: level,
       temperatureC: temperature,
       ph: ph,
       tdsPpm: tds,
+      chlorineOrpMv: chlorineOrp,
       message:
-          'Água: ${level.toStringAsFixed(0)}% / ${temperature.toStringAsFixed(1)} °C / pH ${ph.toStringAsFixed(2)} / ${tds.toStringAsFixed(0)} ppm',
+          'Água: ${level.toStringAsFixed(0)}% / ${temperature.toStringAsFixed(1)} °C / pH ${ph.toStringAsFixed(2)} / ${tds.toStringAsFixed(0)} ppm${chlorineOrp == null ? '' : ' / ORP ${chlorineOrp.toStringAsFixed(0)} mV'}',
       payload: payload,
     );
   }
@@ -375,6 +402,79 @@ class HardwareEspClient {
   double _doubleValue(Object? value) {
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double? _optionalDoubleValue(Object? value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  List<EspEnvironmentZoneReading> _environmentZones(
+    Map<String, Object?> payload,
+    double fallbackTemperature,
+    double fallbackHumidity,
+  ) {
+    final explicitZones = payload['zones'] ?? payload['points'];
+    if (explicitZones is List) {
+      final zones = [
+        for (final item in explicitZones)
+          if (item is Map)
+            _environmentZoneFromMap(Map<String, Object?>.from(item)),
+      ].whereType<EspEnvironmentZoneReading>().toList();
+      if (zones.isNotEmpty) return zones;
+    }
+
+    final aliases = {
+      'galpaoCentro': ('galpao_centro', 'Galpão centro'),
+      'galpao': ('galpao_centro', 'Galpão centro'),
+      'pinteiroPiso1': ('pinteiro_piso_1', 'Pinteiro piso 1'),
+      'pinteiro1': ('pinteiro_piso_1', 'Pinteiro piso 1'),
+      'pinteiroPiso2': ('pinteiro_piso_2', 'Pinteiro piso 2'),
+      'pinteiro2': ('pinteiro_piso_2', 'Pinteiro piso 2'),
+    };
+    final zones = <EspEnvironmentZoneReading>[];
+    for (final entry in aliases.entries) {
+      final value = payload[entry.key];
+      if (value is Map) {
+        final mapped = _environmentZoneFromMap(
+          Map<String, Object?>.from(value),
+          id: entry.value.$1,
+          label: entry.value.$2,
+        );
+        if (mapped != null) zones.add(mapped);
+      }
+    }
+    if (zones.isNotEmpty) return zones;
+
+    return [
+      EspEnvironmentZoneReading(
+        id: 'galpao_centro',
+        label: 'Galpão centro',
+        temperatureC: fallbackTemperature,
+        humidityPercent: fallbackHumidity,
+      ),
+    ];
+  }
+
+  EspEnvironmentZoneReading? _environmentZoneFromMap(
+    Map<String, Object?> data, {
+    String? id,
+    String? label,
+  }) {
+    final temperature = _optionalDoubleValue(
+      data['temperatureC'] ?? data['airTemperatureC'] ?? data['tempC'],
+    );
+    final humidity = _optionalDoubleValue(
+      data['humidityPercent'] ?? data['airHumidityPercent'] ?? data['humidity'],
+    );
+    if (temperature == null || humidity == null) return null;
+    return EspEnvironmentZoneReading(
+      id: id ?? (data['id'] ?? data['key'] ?? '').toString(),
+      label: label ?? (data['label'] ?? data['name'] ?? 'Ambiente').toString(),
+      temperatureC: temperature,
+      humidityPercent: humidity,
+    );
   }
 
   Future<EspDeviceProbe?> _scanSubnet(

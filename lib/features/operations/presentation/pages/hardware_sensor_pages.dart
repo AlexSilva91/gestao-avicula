@@ -17,7 +17,9 @@ const _ventilationRelayOffset = 4;
 const _ventilationDefaultPins = ['18', '5', '17', '16', '4', '25', '2', '15'];
 
 const _environmentSensorPorts = [
-  _SensorPort('DHT22 dados', 'GPIO27', Icons.device_thermostat_outlined),
+  _SensorPort('T/U galpão', 'GPIO27', Icons.device_thermostat_outlined),
+  _SensorPort('T/U pinteiro 1', 'I2C/exp.', Icons.device_thermostat_outlined),
+  _SensorPort('T/U pinteiro 2', 'I2C/exp.', Icons.device_thermostat_outlined),
 ];
 
 const _waterReservoirSensorPorts = [
@@ -28,6 +30,7 @@ const _waterReservoirSensorPorts = [
 const _waterQualitySensorPorts = [
   _SensorPort('pH', 'GPIO36', Icons.science_outlined),
   _SensorPort('TDS', 'GPIO39', Icons.blur_on_outlined),
+  _SensorPort('Cloro/ORP', 'ADS1115/I2C', Icons.biotech_outlined),
 ];
 
 const _waterSystemSensorPorts = [
@@ -59,8 +62,7 @@ class _EnvironmentSensorPageState extends ConsumerState<EnvironmentSensorPage> {
   final endpoint = TextEditingController();
   bool initialized = false;
   bool working = false;
-  double? temperatureC;
-  double? humidityPercent;
+  List<EspEnvironmentZoneReading> zones = const [];
   String status = 'Aguardando leitura';
   Map<String, Object?>? lastPayload;
 
@@ -74,15 +76,23 @@ class _EnvironmentSensorPageState extends ConsumerState<EnvironmentSensorPage> {
     if (initialized) return;
     initialized = true;
     endpoint.text = _sensorEndpoint(settings, 'hardware_environment_endpoint');
-    temperatureC = _settingDouble(
+    final temperatureC = _settingDouble(
       settings,
       'hardware_environment_last_temperature_c',
     );
-    humidityPercent = _settingDouble(
+    final humidityPercent = _settingDouble(
       settings,
       'hardware_environment_last_humidity_percent',
     );
     if (temperatureC != null || humidityPercent != null) {
+      zones = [
+        EspEnvironmentZoneReading(
+          id: 'galpao_centro',
+          label: 'Galpão centro',
+          temperatureC: temperatureC ?? 0,
+          humidityPercent: humidityPercent ?? 0,
+        ),
+      ];
       status = 'Última leitura carregada';
     }
   }
@@ -97,33 +107,33 @@ class _EnvironmentSensorPageState extends ConsumerState<EnvironmentSensorPage> {
           error: (_, _) => const SeletoAsyncError(),
           data: (settings) {
             _hydrate(settings);
+            final primaryZone = zones.isEmpty ? null : zones.first;
             return _SensorExperience(
               icon: Icons.thermostat_outlined,
-              title: 'Ambiente do galpão',
-              subtitle: 'Temperatura e umidade do ar',
+              title: 'Ambiente do galpão e pinteiro',
+              subtitle: 'Temperatura e umidade por ponto',
               status: status,
               visual: _EnvironmentHouseInstrument(
-                temperatureC: temperatureC,
-                humidityPercent: humidityPercent,
+                temperatureC: primaryZone?.temperatureC,
+                humidityPercent: primaryZone?.humidityPercent,
                 working: working,
               ),
               metrics: [
-                _SensorMetric(
-                  icon: Icons.device_thermostat_outlined,
-                  label: 'Temperatura',
-                  value: temperatureC == null
-                      ? 'Sem leitura'
-                      : '${decimal.format(temperatureC!)} °C',
-                  active: temperatureC != null,
-                ),
-                _SensorMetric(
-                  icon: Icons.water_drop_outlined,
-                  label: 'Umidade',
-                  value: humidityPercent == null
-                      ? 'Sem leitura'
-                      : '${decimal.format(humidityPercent!)}%',
-                  active: humidityPercent != null,
-                ),
+                for (final zone in zones)
+                  _SensorMetric(
+                    icon: Icons.device_thermostat_outlined,
+                    label: zone.label,
+                    value:
+                        '${decimal.format(zone.temperatureC)} °C / ${decimal.format(zone.humidityPercent)}%',
+                    active: true,
+                  ),
+                if (zones.isEmpty)
+                  const _SensorMetric(
+                    icon: Icons.device_thermostat_outlined,
+                    label: 'Pontos T/U',
+                    value: 'Sem leitura',
+                    active: false,
+                  ),
               ],
               actions: [
                 FilledButton.icon(
@@ -178,8 +188,7 @@ class _EnvironmentSensorPageState extends ConsumerState<EnvironmentSensorPage> {
       );
       if (!mounted) return;
       setState(() {
-        temperatureC = reading.airTemperatureC;
-        humidityPercent = reading.airHumidityPercent;
+        zones = reading.zones;
         lastPayload = reading.payload;
         status = reading.message;
       });
@@ -217,6 +226,7 @@ class _WaterReservoirSensorPageState
   double? temperatureC;
   double? ph;
   double? tdsPpm;
+  double? chlorineOrpMv;
   String status = 'Aguardando leitura';
   Map<String, Object?>? lastPayload;
 
@@ -240,10 +250,15 @@ class _WaterReservoirSensorPageState
     );
     ph = _settingDouble(settings, 'hardware_water_last_ph');
     tdsPpm = _settingDouble(settings, 'hardware_water_last_tds_ppm');
+    chlorineOrpMv = _settingDouble(
+      settings,
+      'hardware_water_last_chlorine_orp_mv',
+    );
     if (levelPercent != null ||
         temperatureC != null ||
         ph != null ||
-        tdsPpm != null) {
+        tdsPpm != null ||
+        chlorineOrpMv != null) {
       status = 'Última leitura carregada';
     }
   }
@@ -268,6 +283,7 @@ class _WaterReservoirSensorPageState
                 temperatureC: temperatureC,
                 ph: ph,
                 tdsPpm: tdsPpm,
+                chlorineOrpMv: chlorineOrpMv,
                 working: working,
               ),
               metrics: [
@@ -300,6 +316,14 @@ class _WaterReservoirSensorPageState
                       ? 'Sem leitura'
                       : '${decimal.format(tdsPpm!)} ppm',
                   active: tdsPpm != null,
+                ),
+                _SensorMetric(
+                  icon: Icons.biotech_outlined,
+                  label: 'Cloro/ORP',
+                  value: chlorineOrpMv == null
+                      ? 'Sem leitura'
+                      : '${decimal.format(chlorineOrpMv!)} mV',
+                  active: chlorineOrpMv != null,
                 ),
               ],
               actions: [
@@ -361,12 +385,19 @@ class _WaterReservoirSensorPageState
         'hardware_water_last_tds_ppm',
         decimal.format(reading.tdsPpm),
       );
+      if (reading.chlorineOrpMv != null) {
+        await controller.saveSetting(
+          'hardware_water_last_chlorine_orp_mv',
+          decimal.format(reading.chlorineOrpMv!),
+        );
+      }
       if (!mounted) return;
       setState(() {
         levelPercent = reading.levelPercent;
         temperatureC = reading.temperatureC;
         ph = reading.ph;
         tdsPpm = reading.tdsPpm;
+        chlorineOrpMv = reading.chlorineOrpMv;
         lastPayload = reading.payload;
         status = reading.message;
       });
@@ -402,6 +433,7 @@ class _WaterQualitySensorPageState
   bool working = false;
   double? ph;
   double? tdsPpm;
+  double? chlorineOrpMv;
   String status = 'Aguardando leitura';
   Map<String, Object?>? lastPayload;
 
@@ -420,7 +452,11 @@ class _WaterQualitySensorPageState
     );
     ph = _settingDouble(settings, 'hardware_water_last_ph');
     tdsPpm = _settingDouble(settings, 'hardware_water_last_tds_ppm');
-    if (ph != null || tdsPpm != null) {
+    chlorineOrpMv = _settingDouble(
+      settings,
+      'hardware_water_last_chlorine_orp_mv',
+    );
+    if (ph != null || tdsPpm != null || chlorineOrpMv != null) {
       status = 'Última leitura carregada';
     }
   }
@@ -455,6 +491,14 @@ class _WaterQualitySensorPageState
                           ? 'Sem leitura'
                           : '${decimal.format(tdsPpm!)} ppm',
                       active: tdsPpm != null,
+                    ),
+                    _ReadingTile(
+                      icon: Icons.biotech_outlined,
+                      label: 'Cloro/ORP',
+                      value: chlorineOrpMv == null
+                          ? 'Sem leitura'
+                          : '${decimal.format(chlorineOrpMv!)} mV',
+                      active: chlorineOrpMv != null,
                     ),
                   ],
                 ),
@@ -503,10 +547,17 @@ class _WaterQualitySensorPageState
         'hardware_water_last_tds_ppm',
         decimal.format(reading.tdsPpm),
       );
+      if (reading.chlorineOrpMv != null) {
+        await controller.saveSetting(
+          'hardware_water_last_chlorine_orp_mv',
+          decimal.format(reading.chlorineOrpMv!),
+        );
+      }
       if (!mounted) return;
       setState(() {
         ph = reading.ph;
         tdsPpm = reading.tdsPpm;
+        chlorineOrpMv = reading.chlorineOrpMv;
         lastPayload = reading.payload;
         status = reading.message;
       });
@@ -1750,6 +1801,7 @@ class _WaterReservoirInstrument extends StatelessWidget {
     required this.temperatureC,
     required this.ph,
     required this.tdsPpm,
+    required this.chlorineOrpMv,
     required this.working,
   });
 
@@ -1757,6 +1809,7 @@ class _WaterReservoirInstrument extends StatelessWidget {
   final double? temperatureC;
   final double? ph;
   final double? tdsPpm;
+  final double? chlorineOrpMv;
   final bool working;
 
   @override
@@ -1823,6 +1876,15 @@ class _WaterReservoirInstrument extends StatelessWidget {
                           : '${decimal.format(tdsPpm!)} ppm',
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _SceneBadge(
+                      icon: Icons.biotech_outlined,
+                      label: chlorineOrpMv == null
+                          ? 'ORP --'
+                          : '${decimal.format(chlorineOrpMv!)} mV',
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1854,13 +1916,16 @@ class _SceneBadge extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: colors.primary),
           const SizedBox(width: 5),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w900),
+          Flexible(
+            fit: FlexFit.loose,
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w900),
+            ),
           ),
         ],
       ),

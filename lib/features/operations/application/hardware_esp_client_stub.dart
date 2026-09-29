@@ -16,14 +16,30 @@ class EspEnvironmentReading {
   const EspEnvironmentReading({
     required this.airTemperatureC,
     required this.airHumidityPercent,
+    required this.zones,
     required this.message,
     required this.payload,
   });
 
   final double airTemperatureC;
   final double airHumidityPercent;
+  final List<EspEnvironmentZoneReading> zones;
   final String message;
   final Map<String, Object?> payload;
+}
+
+class EspEnvironmentZoneReading {
+  const EspEnvironmentZoneReading({
+    required this.id,
+    required this.label,
+    required this.temperatureC,
+    required this.humidityPercent,
+  });
+
+  final String id;
+  final String label;
+  final double temperatureC;
+  final double humidityPercent;
 }
 
 class EspWaterReading {
@@ -32,6 +48,7 @@ class EspWaterReading {
     required this.temperatureC,
     required this.ph,
     required this.tdsPpm,
+    required this.chlorineOrpMv,
     required this.message,
     required this.payload,
   });
@@ -40,6 +57,7 @@ class EspWaterReading {
   final double temperatureC;
   final double ph;
   final double tdsPpm;
+  final double? chlorineOrpMv;
   final String message;
   final Map<String, Object?> payload;
 }
