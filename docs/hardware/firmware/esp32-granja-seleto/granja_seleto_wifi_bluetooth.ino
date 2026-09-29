@@ -63,6 +63,8 @@ constexpr long gmtOffsetSeconds = -3 * 60 * 60;
 constexpr int daylightOffsetSeconds = 0;
 constexpr uint16_t httpPort = 80;
 constexpr uint32_t wifiConnectTimeoutMs = 25000;
+constexpr uint32_t setupApStartupGraceMs = 8000;
+constexpr uint32_t wifiReconnectIntervalMs = 60000;
 constexpr uint32_t scheduleCheckIntervalMs = 1000;
 constexpr uint32_t manualOverrideMs = 5UL * 60UL * 1000UL;
 constexpr uint32_t remoteSyncIntervalMs = 180UL * 1000UL;
@@ -601,28 +603,43 @@ class NetworkService {
   explicit NetworkService(StorageService& storage) : storage_(storage) {}
 
   void begin() {
+    WiFi.persistent(false);
     WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);
-    WiFi.setAutoReconnect(true);
+    WiFi.setAutoReconnect(false);
     WiFi.setHostname(Config::deviceId);
-    ensureSetupAp();
-    connect(storage_.loadWifi());
+    startSetupAp();
+
+    const WifiCredentials credentials = storage_.loadWifi();
+    if (credentials.isValid()) {
+      scheduleConnect(credentials, Config::setupApStartupGraceMs);
+    }
   }
 
   void loop() {
+    keepSetupApAlive();
+
     if (pendingConnect_) {
-      pendingConnect_ = false;
-      beginStationConnect(pendingCredentials_);
+      const uint32_t now = millis();
+      if (static_cast<int32_t>(now - connectAfterMs_) >= 0) {
+        pendingConnect_ = false;
+        beginStationConnect(pendingCredentials_);
+      }
     }
+
     if (!connecting_) return;
+
     if (connected()) {
       connecting_ = false;
+      lastStationAttemptMs_ = millis();
       Serial.print("Wi-Fi conectado. IP: ");
       Serial.println(localIp());
       return;
     }
+
     if (millis() - connectStartedMs_ > Config::wifiConnectTimeoutMs) {
       connecting_ = false;
+      lastStationAttemptMs_ = millis();
       Serial.print("Falha ao conectar Wi-Fi. Status: ");
       Serial.println(statusCode());
     }
@@ -630,15 +647,17 @@ class NetworkService {
 
   bool connect(const WifiCredentials& credentials) {
     if (!credentials.isValid()) return false;
-    pendingCredentials_ = credentials;
-    pendingConnect_ = true;
+    scheduleConnect(credentials, 0);
     return true;
   }
 
   bool saveAndReconnect(const String& ssid, const String& password) {
     storage_.saveWifi(ssid, password);
+    connecting_ = false;
+    lastStationAttemptMs_ = 0;
     WifiCredentials credentials{ssid, password};
-    return connect(credentials);
+    scheduleConnect(credentials, 3000);
+    return true;
   }
 
   bool connected() const {
@@ -666,17 +685,68 @@ class NetworkService {
   WifiCredentials pendingCredentials_;
   bool pendingConnect_ = false;
   bool connecting_ = false;
+  bool apStarted_ = false;
+  uint32_t connectAfterMs_ = 0;
   uint32_t connectStartedMs_ = 0;
+  uint32_t lastApCheckMs_ = 0;
+  uint32_t lastStationAttemptMs_ = 0;
 
-  void ensureSetupAp() {
-    WiFi.softAP(Config::setupApSsid, Config::setupApPassword);
+  void scheduleConnect(const WifiCredentials& credentials, uint32_t delayMs) {
+    pendingCredentials_ = credentials;
+    pendingConnect_ = true;
+    connectAfterMs_ = millis() + delayMs;
+  }
+
+  bool startSetupAp() {
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.setSleep(false);
+
+    IPAddress apIp(192, 168, 4, 1);
+    IPAddress gateway(192, 168, 4, 1);
+    IPAddress subnet(255, 255, 255, 0);
+    WiFi.softAPConfig(apIp, gateway, subnet);
+
+    const bool ok = WiFi.softAP(
+      Config::setupApSsid,
+      Config::setupApPassword,
+      6,
+      false,
+      4
+    );
+    apStarted_ = ok;
+    if (ok) {
+      Serial.print("AP de configuracao ativo. IP: ");
+      Serial.println(WiFi.softAPIP());
+    } else {
+      Serial.println("Falha ao iniciar AP de configuracao.");
+    }
+    return ok;
+  }
+
+  void keepSetupApAlive() {
+    if (millis() - lastApCheckMs_ < 5000) return;
+    lastApCheckMs_ = millis();
+    if (!apStarted_ || WiFi.softAPIP().toString() != "192.168.4.1") {
+      startSetupAp();
+    }
   }
 
   void beginStationConnect(const WifiCredentials& credentials) {
+    if (lastStationAttemptMs_ > 0 &&
+        millis() - lastStationAttemptMs_ < Config::wifiReconnectIntervalMs) {
+      scheduleConnect(
+        credentials,
+        Config::wifiReconnectIntervalMs - (millis() - lastStationAttemptMs_)
+      );
+      return;
+    }
+
     WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);
-    WiFi.setAutoReconnect(true);
+    WiFi.setAutoReconnect(false);
     WiFi.setHostname(Config::deviceId);
+    if (!apStarted_) startSetupAp();
+
     WiFi.begin(credentials.ssid.c_str(), credentials.password.c_str());
     connectStartedMs_ = millis();
     connecting_ = true;
