@@ -986,6 +986,12 @@ class _VentilationSensorPageState extends ConsumerState<VentilationSensorPage> {
         channel: espChannel,
         turnOn: turnOn,
       );
+      if (result.endpoint != endpoint.text.trim()) {
+        endpoint.text = result.endpoint;
+        await ref
+            .read(operationsControllerProvider)
+            .saveSetting('hardware_ventilation_endpoint', result.endpoint);
+      }
       await ref
           .read(operationsControllerProvider)
           .saveSetting(

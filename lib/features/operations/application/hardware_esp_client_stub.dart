@@ -46,12 +46,14 @@ class EspWaterReading {
 
 class EspRelayResult {
   const EspRelayResult({
+    required this.endpoint,
     required this.channel,
     required this.on,
     required this.message,
     required this.payload,
   });
 
+  final String endpoint;
   final int channel;
   final bool on;
   final String message;

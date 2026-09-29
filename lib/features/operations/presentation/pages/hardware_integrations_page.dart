@@ -1194,6 +1194,13 @@ class _HardwareIntegrationsPageState
           channel: channel,
           turnOn: turnOn,
         );
+        if (result.endpoint != lightingEndpoint.text.trim()) {
+          lightingEndpoint.text = result.endpoint;
+          await ref
+              .read(operationsControllerProvider)
+              .saveSetting('hardware_lighting_endpoint', result.endpoint);
+          _appendEspLog('ESP> endpoint atualizado para ${result.endpoint}');
+        }
         turnOn = result.on;
         _appendEspLog('ESP> ${result.message}');
         _appendEspPayload(result.payload);

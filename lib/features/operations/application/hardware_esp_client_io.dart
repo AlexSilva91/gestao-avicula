@@ -52,12 +52,14 @@ class EspWaterReading {
 
 class EspRelayResult {
   const EspRelayResult({
+    required this.endpoint,
     required this.channel,
     required this.on,
     required this.message,
     required this.payload,
   });
 
+  final String endpoint;
   final int channel;
   final bool on;
   final String message;
@@ -156,8 +158,11 @@ class HardwareEspClient {
         : setupIp.isNotEmpty
         ? setupIp
         : endpointHost;
+    final resolvedEndpoint = reportedIp.isNotEmpty
+        ? _normalizeEndpoint(reportedIp)
+        : normalized;
     return EspDeviceProbe(
-      endpoint: normalized,
+      endpoint: resolvedEndpoint,
       deviceId: deviceId,
       message: 'ESP conectado: $deviceId em $ip',
       payload: payload,
@@ -278,10 +283,11 @@ class HardwareEspClient {
     required String state,
   }) async {
     Object? lastError;
+    final normalized = _normalizeEndpoint(endpoint);
     for (var attempt = 1; attempt <= 3; attempt++) {
       try {
         return await _sendRelayOnce(
-          endpoint: endpoint,
+          endpoint: normalized,
           channel: channel,
           state: state,
         );
@@ -291,6 +297,20 @@ class HardwareEspClient {
         await Future<void>.delayed(Duration(milliseconds: 180 * attempt));
       }
     }
+
+    final probe = await discover(onLog: (_) {});
+    if (probe != null && probe.endpoint != normalized) {
+      try {
+        return await _sendRelayOnce(
+          endpoint: probe.endpoint,
+          channel: channel,
+          state: state,
+        );
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
     throw HttpException(
       'ESP nao confirmou o canal $channel apos nova tentativa: $lastError',
     );
@@ -311,6 +331,7 @@ class HardwareEspClient {
     }
     final on = payload['on'] == true;
     return EspRelayResult(
+      endpoint: normalized,
       channel: channel,
       on: on,
       message: state == 'pulse'
