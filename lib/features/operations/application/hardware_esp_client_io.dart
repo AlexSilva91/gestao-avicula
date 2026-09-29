@@ -95,6 +95,7 @@ class HardwareEspClient {
 
   static const _probeTimeout = Duration(milliseconds: 1500);
   static const _requestTimeout = Duration(seconds: 12);
+  static const _relayTimeout = Duration(seconds: 3);
   static const _wifiConfigTimeout = Duration(seconds: 35);
   static const _knownSetupEndpoint = 'http://192.168.4.1';
   static const _networkChannel = MethodChannel('seleto/network');
@@ -285,10 +286,13 @@ class HardwareEspClient {
     Object? lastError;
     var commandEndpoint = _normalizeEndpoint(endpoint);
     if (state == 'off') {
-      final probe = await discover(onLog: (_) {});
-      if (probe != null) commandEndpoint = probe.endpoint;
+      final probe = await _tryProbe(commandEndpoint);
+      if (probe != null) {
+        commandEndpoint = probe.endpoint;
+      }
     }
-    for (var attempt = 1; attempt <= 3; attempt++) {
+    final maxAttempts = state == 'off' ? 1 : 3;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         return await _sendRelayOnce(
           endpoint: commandEndpoint,
@@ -297,7 +301,7 @@ class HardwareEspClient {
         );
       } catch (error) {
         lastError = error;
-        if (attempt == 3) break;
+        if (attempt == maxAttempts) break;
         await Future<void>.delayed(Duration(milliseconds: 180 * attempt));
       }
     }
@@ -329,7 +333,7 @@ class HardwareEspClient {
     final payload = await _postForm('$normalized/api/relay', {
       'channel': '$channel',
       'state': state,
-    });
+    }, timeout: _relayTimeout);
     if (payload['ok'] == false) {
       throw HttpException('ESP recusou comando do canal $channel: $payload');
     }

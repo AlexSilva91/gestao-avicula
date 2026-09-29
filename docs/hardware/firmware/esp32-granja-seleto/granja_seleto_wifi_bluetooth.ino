@@ -66,6 +66,7 @@ constexpr uint32_t wifiConnectTimeoutMs = 25000;
 constexpr uint32_t scheduleCheckIntervalMs = 1000;
 constexpr uint32_t manualOverrideMs = 5UL * 60UL * 1000UL;
 constexpr uint32_t remoteSyncIntervalMs = 180UL * 1000UL;
+constexpr uint32_t remoteHttpTimeoutMs = 1500;
 
 const char* defaultRemoteSyncUrl = "http://solveontecnology.com.br:5005/iot/v1/esp/sync";
 const char* defaultRemoteSyncToken = "";
@@ -601,6 +602,8 @@ class NetworkService {
 
   void begin() {
     WiFi.mode(WIFI_AP_STA);
+    WiFi.setSleep(false);
+    WiFi.setAutoReconnect(true);
     WiFi.setHostname(Config::deviceId);
     WiFi.softAP(Config::setupApSsid, Config::setupApPassword);
     connect(storage_.loadWifi());
@@ -610,6 +613,8 @@ class NetworkService {
     if (!credentials.isValid()) return false;
 
     WiFi.mode(WIFI_AP_STA);
+    WiFi.setSleep(false);
+    WiFi.setAutoReconnect(true);
     WiFi.setHostname(Config::deviceId);
     WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
     WiFi.begin(credentials.ssid.c_str(), credentials.password.c_str());
@@ -701,7 +706,8 @@ class RemoteSyncService {
 
   bool syncNow() {
     HTTPClient http;
-    http.setTimeout(8000);
+    http.setConnectTimeout(Config::remoteHttpTimeoutMs);
+    http.setTimeout(Config::remoteHttpTimeoutMs);
     if (!http.begin(url_)) {
       lastError_ = "remote_begin_failed";
       return false;
