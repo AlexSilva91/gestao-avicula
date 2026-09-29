@@ -12,11 +12,13 @@
   Endpoints HTTP:
     GET  /api/ping
     GET  /api/status
+    GET  /api/scale
+    POST /api/scale/tare
+    POST /api/scale/calibrate  knownWeightKg=1.000
+    POST /api/scale/rate       rateHz=10|80
     GET  /api/environment
     GET  /api/water
     GET  /api/sensors
-    GET  /api/remote
-    POST /api/remote           enabled=1&url=http://servidor/iot/v1/esp/sync&token=opcional
     GET  /api/relay?channel=1
     POST /api/relay             channel=1&state=on|off|pulse
     POST /api/channel_schedule  channel=1&enabled=1&on1=04:30&off1=06:10&en1=1&on2=17:40&off2=20:00&en2=1&days=127
@@ -38,7 +40,6 @@
 
 #include <Arduino.h>
 #include <BluetoothSerial.h>
-#include <HTTPClient.h>
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
@@ -62,24 +63,25 @@ const char* ntpServer2 = "time.nist.gov";
 constexpr long gmtOffsetSeconds = -3 * 60 * 60;
 constexpr int daylightOffsetSeconds = 0;
 constexpr uint16_t httpPort = 80;
-constexpr uint32_t wifiConnectTimeoutMs = 25000;
-constexpr uint32_t setupApStartupGraceMs = 8000;
-constexpr uint32_t wifiReconnectIntervalMs = 60000;
+constexpr uint32_t wifiConnectTimeoutMs = 15000;
 constexpr uint32_t scheduleCheckIntervalMs = 1000;
 constexpr uint32_t manualOverrideMs = 5UL * 60UL * 1000UL;
-constexpr uint32_t remoteSyncIntervalMs = 180UL * 1000UL;
-constexpr uint32_t remoteHttpTimeoutMs = 1500;
-
-const char* defaultRemoteSyncUrl = "http://solveontecnology.com.br:5005/iot/v1/esp/sync";
-const char* defaultRemoteSyncToken = "";
 
 constexpr bool relayActiveLow = true;
 // Canais 1-4: iluminacao existente. Nao alterar sem reconfigurar o app.
 // Canais 5-12: ventilacao. GPIOs escolhidos fora das portas ja reservadas
-// para iluminacao, ambiente e agua.
+// para iluminacao, balanca, ambiente e agua.
 constexpr uint8_t relayPins[] = {23, 22, 21, 19, 18, 5, 17, 16, 4, 25, 2, 15};
 constexpr uint8_t relayCount = sizeof(relayPins) / sizeof(relayPins[0]);
 constexpr uint8_t scheduleSlotCount = 2;
+
+constexpr uint8_t hx711DataPin = 32;
+constexpr uint8_t hx711ClockPin = 33;
+constexpr uint8_t scaleTareButtonPin = 13;
+constexpr uint8_t scaleCalibrateButtonPin = 14;
+constexpr uint8_t scaleRateButtonPin = 26;
+constexpr float defaultScaleFactor = 21000.0f;
+constexpr float defaultCalibrationWeightKg = 1.0f;
 
 constexpr uint8_t dhtPin = 27;
 constexpr uint8_t dhtType = 22;
@@ -463,6 +465,146 @@ class ScheduleService {
   }
 };
 
+class ScaleService {
+ public:
+  void begin() {
+    prefs_.begin("seleto_scale", false);
+    offset_ = prefs_.getLong64("offset", 0);
+    factor_ = prefs_.getFloat("factor", Config::defaultScaleFactor);
+    rateHz_ = prefs_.getUChar("rate_hz", 10);
+    pinMode(Config::hx711ClockPin, OUTPUT);
+    pinMode(Config::hx711DataPin, INPUT);
+    pinMode(Config::scaleTareButtonPin, INPUT_PULLUP);
+    pinMode(Config::scaleCalibrateButtonPin, INPUT_PULLUP);
+    pinMode(Config::scaleRateButtonPin, INPUT_PULLUP);
+    digitalWrite(Config::hx711ClockPin, LOW);
+  }
+
+  void loop() {
+    if (millis() - lastButtonCheckMs_ < 80) return;
+    lastButtonCheckMs_ = millis();
+    if (buttonPressed(Config::scaleTareButtonPin, tareButtonDown_)) {
+      tare();
+    }
+    if (buttonPressed(Config::scaleCalibrateButtonPin, calibrateButtonDown_)) {
+      calibrate(Config::defaultCalibrationWeightKg);
+    }
+    if (buttonPressed(Config::scaleRateButtonPin, rateButtonDown_)) {
+      setRate(rateHz_ == 10 ? 80 : 10);
+    }
+  }
+
+  bool ready() const {
+    return digitalRead(Config::hx711DataPin) == LOW;
+  }
+
+  long readAverage(uint8_t samples = 5) {
+    long total = 0;
+    uint8_t valid = 0;
+    for (uint8_t i = 0; i < samples; i++) {
+      long raw = 0;
+      if (readRaw(raw, 80)) {
+        total += raw;
+        valid++;
+      }
+      delay(4);
+    }
+    return valid == 0 ? lastRaw_ : total / valid;
+  }
+
+  float weightKg() {
+    const long raw = readAverage();
+    lastRaw_ = raw;
+    if (factor_ == 0) return 0;
+    return static_cast<float>(raw - offset_) / factor_;
+  }
+
+  void tare() {
+    offset_ = readAverage(12);
+    prefs_.putLong64("offset", offset_);
+  }
+
+  bool calibrate(float knownWeightKg) {
+    if (knownWeightKg <= 0) return false;
+    const long raw = readAverage(12);
+    const long net = raw - offset_;
+    if (net == 0) return false;
+    factor_ = static_cast<float>(net) / knownWeightKg;
+    prefs_.putFloat("factor", factor_);
+    prefs_.putFloat("known_kg", knownWeightKg);
+    return true;
+  }
+
+  void setRate(uint8_t rateHz) {
+    rateHz_ = rateHz >= 80 ? 80 : 10;
+    prefs_.putUChar("rate_hz", rateHz_);
+  }
+
+  uint8_t rateHz() const {
+    return rateHz_;
+  }
+
+  String toJson() {
+    const float weight = weightKg();
+    String json = "{\"ok\":true";
+    json += ",\"enabled\":true";
+    json += ",\"weightKg\":" + numberJson(weight, 3);
+    json += ",\"stable\":true";
+    json += ",\"ready\":" + boolJson(ready());
+    json += ",\"raw\":" + String(lastRaw_);
+    json += ",\"offset\":" + String(static_cast<long>(offset_));
+    json += ",\"factor\":" + numberJson(factor_, 4);
+    json += ",\"sampleRateHz\":" + String(rateHz_);
+    json += ",\"calibrated\":" + boolJson(factor_ != 0);
+    json += "}";
+    return json;
+  }
+
+ private:
+  Preferences prefs_;
+  int64_t offset_ = 0;
+  float factor_ = Config::defaultScaleFactor;
+  uint8_t rateHz_ = 10;
+  long lastRaw_ = 0;
+  uint32_t lastButtonCheckMs_ = 0;
+  bool tareButtonDown_ = false;
+  bool calibrateButtonDown_ = false;
+  bool rateButtonDown_ = false;
+
+  bool readRaw(long& value, uint32_t timeoutMs) {
+    const uint32_t start = millis();
+    while (digitalRead(Config::hx711DataPin) == HIGH) {
+      if (millis() - start > timeoutMs) return false;
+      delay(1);
+    }
+
+    uint32_t data = 0;
+    noInterrupts();
+    for (uint8_t i = 0; i < 24; i++) {
+      digitalWrite(Config::hx711ClockPin, HIGH);
+      delayMicroseconds(1);
+      data = (data << 1) | digitalRead(Config::hx711DataPin);
+      digitalWrite(Config::hx711ClockPin, LOW);
+      delayMicroseconds(1);
+    }
+    digitalWrite(Config::hx711ClockPin, HIGH);
+    delayMicroseconds(1);
+    digitalWrite(Config::hx711ClockPin, LOW);
+    interrupts();
+
+    if (data & 0x800000) data |= 0xFF000000;
+    value = static_cast<int32_t>(data);
+    return true;
+  }
+
+  bool buttonPressed(uint8_t pin, bool& wasDown) {
+    const bool down = digitalRead(pin) == LOW;
+    const bool pressed = down && !wasDown;
+    wasDown = down;
+    return pressed;
+  }
+};
+
 class EnvironmentService {
  public:
   void begin() {
@@ -603,61 +745,32 @@ class NetworkService {
   explicit NetworkService(StorageService& storage) : storage_(storage) {}
 
   void begin() {
-    WiFi.persistent(false);
     WiFi.mode(WIFI_AP_STA);
-    WiFi.setSleep(false);
-    WiFi.setAutoReconnect(false);
-    WiFi.setHostname(Config::deviceId);
-    startSetupAp();
-
-    const WifiCredentials credentials = storage_.loadWifi();
-    if (credentials.isValid()) {
-      scheduleConnect(credentials, Config::setupApStartupGraceMs);
-    }
-  }
-
-  void loop() {
-    keepSetupApAlive();
-
-    if (pendingConnect_) {
-      const uint32_t now = millis();
-      if (static_cast<int32_t>(now - connectAfterMs_) >= 0) {
-        pendingConnect_ = false;
-        beginStationConnect(pendingCredentials_);
-      }
-    }
-
-    if (!connecting_) return;
-
-    if (connected()) {
-      connecting_ = false;
-      lastStationAttemptMs_ = millis();
-      Serial.print("Wi-Fi conectado. IP: ");
-      Serial.println(localIp());
-      return;
-    }
-
-    if (millis() - connectStartedMs_ > Config::wifiConnectTimeoutMs) {
-      connecting_ = false;
-      lastStationAttemptMs_ = millis();
-      Serial.print("Falha ao conectar Wi-Fi. Status: ");
-      Serial.println(statusCode());
-    }
+    WiFi.softAP(Config::setupApSsid, Config::setupApPassword);
+    connect(storage_.loadWifi());
   }
 
   bool connect(const WifiCredentials& credentials) {
     if (!credentials.isValid()) return false;
-    scheduleConnect(credentials, 0);
-    return true;
+
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(credentials.ssid.c_str(), credentials.password.c_str());
+    const uint32_t start = millis();
+    while (WiFi.status() != WL_CONNECTED &&
+           millis() - start < Config::wifiConnectTimeoutMs) {
+      delay(250);
+      Serial.print(".");
+    }
+    Serial.println();
+    return WiFi.status() == WL_CONNECTED;
   }
 
   bool saveAndReconnect(const String& ssid, const String& password) {
     storage_.saveWifi(ssid, password);
-    connecting_ = false;
-    lastStationAttemptMs_ = 0;
+    WiFi.disconnect(false, true);
+    delay(500);
     WifiCredentials credentials{ssid, password};
-    scheduleConnect(credentials, 3000);
-    return true;
+    return connect(credentials);
   }
 
   bool connected() const {
@@ -676,223 +789,8 @@ class NetworkService {
     return WiFi.SSID();
   }
 
-  int statusCode() const {
-    return static_cast<int>(WiFi.status());
-  }
-
  private:
   StorageService& storage_;
-  WifiCredentials pendingCredentials_;
-  bool pendingConnect_ = false;
-  bool connecting_ = false;
-  bool apStarted_ = false;
-  uint32_t connectAfterMs_ = 0;
-  uint32_t connectStartedMs_ = 0;
-  uint32_t lastApCheckMs_ = 0;
-  uint32_t lastStationAttemptMs_ = 0;
-
-  void scheduleConnect(const WifiCredentials& credentials, uint32_t delayMs) {
-    pendingCredentials_ = credentials;
-    pendingConnect_ = true;
-    connectAfterMs_ = millis() + delayMs;
-  }
-
-  bool startSetupAp() {
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.setSleep(false);
-
-    IPAddress apIp(192, 168, 4, 1);
-    IPAddress gateway(192, 168, 4, 1);
-    IPAddress subnet(255, 255, 255, 0);
-    WiFi.softAPConfig(apIp, gateway, subnet);
-
-    const bool ok = WiFi.softAP(
-      Config::setupApSsid,
-      Config::setupApPassword,
-      6,
-      false,
-      4
-    );
-    apStarted_ = ok;
-    if (ok) {
-      Serial.print("AP de configuracao ativo. IP: ");
-      Serial.println(WiFi.softAPIP());
-    } else {
-      Serial.println("Falha ao iniciar AP de configuracao.");
-    }
-    return ok;
-  }
-
-  void keepSetupApAlive() {
-    if (millis() - lastApCheckMs_ < 5000) return;
-    lastApCheckMs_ = millis();
-    if (!apStarted_ || WiFi.softAPIP().toString() != "192.168.4.1") {
-      startSetupAp();
-    }
-  }
-
-  void beginStationConnect(const WifiCredentials& credentials) {
-    if (lastStationAttemptMs_ > 0 &&
-        millis() - lastStationAttemptMs_ < Config::wifiReconnectIntervalMs) {
-      scheduleConnect(
-        credentials,
-        Config::wifiReconnectIntervalMs - (millis() - lastStationAttemptMs_)
-      );
-      return;
-    }
-
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.setSleep(false);
-    WiFi.setAutoReconnect(false);
-    WiFi.setHostname(Config::deviceId);
-    if (!apStarted_) startSetupAp();
-
-    WiFi.begin(credentials.ssid.c_str(), credentials.password.c_str());
-    connectStartedMs_ = millis();
-    connecting_ = true;
-    Serial.print("Conectando Wi-Fi: ");
-    Serial.println(credentials.ssid);
-  }
-};
-
-class RemoteSyncService {
- public:
-  RemoteSyncService(
-    NetworkService& network,
-    RelayService& relay,
-    ScheduleService& scheduler,
-    EnvironmentService& environment,
-    WaterService& water
-  ) : network_(network),
-      relay_(relay),
-      scheduler_(scheduler),
-      environment_(environment),
-      water_(water) {}
-
-  void begin() {
-    prefs_.begin("seleto_remote", false);
-    enabled_ = prefs_.getBool("enabled", true);
-    url_ = prefs_.getString("url", Config::defaultRemoteSyncUrl);
-    token_ = prefs_.getString("token", Config::defaultRemoteSyncToken);
-  }
-
-  void loop() {
-    if (!enabled_ || url_.length() == 0 || !network_.connected()) return;
-    if (millis() - lastAttemptMs_ < Config::remoteSyncIntervalMs) return;
-    lastAttemptMs_ = millis();
-    syncNow();
-  }
-
-  void configure(bool enabled, const String& url, const String& token) {
-    enabled_ = enabled;
-    url_ = url;
-    token_ = token;
-    prefs_.putBool("enabled", enabled_);
-    prefs_.putString("url", url_);
-    prefs_.putString("token", token_);
-  }
-
-  bool enabled() const { return enabled_; }
-  String url() const { return url_; }
-  String token() const { return token_; }
-  String lastError() const { return lastError_; }
-  uint32_t lastOkMs() const { return lastOkMs_; }
-  uint32_t lastAttemptMs() const { return lastAttemptMs_; }
-
-  bool syncNow() {
-    HTTPClient http;
-    http.setConnectTimeout(Config::remoteHttpTimeoutMs);
-    http.setTimeout(Config::remoteHttpTimeoutMs);
-    if (!http.begin(url_)) {
-      lastError_ = "remote_begin_failed";
-      return false;
-    }
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("Accept", "application/json");
-    if (token_.length() > 0) {
-      http.addHeader("Authorization", "Bearer " + token_);
-    }
-
-    const String payload = payloadJson();
-    const int status = http.POST(payload);
-    const String response = http.getString();
-    http.end();
-
-    if (status < 200 || status >= 300) {
-      lastError_ = "remote_http_" + String(status);
-      return false;
-    }
-
-    applyRemoteCommands(response);
-    lastOkMs_ = millis();
-    lastError_ = "";
-    return true;
-  }
-
-  String toJson() const {
-    String json = "{";
-    json += "\"enabled\":" + boolJson(enabled_);
-    json += ",\"url\":" + quoteJson(url_);
-    json += ",\"lastOkMs\":" + String(lastOkMs_);
-    json += ",\"lastAttemptMs\":" + String(lastAttemptMs_);
-    json += ",\"lastError\":";
-    json += lastError_.length() == 0 ? String("null") : quoteJson(lastError_);
-    json += "}";
-    return json;
-  }
-
- private:
-  NetworkService& network_;
-  RelayService& relay_;
-  ScheduleService& scheduler_;
-  EnvironmentService& environment_;
-  WaterService& water_;
-  Preferences prefs_;
-  bool enabled_ = true;
-  String url_;
-  String token_;
-  String lastError_ = "not_synced_yet";
-  uint32_t lastAttemptMs_ = 0;
-  uint32_t lastOkMs_ = 0;
-
-  String payloadJson() {
-    String json = "{";
-    json += "\"deviceId\":" + quoteJson(Config::deviceId);
-    json += ",\"ip\":" + quoteJson(network_.localIp());
-    json += ",\"wifiConnected\":" + boolJson(network_.connected());
-    json += ",\"uptimeMs\":" + String(millis());
-    json += ",\"relays\":" + relay_.toJson();
-    json += ",\"environment\":" + environment_.toJson();
-    json += ",\"water\":" + water_.toJson();
-    json += "}";
-    return json;
-  }
-
-  void applyRemoteCommands(const String& response) {
-    for (uint8_t channel = 1; channel <= Config::relayCount; channel++) {
-      const String quotedChannel = "\"channel\":" + String(channel);
-      int cursor = response.indexOf(quotedChannel);
-      while (cursor >= 0) {
-        const int objectEnd = response.indexOf('}', cursor);
-        const int nextObject = objectEnd < 0 ? response.length() : objectEnd;
-        const String segment = response.substring(cursor, nextObject);
-        if (segment.indexOf("\"state\":\"on\"") >= 0 ||
-            segment.indexOf("\"state\":\"ON\"") >= 0 ||
-            segment.indexOf("\"on\":true") >= 0) {
-          relay_.set(channel, true);
-          scheduler_.holdManualOverride(channel);
-        } else if (segment.indexOf("\"state\":\"off\"") >= 0 ||
-                   segment.indexOf("\"state\":\"OFF\"") >= 0 ||
-                   segment.indexOf("\"on\":false") >= 0) {
-          relay_.set(channel, false);
-          scheduler_.holdManualOverride(channel);
-        } else if (segment.indexOf("\"state\":\"pulse\"") >= 0) {
-          relay_.pulse(channel);
-        }
-        cursor = response.indexOf(quotedChannel, nextObject);
-      }
-    }
-  }
 };
 
 class ApiServer {
@@ -902,29 +800,33 @@ class ApiServer {
     ClockService& clock,
     RelayService& relay,
     ScheduleService& scheduler,
+    ScaleService& scale,
     EnvironmentService& environment,
-    WaterService& water,
-    RemoteSyncService& remote
+    WaterService& water
   ) : server_(Config::httpPort),
       network_(network),
       clock_(clock),
       relay_(relay),
       scheduler_(scheduler),
+      scale_(scale),
       environment_(environment),
-      water_(water),
-      remote_(remote) {}
+      water_(water) {}
 
   void begin() {
     server_.on("/", HTTP_GET, [this]() { handleRoot(); });
     server_.on("/api/ping", HTTP_GET, [this]() { handlePing(); });
     server_.on("/api/status", HTTP_GET, [this]() { handleStatus(); });
+    server_.on("/api/scale", HTTP_GET, [this]() { handleScaleGet(); });
+    server_.on("/api/scale/tare", HTTP_POST, [this]() { handleScaleTare(); });
+    server_.on("/api/scale/calibrate", HTTP_POST, [this]() {
+      handleScaleCalibrate();
+    });
+    server_.on("/api/scale/rate", HTTP_POST, [this]() { handleScaleRate(); });
     server_.on("/api/environment", HTTP_GET, [this]() {
       handleEnvironmentGet();
     });
     server_.on("/api/water", HTTP_GET, [this]() { handleWaterGet(); });
     server_.on("/api/sensors", HTTP_GET, [this]() { handleSensorsGet(); });
-    server_.on("/api/remote", HTTP_GET, [this]() { handleRemoteGet(); });
-    server_.on("/api/remote", HTTP_POST, [this]() { handleRemotePost(); });
     server_.on("/api/relay", HTTP_GET, [this]() { handleRelayGet(); });
     server_.on("/api/relay", HTTP_POST, [this]() { handleRelayPost(); });
     server_.on("/api/channel_schedule", HTTP_POST, [this]() {
@@ -950,9 +852,9 @@ class ApiServer {
   ClockService& clock_;
   RelayService& relay_;
   ScheduleService& scheduler_;
+  ScaleService& scale_;
   EnvironmentService& environment_;
   WaterService& water_;
-  RemoteSyncService& remote_;
 
   void addCors() {
     server_.sendHeader("Access-Control-Allow-Origin", "*");
@@ -971,7 +873,6 @@ class ApiServer {
     json += ",\"app\":\"GRANJA_SELETO\"";
     json += ",\"role\":\"RELAY_CONTROLLER\"";
     json += ",\"wifiConnected\":" + boolJson(network_.connected());
-    json += ",\"wifiStatus\":" + String(network_.statusCode());
     json += ",\"wifiSsid\":" + quoteJson(network_.ssid());
     json += ",\"ip\":" + quoteJson(network_.localIp());
     json += ",\"setupApSsid\":" + quoteJson(Config::setupApSsid);
@@ -982,8 +883,7 @@ class ApiServer {
     json += ",\"relayActiveLow\":" + boolJson(Config::relayActiveLow);
     json += ",\"relays\":" + relay_.toJson();
     json += ",\"schedules\":" + scheduler_.toJson();
-    json += ",\"remoteSync\":" + remote_.toJson();
-    json += ",\"sensorEndpoints\":[\"/api/environment\",\"/api/water\",\"/api/sensors\"]";
+    json += ",\"sensorEndpoints\":[\"/api/scale\",\"/api/environment\",\"/api/water\",\"/api/sensors\"]";
     json += ",\"uptimeMs\":" + String(millis());
     json += "}";
     return json;
@@ -995,7 +895,7 @@ class ApiServer {
     html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
     html += "<title>GRANJA SELETO RELE</title></head><body>";
     html += "<h1>GRANJA SELETO ESP32</h1>";
-    html += "<p>Use /api/status, /api/relay, /api/environment e /api/water.</p>";
+    html += "<p>Use /api/status, /api/relay, /api/scale, /api/environment e /api/water.</p>";
     html += "<form method='post' action='/api/wifi'>";
     html += "<h2>Backup manual de Wi-Fi</h2>";
     html += "<p>Preferencialmente configure pelo app. Use esta tela apenas como recuperacao.</p>";
@@ -1024,6 +924,48 @@ class ApiServer {
     sendJson(json);
   }
 
+  void handleScaleGet() {
+    sendJson(scale_.toJson());
+  }
+
+  void handleScaleTare() {
+    scale_.tare();
+    String json = "{\"ok\":true,\"tare\":true,\"scale\":";
+    json += scale_.toJson();
+    json += "}";
+    sendJson(json);
+  }
+
+  void handleScaleCalibrate() {
+    const float knownWeightKg = server_.arg("knownWeightKg").toFloat();
+    if (knownWeightKg <= 0) {
+      sendJson("{\"ok\":false,\"error\":\"invalid_known_weight\"}", 400);
+      return;
+    }
+    const bool ok = scale_.calibrate(knownWeightKg);
+    String json = "{\"ok\":";
+    json += boolJson(ok);
+    json += ",\"knownWeightKg\":";
+    json += numberJson(knownWeightKg, 3);
+    json += ",\"scale\":";
+    json += scale_.toJson();
+    json += "}";
+    sendJson(json, ok ? 200 : 422);
+  }
+
+  void handleScaleRate() {
+    const int rateHz = server_.arg("rateHz").toInt();
+    if (rateHz != 10 && rateHz != 80) {
+      sendJson("{\"ok\":false,\"error\":\"invalid_rate\"}", 400);
+      return;
+    }
+    scale_.setRate(static_cast<uint8_t>(rateHz));
+    String json = "{\"ok\":true,\"sampleRateHz\":";
+    json += String(scale_.rateHz());
+    json += "}";
+    sendJson(json);
+  }
+
   void handleEnvironmentGet() {
     sendJson(environment_.toJson());
   }
@@ -1034,27 +976,9 @@ class ApiServer {
 
   void handleSensorsGet() {
     String json = "{\"ok\":true";
+    json += ",\"scale\":" + scale_.toJson();
     json += ",\"environment\":" + environment_.toJson();
     json += ",\"water\":" + water_.toJson();
-    json += "}";
-    sendJson(json);
-  }
-
-  void handleRemoteGet() {
-    String json = "{\"ok\":true,\"remoteSync\":";
-    json += remote_.toJson();
-    json += "}";
-    sendJson(json);
-  }
-
-  void handleRemotePost() {
-    const bool enabled = !server_.hasArg("enabled") ||
-                         truthyText(server_.arg("enabled"));
-    const String url = server_.hasArg("url") ? server_.arg("url") : remote_.url();
-    const String token = server_.hasArg("token") ? server_.arg("token") : remote_.token();
-    remote_.configure(enabled, url, token);
-    String json = "{\"ok\":true,\"remoteSync\":";
-    json += remote_.toJson();
     json += "}";
     sendJson(json);
   }
@@ -1132,7 +1056,7 @@ class ApiServer {
   }
 
   void handleGroupSchedulePost() {
-    const uint16_t channelsMask = parseChannelsMask();
+    const uint8_t channelsMask = parseChannelsMask();
     if (channelsMask == 0) {
       sendJson("{\"ok\":false,\"error\":\"invalid_channels\"}", 400);
       return;
@@ -1148,7 +1072,7 @@ class ApiServer {
     String channelsJson = "[";
     bool first = true;
     for (uint8_t channel = 1; channel <= Config::relayCount; channel++) {
-      const uint16_t bit = static_cast<uint16_t>(1) << (channel - 1);
+      const uint8_t bit = 1 << (channel - 1);
       if ((channelsMask & bit) == 0) continue;
       scheduler_.set(channel, schedule);
       if (!first) channelsJson += ",";
@@ -1188,22 +1112,18 @@ class ApiServer {
       sendJson("{\"ok\":false,\"error\":\"missing_ssid\"}", 400);
       return;
     }
-    const bool accepted = network_.saveAndReconnect(ssid, password);
-    if (network_.connected()) clock_.begin();
+    const bool connected = network_.saveAndReconnect(ssid, password);
+    if (connected) clock_.begin();
     String json = "{\"ok\":";
-    json += boolJson(accepted);
-    json += ",\"accepted\":";
-    json += boolJson(accepted);
+    json += boolJson(connected);
     json += ",\"wifiConnected\":";
     json += boolJson(network_.connected());
-    json += ",\"wifiStatus\":";
-    json += String(network_.statusCode());
     json += ",\"ip\":";
     json += quoteJson(network_.localIp());
     json += ",\"setupApIp\":";
     json += quoteJson(network_.setupIp());
     json += "}";
-    sendJson(json, accepted ? 202 : 400);
+    sendJson(json, connected ? 200 : 202);
   }
 
   void handleNotFound() {
@@ -1253,11 +1173,11 @@ class ApiServer {
     return true;
   }
 
-  uint16_t parseChannelsMask() {
+  uint8_t parseChannelsMask() {
     if (server_.hasArg("channelsMask")) {
       const int numeric = server_.arg("channelsMask").toInt();
       if (numeric >= 1 && numeric <= ((1 << Config::relayCount) - 1)) {
-        return static_cast<uint16_t>(numeric);
+        return static_cast<uint8_t>(numeric);
       }
       return 0;
     }
@@ -1266,10 +1186,10 @@ class ApiServer {
     value.trim();
     value.toLowerCase();
     if (value == "all" || value == "todos") {
-      return (static_cast<uint16_t>(1) << Config::relayCount) - 1;
+      return (1 << Config::relayCount) - 1;
     }
 
-    uint16_t mask = 0;
+    uint8_t mask = 0;
     int start = 0;
     while (start < value.length()) {
       int end = value.indexOf(',', start);
@@ -1278,7 +1198,7 @@ class ApiServer {
       token.trim();
       const uint8_t channel = token.toInt();
       if (!relay_.isValidChannel(channel)) return 0;
-      mask |= static_cast<uint16_t>(1) << (channel - 1);
+      mask |= 1 << (channel - 1);
       start = end + 1;
     }
     return mask;
@@ -1387,7 +1307,6 @@ class BluetoothBridge {
     json += ",\"deviceId\":" + quoteJson(Config::deviceId);
     json += ",\"transport\":\"bluetooth\"";
     json += ",\"wifiConnected\":" + boolJson(network_.connected());
-    json += ",\"wifiStatus\":" + String(network_.statusCode());
     json += ",\"ip\":" + quoteJson(network_.localIp());
     json += ",\"setupApIp\":" + quoteJson(network_.setupIp());
     json += ",\"bluetoothName\":" + quoteJson(Config::bluetoothName);
@@ -1483,16 +1402,12 @@ class BluetoothBridge {
     }
     const String ssid = payload.substring(0, separator);
     const String password = payload.substring(separator + 1);
-    const bool accepted = network_.saveAndReconnect(ssid, password);
-    if (network_.connected()) clock_.begin();
+    const bool connected = network_.saveAndReconnect(ssid, password);
+    if (connected) clock_.begin();
     String json = "{\"ok\":";
-    json += boolJson(accepted);
-    json += ",\"accepted\":";
-    json += boolJson(accepted);
+    json += boolJson(connected);
     json += ",\"wifiConnected\":";
     json += boolJson(network_.connected());
-    json += ",\"wifiStatus\":";
-    json += String(network_.statusCode());
     json += ",\"ip\":";
     json += quoteJson(network_.localIp());
     json += "}";
@@ -1516,23 +1431,17 @@ ClockService clockService;
 NetworkService network(storage);
 RelayService relay;
 ScheduleService scheduler(storage, clockService, relay);
+ScaleService scaleService;
 EnvironmentService environmentService;
 WaterService waterService;
-RemoteSyncService remoteSync(
-  network,
-  relay,
-  scheduler,
-  environmentService,
-  waterService
-);
 ApiServer api(
   network,
   clockService,
   relay,
   scheduler,
+  scaleService,
   environmentService,
-  waterService,
-  remoteSync
+  waterService
 );
 BluetoothBridge bluetooth(network, clockService, relay, scheduler);
 
@@ -1544,9 +1453,9 @@ void setup() {
   Serial.println("GRANJA SELETO - ESP32 Rele 4 canais");
 
   storage.begin();
+  scaleService.begin();
   environmentService.begin();
   waterService.begin();
-  remoteSync.begin();
   relay.begin();
   network.begin();
   clockService.begin();
@@ -1571,9 +1480,8 @@ void setup() {
 }
 
 void loop() {
-  network.loop();
   api.loop();
   bluetooth.loop();
   scheduler.loop();
-  remoteSync.loop();
+  scaleService.loop();
 }
