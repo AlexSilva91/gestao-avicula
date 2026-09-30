@@ -62,9 +62,9 @@ class _LotsContent extends ConsumerWidget {
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: columns,
-                  mainAxisSpacing: 7,
-                  crossAxisSpacing: 7,
-                  mainAxisExtent: 126,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  mainAxisExtent: 136,
                 ),
                 itemCount: lots.length,
                 itemBuilder: (_, index) => _LotCard(summary: lots[index]),
@@ -242,8 +242,8 @@ class _ToolbarStat extends StatelessWidget {
   }
 }
 
-class _LotInfoToken extends StatelessWidget {
-  const _LotInfoToken({required this.icon, required this.label});
+class _LotFactLine extends StatelessWidget {
+  const _LotFactLine({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -251,30 +251,57 @@ class _LotInfoToken extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      height: 24,
-      constraints: const BoxConstraints(maxWidth: 176),
-      padding: const EdgeInsets.symmetric(horizontal: 6),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow.withValues(alpha: .76),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .58)),
-        borderRadius: BorderRadius.circular(7),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: scheme.primary),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
+    return Row(
+      children: [
+        Icon(icon, size: 13, color: scheme.primary),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LotStatCell extends StatelessWidget {
+  const _LotStatCell({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 1),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
           ),
         ],
       ),
@@ -302,6 +329,10 @@ class _LotCard extends ConsumerWidget {
     );
     final isActive = summary.activeBirds > 0;
     final scheme = Theme.of(context).colorScheme;
+    final strain = lot.strain?.isNotEmpty == true
+        ? lot.strain!
+        : 'Sem linhagem';
+    final entryDate = DateFormat('dd/MM/yy').format(lot.receivedAt);
     final nextLabel = next == null
         ? 'Última fase alimentar'
         : '${LotLifecycle.nextPhase(phase)!.label} em ${DateFormat('dd/MM/yyyy').format(next)}';
@@ -321,7 +352,7 @@ class _LotCard extends ConsumerWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+            padding: const EdgeInsets.fromLTRB(11, 8, 7, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -341,11 +372,12 @@ class _LotCard extends ConsumerWidget {
                     PopupMenuButton<String>(
                       tooltip: 'Ações do lote',
                       padding: EdgeInsets.zero,
+                      splashRadius: 18,
                       constraints: const BoxConstraints.tightFor(
-                        width: 34,
-                        height: 34,
+                        width: 30,
+                        height: 30,
                       ),
-                      icon: const Icon(Icons.more_vert_rounded, size: 20),
+                      icon: const Icon(Icons.more_vert_rounded, size: 18),
                       onSelected: (value) => value == 'EDIT'
                           ? showDialog<void>(
                               context: context,
@@ -381,35 +413,63 @@ class _LotCard extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 5),
-                Wrap(
-                  spacing: 5,
-                  runSpacing: 5,
+                const SizedBox(height: 4),
+                Row(
                   children: [
-                    _LotInfoToken(
-                      icon: Icons.groups_2_outlined,
-                      label: '${summary.activeBirds} aves ativas',
+                    Expanded(
+                      flex: 3,
+                      child: _LotFactLine(
+                        icon: Icons.category_outlined,
+                        label: strain,
+                      ),
                     ),
-                    _LotInfoToken(
-                      icon: Icons.calendar_today_outlined,
-                      label: LotLifecycle.ageLabel(age),
-                    ),
-                    _LotInfoToken(
-                      icon: Icons.timeline_outlined,
-                      label: LotLifecycle.ageTotalLabel(age),
-                    ),
-                    _LotInfoToken(
-                      icon: Icons.category_outlined,
-                      label: lot.strain?.isNotEmpty == true
-                          ? lot.strain!
-                          : 'Sem linhagem',
-                    ),
-                    _LotInfoToken(
-                      icon: Icons.event_outlined,
-                      label:
-                          'Entrada ${DateFormat("dd/MM/yy").format(lot.receivedAt)}',
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: _LotFactLine(
+                        icon: Icons.event_outlined,
+                        label: 'Entrada $entryDate',
+                      ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  height: 38,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerLow.withValues(alpha: .82),
+                    border: Border.all(
+                      color: scheme.outlineVariant.withValues(alpha: .62),
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      _LotStatCell(
+                        label: 'Aves',
+                        value: '${summary.activeBirds}',
+                      ),
+                      VerticalDivider(
+                        width: 14,
+                        thickness: 1,
+                        color: scheme.outlineVariant.withValues(alpha: .72),
+                      ),
+                      _LotStatCell(
+                        label: 'Idade',
+                        value: LotLifecycle.ageLabel(age),
+                      ),
+                      VerticalDivider(
+                        width: 14,
+                        thickness: 1,
+                        color: scheme.outlineVariant.withValues(alpha: .72),
+                      ),
+                      _LotStatCell(
+                        label: 'Total',
+                        value: LotLifecycle.ageTotalLabel(age),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 5),
                 Row(
