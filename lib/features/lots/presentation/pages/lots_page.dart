@@ -41,48 +41,14 @@ class _LotsContent extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _LotsHeader(
+        _LotsToolbar(
           lotCount: lots.length,
           activeLots: activeLots,
           birds: birds,
+          nextChange: _nextChange(lots),
           onCreate: () => _showPurchase(context, ref),
         ),
-        const SizedBox(height: SeletoTokens.spacingMd),
-        LayoutBuilder(
-          builder: (context, box) {
-            final crossAxisCount = box.maxWidth >= 850
-                ? 3
-                : box.maxWidth >= 510
-                ? 2
-                : 1;
-            return GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: crossAxisCount,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: crossAxisCount == 1 ? 3.2 : 1.85,
-              children: [
-                _SummaryCard(
-                  label: 'Aves ativas',
-                  value: '$birds',
-                  icon: Icons.egg_alt_outlined,
-                ),
-                _SummaryCard(
-                  label: 'Lotes ativos',
-                  value: '$activeLots',
-                  icon: Icons.view_module_outlined,
-                ),
-                _SummaryCard(
-                  label: 'Próxima mudança',
-                  value: _nextChange(lots),
-                  icon: Icons.event_available_outlined,
-                ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: SeletoTokens.spacingMd),
+        const SizedBox(height: SeletoTokens.spacingSm),
         if (lots.isEmpty)
           _LotEmpty(onCreate: () => _showPurchase(context, ref))
         else
@@ -96,9 +62,9 @@ class _LotsContent extends ConsumerWidget {
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: columns,
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  mainAxisExtent: 224,
+                  mainAxisSpacing: 7,
+                  crossAxisSpacing: 7,
+                  mainAxisExtent: 126,
                 ),
                 itemCount: lots.length,
                 itemBuilder: (_, index) => _LotCard(summary: lots[index]),
@@ -137,17 +103,19 @@ class _LotsContent extends ConsumerWidget {
   );
 }
 
-class _LotsHeader extends StatelessWidget {
-  const _LotsHeader({
+class _LotsToolbar extends StatelessWidget {
+  const _LotsToolbar({
     required this.lotCount,
     required this.activeLots,
     required this.birds,
+    required this.nextChange,
     required this.onCreate,
   });
 
   final int lotCount;
   final int activeLots;
   final int birds;
+  final String nextChange;
   final VoidCallback onCreate;
 
   @override
@@ -160,113 +128,155 @@ class _LotsHeader extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer.withValues(alpha: .62),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(Icons.egg_alt_outlined, color: scheme.primary),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Gestão de lotes',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$activeLots ativo(s) de $lotCount lote(s) · $birds aves ativas',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            FilledButton.icon(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+        child: LayoutBuilder(
+          builder: (context, box) {
+            final compact = box.maxWidth < 640;
+            final stats = Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _ToolbarStat(
+                  icon: Icons.groups_2_outlined,
+                  label: 'Aves',
+                  value: '$birds',
+                ),
+                _ToolbarStat(
+                  icon: Icons.view_module_outlined,
+                  label: 'Ativos',
+                  value: '$activeLots/$lotCount',
+                ),
+                _ToolbarStat(
+                  icon: Icons.event_available_outlined,
+                  label: 'Mudança',
+                  value: nextChange,
+                ),
+              ],
+            );
+            final action = FilledButton.icon(
               onPressed: onCreate,
-              icon: const Icon(Icons.add_rounded),
+              icon: const Icon(Icons.add_rounded, size: 18),
               label: const Text('Novo lote'),
-            ),
-          ],
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+              ),
+            );
+            if (compact) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  stats,
+                  const SizedBox(height: 6),
+                  Align(alignment: Alignment.centerRight, child: action),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: stats),
+                const SizedBox(width: 8),
+                action,
+              ],
+            );
+          },
         ),
       ),
     );
   }
 }
 
-class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({
+class _ToolbarStat extends StatelessWidget {
+  const _ToolbarStat({
+    required this.icon,
     required this.label,
     required this.value,
-    required this.icon,
   });
+
+  final IconData icon;
   final String label;
   final String value;
-  final IconData icon;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(11),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer.withValues(alpha: .62),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, size: 19, color: scheme.primary),
+    return Container(
+      height: 32,
+      constraints: const BoxConstraints(minWidth: 112),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: .52),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .62)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: scheme.primary),
+          const SizedBox(width: 5),
+          Text(
+            '$label ',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
+          ),
+          Flexible(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LotInfoToken extends StatelessWidget {
+  const _LotInfoToken({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 24,
+      constraints: const BoxConstraints(maxWidth: 176),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: .76),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .58)),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: scheme.primary),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -294,10 +304,7 @@ class _LotCard extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final nextLabel = next == null
         ? 'Última fase alimentar'
-        : 'Próxima fase: ${LotLifecycle.nextPhase(phase)!.label}';
-    final nextDate = next == null
-        ? null
-        : DateFormat('dd/MM/yyyy').format(next);
+        : '${LotLifecycle.nextPhase(phase)!.label} em ${DateFormat('dd/MM/yyyy').format(next)}';
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Stack(
@@ -314,65 +321,31 @@ class _LotCard extends ConsumerWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(13, 11, 10, 10),
+            padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: scheme.primaryContainer.withValues(alpha: .72),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        Icons.egg_alt_outlined,
-                        color: scheme.primary,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            lot.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              _MiniInfoPill(
-                                icon: Icons.category_outlined,
-                                label: lot.strain?.isNotEmpty == true
-                                    ? lot.strain!
-                                    : 'Sem linhagem',
-                              ),
-                              _MiniInfoPill(
-                                icon: Icons.event_outlined,
-                                label:
-                                    'Entrada ${DateFormat('dd/MM/yyyy').format(lot.receivedAt)}',
-                              ),
-                            ],
-                          ),
-                        ],
+                      child: Text(
+                        lot.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     _PhaseChip(label: phase.label, inactive: !isActive),
                     PopupMenuButton<String>(
                       tooltip: 'Ações do lote',
-                      icon: const Icon(Icons.more_vert_rounded),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 34,
+                        height: 34,
+                      ),
+                      icon: const Icon(Icons.more_vert_rounded, size: 20),
                       onSelected: (value) => value == 'EDIT'
                           ? showDialog<void>(
                               context: context,
@@ -408,70 +381,59 @@ class _LotCard extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Row(
+                const SizedBox(height: 5),
+                Wrap(
+                  spacing: 5,
+                  runSpacing: 5,
                   children: [
-                    Expanded(
-                      child: _LotMetric(
-                        icon: Icons.groups_2_outlined,
-                        value: '${summary.activeBirds}',
-                        label: 'Aves ativas',
-                      ),
+                    _LotInfoToken(
+                      icon: Icons.groups_2_outlined,
+                      label: '${summary.activeBirds} aves ativas',
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 2,
-                      child: _LotMetric(
-                        icon: Icons.calendar_today_outlined,
-                        value: LotLifecycle.ageLabel(age),
-                        label: 'Idade atual',
-                        footnote: LotLifecycle.ageTotalLabel(age),
-                        maxLines: 2,
-                      ),
+                    _LotInfoToken(
+                      icon: Icons.calendar_today_outlined,
+                      label: LotLifecycle.ageLabel(age),
+                    ),
+                    _LotInfoToken(
+                      icon: Icons.timeline_outlined,
+                      label: LotLifecycle.ageTotalLabel(age),
+                    ),
+                    _LotInfoToken(
+                      icon: Icons.category_outlined,
+                      label: lot.strain?.isNotEmpty == true
+                          ? lot.strain!
+                          : 'Sem linhagem',
+                    ),
+                    _LotInfoToken(
+                      icon: Icons.event_outlined,
+                      label:
+                          'Entrada ${DateFormat("dd/MM/yy").format(lot.receivedAt)}',
                     ),
                   ],
                 ),
-                const Spacer(),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: scheme.surfaceContainerLow.withValues(alpha: .82),
-                    border: Border.all(
-                      color: scheme.outlineVariant.withValues(alpha: .76),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Icon(
+                      next == null
+                          ? Icons.check_circle_outline
+                          : Icons.event_available_outlined,
+                      size: 14,
+                      color: scheme.primary,
                     ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          next == null
-                              ? Icons.check_circle_outline
-                              : Icons.event_available_outlined,
-                          size: 18,
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        nextLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: scheme.primary,
+                          fontWeight: FontWeight.w800,
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            nextDate == null
-                                ? nextLabel
-                                : '$nextLabel · $nextDate',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelLarge
-                                ?.copyWith(
-                                  color: scheme.primary,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
@@ -488,130 +450,42 @@ class _LotCard extends ConsumerWidget {
       );
 }
 
-class _MiniInfoPill extends StatelessWidget {
-  const _MiniInfoPill({required this.icon, required this.label});
-
-  final IconData icon;
+class _PhaseChip extends StatelessWidget {
+  const _PhaseChip({required this.label, required this.inactive});
   final String label;
-
+  final bool inactive;
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      constraints: const BoxConstraints(maxWidth: 150),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      height: 25,
+      padding: const EdgeInsets.symmetric(horizontal: 7),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow.withValues(alpha: .78),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .66)),
+        color: inactive
+            ? scheme.surfaceContainerHighest
+            : scheme.primaryContainer.withValues(alpha: .74),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: scheme.primary),
+          Icon(
+            inactive ? Icons.archive_outlined : Icons.eco_outlined,
+            size: 13,
+            color: inactive ? scheme.onSurfaceVariant : scheme.primary,
+          ),
           const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
+          Text(
+            inactive ? 'Encerrado' : label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: inactive ? scheme.onSurfaceVariant : scheme.primary,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
       ),
     );
   }
-}
-
-class _LotMetric extends StatelessWidget {
-  const _LotMetric({
-    required this.icon,
-    required this.value,
-    required this.label,
-    this.footnote,
-    this.maxLines = 1,
-  });
-  final IconData icon;
-  final String value;
-  final String label;
-  final String? footnote;
-  final int maxLines;
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest.withValues(alpha: .72),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .68)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 17, color: scheme.primary),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    value,
-                    maxLines: maxLines,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  if (footnote != null) ...[
-                    const SizedBox(height: 1),
-                    Text(
-                      footnote!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PhaseChip extends StatelessWidget {
-  const _PhaseChip({required this.label, required this.inactive});
-  final String label;
-  final bool inactive;
-  @override
-  Widget build(BuildContext context) => Chip(
-    visualDensity: VisualDensity.compact,
-    label: Text(inactive ? 'Encerrado' : label),
-    avatar: Icon(
-      inactive ? Icons.archive_outlined : Icons.eco_outlined,
-      size: 16,
-    ),
-  );
 }
 
 class _LotEmpty extends StatelessWidget {
