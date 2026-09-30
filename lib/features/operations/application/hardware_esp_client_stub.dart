@@ -166,6 +166,15 @@ class HardwareEspClient {
     );
   }
 
+  Future<Map<String, Object?>> disconnectWifi({
+    required String endpoint,
+    bool clearCredentials = true,
+  }) async {
+    throw UnsupportedError(
+      'Desconexao de Wi-Fi do ESP indisponivel nesta plataforma.',
+    );
+  }
+
   Future<EspRelayResult> setRelay({
     required String endpoint,
     required int channel,

@@ -27,10 +27,7 @@ class HardwareIntegrationSettings {
 
   factory HardwareIntegrationSettings.fromSettings(List<AppSetting> settings) {
     final values = {for (final setting in settings) setting.key: setting.value};
-    final lightingConnection =
-        values['hardware_lighting_connection'] == 'BLUETOOTH'
-        ? 'BLUETOOTH'
-        : 'WIFI';
+    const lightingConnection = 'WIFI';
     return HardwareIntegrationSettings(
       lightingEnabled: values['hardware_lighting_enabled'] == 'true',
       lightingConnection: lightingConnection,
@@ -91,10 +88,6 @@ class _HardwareIntegrationsPageState
   final wifiProvisionEndpoint = TextEditingController(text: '192.168.4.1');
   final wifiProvisionSsid = TextEditingController();
   final wifiProvisionPassword = TextEditingController();
-  final remoteSyncUrl = TextEditingController(
-    text: 'http://solveontecnology.com.br:5005/iot/v1/esp/sync',
-  );
-  final remoteSyncToken = TextEditingController();
   final lightingChannelNames = List.generate(
     4,
     (index) => TextEditingController(text: 'Canal ${index + 1}'),
@@ -139,9 +132,7 @@ class _HardwareIntegrationsPageState
   bool saving = false;
   bool initialized = false;
   bool wifiProvisionPasswordHidden = true;
-  bool remoteSyncEnabled = true;
-  bool remoteSyncTokenHidden = true;
-  String espControlPriority = 'local';
+  bool espWifiConnected = false;
   String lightingStatus = 'Aguardando teste';
   String? lightingConnectionResult;
   bool espDiscoveryStarted = false;
@@ -160,8 +151,6 @@ class _HardwareIntegrationsPageState
     wifiProvisionEndpoint.dispose();
     wifiProvisionSsid.dispose();
     wifiProvisionPassword.dispose();
-    remoteSyncUrl.dispose();
-    remoteSyncToken.dispose();
     for (final controller in lightingChannelNames) {
       controller.dispose();
     }
@@ -201,18 +190,6 @@ class _HardwareIntegrationsPageState
     wifiProvisionSsid.text = values['hardware_esp_wifi_ssid']?.trim() ?? '';
     wifiProvisionPassword.text =
         values['hardware_esp_wifi_password']?.trim() ?? '';
-    remoteSyncEnabled =
-        values['hardware_esp_remote_sync_enabled']?.trim() != 'false';
-    remoteSyncUrl.text =
-        values['hardware_esp_remote_sync_url']?.trim().isNotEmpty == true
-        ? values['hardware_esp_remote_sync_url']!.trim()
-        : 'http://solveontecnology.com.br:5005/iot/v1/esp/sync';
-    remoteSyncToken.text =
-        values['hardware_esp_remote_sync_token']?.trim() ?? '';
-    espControlPriority =
-        values['hardware_esp_control_priority']?.trim() == 'remote'
-        ? 'remote'
-        : 'local';
     for (final channel in config.lightingChannels) {
       final index = channel.index - 1;
       if (index < 0 || index >= 4) continue;
@@ -309,31 +286,15 @@ class _HardwareIntegrationsPageState
                   ssidController: wifiProvisionSsid,
                   passwordController: wifiProvisionPassword,
                   passwordHidden: wifiProvisionPasswordHidden,
+                  connected: espWifiConnected,
                   busy: saving || espScanning,
                   onConfigure: _configureEspWifi,
+                  onDisconnect: _disconnectEspWifi,
                   onTogglePassword: () => setState(
                     () => wifiProvisionPasswordHidden =
                         !wifiProvisionPasswordHidden,
                   ),
                   onHelp: _showEspWifiHelp,
-                ),
-                const SizedBox(height: 12),
-                _EspRemoteSyncPanel(
-                  enabled: remoteSyncEnabled,
-                  priority: espControlPriority,
-                  urlController: remoteSyncUrl,
-                  tokenController: remoteSyncToken,
-                  tokenHidden: remoteSyncTokenHidden,
-                  busy: saving || espScanning,
-                  onEnabledChanged: (value) =>
-                      setState(() => remoteSyncEnabled = value),
-                  onPriorityChanged: (value) =>
-                      setState(() => espControlPriority = value),
-                  onToggleToken: () => setState(
-                    () => remoteSyncTokenHidden = !remoteSyncTokenHidden,
-                  ),
-                  onRead: _readEspRemoteSync,
-                  onSave: _configureEspRemoteSync,
                 ),
                 const SizedBox(height: 16),
                 _lightingPanel(context),
@@ -451,16 +412,9 @@ class _HardwareIntegrationsPageState
               label: const Text('Salvar'),
             ),
             FilledButton.tonalIcon(
-              onPressed: saving ? null : () => _testLightingConnection('WIFI'),
+              onPressed: saving ? null : _testLightingConnection,
               icon: const Icon(Icons.wifi),
               label: const Text('Testar Wi-Fi'),
-            ),
-            FilledButton.tonalIcon(
-              onPressed: saving
-                  ? null
-                  : () => _testLightingConnection('BLUETOOTH'),
-              icon: const Icon(Icons.bluetooth),
-              label: const Text('Testar Bluetooth'),
             ),
             FilledButton.tonalIcon(
               onPressed: saving || espScanning ? null : _syncLightingSchedule,
@@ -1085,30 +1039,16 @@ class _HardwareIntegrationsPageState
     }
   }
 
-  Future<void> _testLightingConnection(String connection) async {
-    setState(() => lightingConnection = connection);
+  Future<void> _testLightingConnection() async {
+    setState(() => lightingConnection = 'WIFI');
     if (!lightingEnabled || lightingEndpoint.text.trim().isEmpty) {
       setState(() {
         lightingStatus = 'Falha: ative a iluminação e informe o endpoint/ID.';
-        lightingConnectionResult =
-            'FALHA ${_connectionLabel(connection)}: configuração incompleta.';
+        lightingConnectionResult = 'FALHA Wi-Fi: configuração incompleta.';
       });
       return;
     }
-    if (connection == 'WIFI') {
-      await _probeEspConnection();
-      return;
-    }
-    await _saveLighting();
-    if (!mounted) return;
-    setState(() {
-      lightingConnectionResult =
-          'OK ${_connectionLabel(connection)}: controlador pronto.';
-      lightingStatus =
-          'Conexão ${_connectionLabel(connection)} pronta para canais.';
-    });
-    _appendEspLog('BT> identificador aceito: ${lightingEndpoint.text.trim()}');
-    _appendEspLog('BT> pareie com GRANJA_SELETO_RELE para terminal serial');
+    await _probeEspConnection();
   }
 
   Future<void> _syncLightingSchedule() async {
@@ -1396,6 +1336,7 @@ class _HardwareIntegrationsPageState
       await controller.saveSetting('hardware_esp_setup_endpoint', endpoint);
       await controller.saveSetting('hardware_esp_wifi_ssid', ssid);
       await controller.saveSetting('hardware_esp_wifi_password', password);
+      await controller.saveSetting('hardware_esp_remote_sync_enabled', 'false');
 
       var statusMessage =
           'Credenciais enviadas; aguardando confirmação de rede.';
@@ -1417,6 +1358,7 @@ class _HardwareIntegrationsPageState
 
       if (!mounted) return;
       setState(() {
+        espWifiConnected = connected;
         espTerminalTitle = connected ? 'WIFI CONFIGURADO' : 'WIFI SALVO NO ESP';
         lightingConnectionResult = resultMessage;
         lightingStatus = statusMessage;
@@ -1444,7 +1386,7 @@ class _HardwareIntegrationsPageState
     }
   }
 
-  Future<void> _readEspRemoteSync() async {
+  Future<void> _disconnectEspWifi() async {
     final endpoint = _currentWifiEndpoint().isNotEmpty
         ? _currentWifiEndpoint()
         : wifiProvisionEndpoint.text.trim().isEmpty
@@ -1453,97 +1395,37 @@ class _HardwareIntegrationsPageState
 
     setState(() {
       saving = true;
-      espTerminalTitle = 'REMOTE SYNC ESP';
+      espTerminalTitle = 'DESCONECTAR WIFI ESP';
     });
-    _appendEspLog('APP> lendo sincronizacao remota em $endpoint');
+    _appendEspLog('APP> solicitando desconexao Wi-Fi em $endpoint');
 
     try {
-      final payload = await espClient.readRemoteSync(endpoint);
-      if (!mounted) return;
-      _appendEspPayload(payload);
-      final remote = payload['remoteSync'];
-      if (remote is Map) {
-        remoteSyncEnabled = remote['enabled'] != false;
-        final url = (remote['url'] ?? '').toString().trim();
-        if (url.isNotEmpty) remoteSyncUrl.text = url;
-        final priority = (remote['priority'] ?? '').toString().trim();
-        espControlPriority = priority == 'remote' ? 'remote' : 'local';
-      }
-      setState(() {
-        espTerminalTitle = 'REMOTE SYNC OK';
-        lightingStatus =
-            'Sincronizacao remota lida. Prioridade local continua ${espControlPriority == 'local' ? 'ativa' : 'desativada'}.';
-      });
-      _snack('Configuração remota lida do ESP.');
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        espTerminalTitle = 'FALHA REMOTE SYNC';
-        lightingStatus = 'Falha ao ler sincronização remota do ESP.';
-      });
-      _appendEspLog('ERR> leitura remote sync falhou: $error');
-      await showOperationError(context, error);
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
-  Future<void> _configureEspRemoteSync() async {
-    final endpoint = _currentWifiEndpoint().isNotEmpty
-        ? _currentWifiEndpoint()
-        : wifiProvisionEndpoint.text.trim().isEmpty
-        ? '192.168.4.1'
-        : wifiProvisionEndpoint.text.trim();
-    final url = remoteSyncUrl.text.trim();
-    final token = remoteSyncToken.text.trim();
-    if (remoteSyncEnabled && url.isEmpty) {
-      _snack('Informe a URL do servidor remoto.');
-      return;
-    }
-
-    setState(() {
-      saving = true;
-      espTerminalTitle = 'CONFIG REMOTE SYNC';
-    });
-    _appendEspLog(
-      'APP> salvando remote sync no ESP; prioridade $espControlPriority',
-    );
-
-    try {
-      final payload = await espClient.configureRemoteSync(
-        endpoint: endpoint,
-        enabled: remoteSyncEnabled,
-        url: url,
-        token: token,
-        priority: espControlPriority,
-      );
+      final payload = await espClient.disconnectWifi(endpoint: endpoint);
       final controller = ref.read(operationsControllerProvider);
-      await controller.saveSetting(
-        'hardware_esp_remote_sync_enabled',
-        remoteSyncEnabled ? 'true' : 'false',
-      );
-      await controller.saveSetting('hardware_esp_remote_sync_url', url);
-      await controller.saveSetting('hardware_esp_remote_sync_token', token);
-      await controller.saveSetting(
-        'hardware_esp_control_priority',
-        espControlPriority,
-      );
+      await controller.saveSetting('hardware_lighting_endpoint', '');
+      await controller.saveSetting('hardware_esp_wifi_ssid', '');
+      await controller.saveSetting('hardware_esp_wifi_password', '');
       if (!mounted) return;
       _appendEspPayload(payload);
       setState(() {
-        espTerminalTitle = 'REMOTE SYNC CONFIGURADO';
-        lightingStatus = espControlPriority == 'local'
-            ? 'Prioridade local ativa; servidor remoto fica como sincronização/fallback.'
-            : 'Prioridade remota salva; comandos locais ainda funcionam quando usados.';
+        espWifiConnected = false;
+        lightingEnabled = false;
+        lightingEndpoint.clear();
+        lightingConnection = 'WIFI';
+        lightingConnectionResult = 'Wi-Fi do ESP desconectado.';
+        lightingStatus =
+            'ESP saiu da rede Wi-Fi. Use o AP GRANJA-SELETO-SETUP para reconectar.';
+        espTerminalTitle = 'WIFI DESCONECTADO';
       });
-      _snack('Sincronização remota configurada.');
+      _appendEspLog('ESP> Wi-Fi desconectado e credenciais removidas');
+      _snack('Wi-Fi do ESP desconectado.');
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        espTerminalTitle = 'FALHA CONFIG REMOTE';
-        lightingStatus = 'Falha ao configurar sincronização remota.';
+        espTerminalTitle = 'FALHA DESCONECTAR WIFI';
+        lightingConnectionResult = 'FALHA Wi-Fi: nao foi possivel desconectar.';
       });
-      _appendEspLog('ERR> config remote sync falhou: $error');
+      _appendEspLog('ERR> desconexao Wi-Fi falhou: $error');
       await showOperationError(context, error);
     } finally {
       if (mounted) setState(() => saving = false);
@@ -1676,6 +1558,7 @@ class _HardwareIntegrationsPageState
       lightingEnabled = true;
       lightingConnection = 'WIFI';
       lightingEndpoint.text = endpoint;
+      espWifiConnected = probe.payload['wifiConnected'] == true;
       lightingConnectionResult = 'OK Wi-Fi: ${probe.message}.';
       lightingStatus = 'Controlador conectado em $endpoint.';
       espTerminalTitle = 'ESP CONECTADO';
@@ -1848,8 +1731,10 @@ class _EspWifiProvisionPanel extends StatelessWidget {
     required this.ssidController,
     required this.passwordController,
     required this.passwordHidden,
+    required this.connected,
     required this.busy,
     required this.onConfigure,
+    required this.onDisconnect,
     required this.onTogglePassword,
     required this.onHelp,
   });
@@ -1858,8 +1743,10 @@ class _EspWifiProvisionPanel extends StatelessWidget {
   final TextEditingController ssidController;
   final TextEditingController passwordController;
   final bool passwordHidden;
+  final bool connected;
   final bool busy;
   final VoidCallback onConfigure;
+  final VoidCallback onDisconnect;
   final VoidCallback onTogglePassword;
   final VoidCallback onHelp;
 
@@ -1902,7 +1789,9 @@ class _EspWifiProvisionPanel extends StatelessWidget {
                             ?.copyWith(fontWeight: FontWeight.w800),
                       ),
                       Text(
-                        'Conecta o controlador na rede da propriedade',
+                        connected
+                            ? 'Controlador conectado na rede local'
+                            : 'Conecta o controlador na rede local',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: colors.onSurfaceVariant,
                         ),
@@ -1977,7 +1866,7 @@ class _EspWifiProvisionPanel extends StatelessWidget {
             _InfoStrip(
               icon: Icons.security_outlined,
               text:
-                  'Use com o celular conectado ao AP GRANJA-SELETO-SETUP. A senha pode ser exibida ou ocultada neste campo.',
+                  'Use o AP GRANJA-SELETO-SETUP apenas para configurar. Depois disso o app fala com o ESP pelo IP recebido na rede local.',
             ),
             const SizedBox(height: 10),
             Wrap(
@@ -1987,150 +1876,17 @@ class _EspWifiProvisionPanel extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: busy ? null : onConfigure,
                   icon: const Icon(Icons.send_to_mobile_outlined),
-                  label: const Text('Enviar Wi-Fi'),
+                  label: const Text('Conectar Wi-Fi'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: busy ? null : onDisconnect,
+                  icon: const Icon(Icons.wifi_off_outlined),
+                  label: const Text('Desconectar'),
                 ),
                 OutlinedButton.icon(
                   onPressed: busy ? null : onHelp,
                   icon: const Icon(Icons.help_outline),
                   label: const Text('Como conectar'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EspRemoteSyncPanel extends StatelessWidget {
-  const _EspRemoteSyncPanel({
-    required this.enabled,
-    required this.priority,
-    required this.urlController,
-    required this.tokenController,
-    required this.tokenHidden,
-    required this.busy,
-    required this.onEnabledChanged,
-    required this.onPriorityChanged,
-    required this.onToggleToken,
-    required this.onRead,
-    required this.onSave,
-  });
-
-  final bool enabled;
-  final String priority;
-  final TextEditingController urlController;
-  final TextEditingController tokenController;
-  final bool tokenHidden;
-  final bool busy;
-  final ValueChanged<bool> onEnabledChanged;
-  final ValueChanged<String> onPriorityChanged;
-  final VoidCallback onToggleToken;
-  final VoidCallback onRead;
-  final VoidCallback onSave;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: .32),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.cloud_sync_outlined, color: colors.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Sincronização remota do ESP',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                Switch(
-                  value: enabled,
-                  onChanged: busy ? null : onEnabledChanged,
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                  value: 'local',
-                  icon: Icon(Icons.lan_outlined),
-                  label: Text('Local'),
-                ),
-                ButtonSegment(
-                  value: 'remote',
-                  icon: Icon(Icons.cloud_outlined),
-                  label: Text('Remoto'),
-                ),
-              ],
-              selected: {priority},
-              onSelectionChanged: busy
-                  ? null
-                  : (values) => onPriorityChanged(values.first),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: urlController,
-              enabled: enabled && !busy,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'URL do servidor remoto',
-                prefixIcon: Icon(Icons.link_outlined),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: tokenController,
-              enabled: enabled && !busy,
-              obscureText: tokenHidden,
-              decoration: InputDecoration(
-                labelText: 'Token remoto',
-                prefixIcon: const Icon(Icons.key_outlined),
-                suffixIcon: IconButton(
-                  onPressed: busy ? null : onToggleToken,
-                  icon: Icon(
-                    tokenHidden
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                  ),
-                  tooltip: tokenHidden ? 'Mostrar token' : 'Ocultar token',
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            _InfoStrip(
-              icon: Icons.route_outlined,
-              text: priority == 'local'
-                  ? 'Prioridade local ativa: o app comanda direto o ESP quando estiver na mesma rede. O servidor fica como sincronização e fallback.'
-                  : 'Prioridade remota salva: use quando o ESP não estiver acessível localmente. Os comandos locais continuam disponíveis.',
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.icon(
-                  onPressed: busy ? null : onSave,
-                  icon: const Icon(Icons.save_outlined),
-                  label: const Text('Salvar remoto'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: busy ? null : onRead,
-                  icon: const Icon(Icons.manage_search_outlined),
-                  label: const Text('Ler do ESP'),
                 ),
               ],
             ),
@@ -2732,11 +2488,6 @@ class _LightingConnectionPanel extends StatelessWidget {
                       icon: Icon(Icons.wifi),
                       label: Text('Wi-Fi'),
                     ),
-                    ButtonSegment(
-                      value: 'BLUETOOTH',
-                      icon: Icon(Icons.bluetooth),
-                      label: Text('Bluetooth'),
-                    ),
                   ],
                   selected: {connection},
                   onSelectionChanged: saving
@@ -2746,11 +2497,9 @@ class _LightingConnectionPanel extends StatelessWidget {
                 Widget endpointField() => TextField(
                   controller: endpointController,
                   enabled: !saving,
-                  decoration: InputDecoration(
-                    labelText: connection == 'WIFI'
-                        ? 'Endpoint/IP'
-                        : 'Identificador Bluetooth',
-                    prefixIcon: const Icon(Icons.router_outlined),
+                  decoration: const InputDecoration(
+                    labelText: 'Endpoint/IP local',
+                    prefixIcon: Icon(Icons.router_outlined),
                   ),
                 );
                 Widget relayPinField() => TextField(
@@ -3431,6 +3180,3 @@ class _StatusChip extends StatelessWidget {
     );
   }
 }
-
-String _connectionLabel(String value) =>
-    value == 'BLUETOOTH' ? 'Bluetooth' : 'Wi-Fi';

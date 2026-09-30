@@ -269,6 +269,16 @@ class HardwareEspClient {
     }, timeout: _wifiConfigTimeout);
   }
 
+  Future<Map<String, Object?>> disconnectWifi({
+    required String endpoint,
+    bool clearCredentials = true,
+  }) {
+    final normalized = _normalizeEndpoint(endpoint);
+    return _postForm('$normalized/api/wifi/disconnect', {
+      'clear': clearCredentials ? '1' : '0',
+    });
+  }
+
   Future<EspRelayResult> setRelay({
     required String endpoint,
     required int channel,

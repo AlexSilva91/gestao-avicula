@@ -15,8 +15,6 @@
     GET  /api/environment
     GET  /api/water
     GET  /api/sensors
-    GET  /api/remote
-    POST /api/remote           enabled=1&url=http://servidor/iot/v1/esp/sync&token=opcional
     GET  /api/relay?channel=1
     POST /api/relay             channel=1&state=on|off|pulse
     POST /api/channel_schedule  channel=1&enabled=1&on1=04:30&off1=06:10&en1=1&on2=17:40&off2=20:00&en2=1&days=127
@@ -24,21 +22,15 @@
     GET  /api/schedule
     POST /api/time              epoch=1735689600
     POST /api/wifi              ssid=NomeDaRede&password=SenhaDaRede
+    POST /api/wifi/disconnect   clear=1
 
-  Bluetooth Serial:
-    PING
-    STATUS
-    RELAY 1 ON
-    RELAY 1 OFF
-    PULSE 1
-    SCHEDULE 1 1 04:30 06:10 17:40 20:00 127
-    TIME 1735689600
-    WIFI Nome da Rede|Senha da Rede
+  Comunicacao:
+    - HTTP local pelo IP do ESP na rede Wi-Fi.
+    - AP local de recuperacao GRANJA-SELETO-SETUP / seleto1234.
+    - Sem Bluetooth e sem servidor remoto.
 */
 
 #include <Arduino.h>
-#include <BluetoothSerial.h>
-#include <HTTPClient.h>
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
@@ -48,13 +40,18 @@
 
 namespace Config {
 const char* deviceId = "GRANJA-SELETO-RELE-01";
-const char* bluetoothName = "GRANJA_SELETO_RELE";
 
 const char* defaultWifiSsid = "";
 const char* defaultWifiPassword = "";
 
 const char* setupApSsid = "GRANJA-SELETO-SETUP";
 const char* setupApPassword = "seleto1234";
+constexpr uint8_t setupApChannel = 6;
+constexpr uint8_t setupApMaxClients = 4;
+constexpr uint8_t setupApIp1 = 192;
+constexpr uint8_t setupApIp2 = 168;
+constexpr uint8_t setupApIp3 = 4;
+constexpr uint8_t setupApIp4 = 1;
 
 const char* ntpServer1 = "pool.ntp.org";
 const char* ntpServer2 = "time.nist.gov";
@@ -63,13 +60,9 @@ constexpr long gmtOffsetSeconds = -3 * 60 * 60;
 constexpr int daylightOffsetSeconds = 0;
 constexpr uint16_t httpPort = 80;
 constexpr uint32_t wifiConnectTimeoutMs = 15000;
+constexpr uint32_t setupApWatchdogIntervalMs = 10000;
 constexpr uint32_t scheduleCheckIntervalMs = 1000;
 constexpr uint32_t manualOverrideMs = 5UL * 60UL * 1000UL;
-constexpr uint32_t remoteSyncIntervalMs = 180UL * 1000UL;
-
-const char* defaultRemoteSyncUrl = "http://solveontecnology.com.br:5005/iot/v1/esp/sync";
-const char* defaultRemoteSyncToken = "";
-
 constexpr bool relayActiveLow = true;
 // Canais 1-4: iluminacao existente. Nao alterar sem reconfigurar o app.
 // Canais 5-12: ventilacao. GPIOs escolhidos fora das portas ja reservadas
@@ -192,6 +185,11 @@ class StorageService {
   void saveWifi(const String& ssid, const String& password) {
     prefs_.putString("wifi_ssid", ssid);
     prefs_.putString("wifi_pass", password);
+  }
+
+  void clearWifi() {
+    prefs_.remove("wifi_ssid");
+    prefs_.remove("wifi_pass");
   }
 
   ChannelSchedule loadSchedule(uint8_t channel) {
@@ -600,15 +598,21 @@ class NetworkService {
   explicit NetworkService(StorageService& storage) : storage_(storage) {}
 
   void begin() {
+    WiFi.persistent(false);
+    WiFi.setSleep(false);
+    WiFi.setHostname(Config::deviceId);
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(Config::setupApSsid, Config::setupApPassword);
+    startSetupAp(true);
     connect(storage_.loadWifi());
   }
 
   bool connect(const WifiCredentials& credentials) {
+    ensureApStaMode();
+    startSetupAp(false);
     if (!credentials.isValid()) return false;
 
-    WiFi.mode(WIFI_AP_STA);
+    ensureApStaMode();
+    startSetupAp(false);
     WiFi.begin(credentials.ssid.c_str(), credentials.password.c_str());
     const uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED &&
@@ -622,10 +626,35 @@ class NetworkService {
 
   bool saveAndReconnect(const String& ssid, const String& password) {
     storage_.saveWifi(ssid, password);
-    WiFi.disconnect(false, true);
+    WiFi.disconnect(false, false);
     delay(500);
+    startSetupAp(false);
     WifiCredentials credentials{ssid, password};
     return connect(credentials);
+  }
+
+  void disconnect(bool clearCredentials) {
+    if (clearCredentials) storage_.clearWifi();
+    WiFi.disconnect(false, false);
+    delay(250);
+    ensureApStaMode();
+    startSetupAp(false);
+  }
+
+  void maintain() {
+    if (millis() - lastApWatchdogMs_ < Config::setupApWatchdogIntervalMs) {
+      return;
+    }
+    lastApWatchdogMs_ = millis();
+    const wifi_mode_t mode = WiFi.getMode();
+    if (mode != WIFI_AP && mode != WIFI_AP_STA) {
+      ensureApStaMode();
+      startSetupAp(true);
+      return;
+    }
+    if (WiFi.softAPIP().toString() == "0.0.0.0") {
+      startSetupAp(true);
+    }
   }
 
   bool connected() const {
@@ -634,6 +663,10 @@ class NetworkService {
 
   String localIp() const {
     return connected() ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+  }
+
+  String stationIp() const {
+    return connected() ? WiFi.localIP().toString() : "";
   }
 
   String setupIp() const {
@@ -646,158 +679,45 @@ class NetworkService {
 
  private:
   StorageService& storage_;
-};
+  uint32_t lastApWatchdogMs_ = 0;
 
-class RemoteSyncService {
- public:
-  RemoteSyncService(
-    NetworkService& network,
-    RelayService& relay,
-    ScheduleService& scheduler,
-    EnvironmentService& environment,
-    WaterService& water
-  ) : network_(network),
-      relay_(relay),
-      scheduler_(scheduler),
-      environment_(environment),
-      water_(water) {}
-
-  void begin() {
-    prefs_.begin("seleto_remote", false);
-    enabled_ = prefs_.getBool("enabled", true);
-    url_ = prefs_.getString("url", Config::defaultRemoteSyncUrl);
-    token_ = prefs_.getString("token", Config::defaultRemoteSyncToken);
-    priority_ = prefs_.getString("priority", "local");
-  }
-
-  void loop() {
-    if (!enabled_ || url_.length() == 0 || !network_.connected()) return;
-    if (millis() - lastAttemptMs_ < Config::remoteSyncIntervalMs) return;
-    lastAttemptMs_ = millis();
-    syncNow();
-  }
-
-  void configure(
-    bool enabled,
-    const String& url,
-    const String& token,
-    const String& priority
-  ) {
-    enabled_ = enabled;
-    url_ = url;
-    token_ = token;
-    priority_ = priority == "remote" ? "remote" : "local";
-    prefs_.putBool("enabled", enabled_);
-    prefs_.putString("url", url_);
-    prefs_.putString("token", token_);
-    prefs_.putString("priority", priority_);
-  }
-
-  bool enabled() const { return enabled_; }
-  String url() const { return url_; }
-  String token() const { return token_; }
-  String priority() const { return priority_; }
-  String lastError() const { return lastError_; }
-  uint32_t lastOkMs() const { return lastOkMs_; }
-  uint32_t lastAttemptMs() const { return lastAttemptMs_; }
-
-  bool syncNow() {
-    HTTPClient http;
-    http.setTimeout(8000);
-    if (!http.begin(url_)) {
-      lastError_ = "remote_begin_failed";
-      return false;
+  void ensureApStaMode() {
+    const wifi_mode_t mode = WiFi.getMode();
+    if (mode != WIFI_AP_STA) {
+      WiFi.mode(WIFI_AP_STA);
+      delay(60);
     }
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("Accept", "application/json");
-    if (token_.length() > 0) {
-      http.addHeader("Authorization", "Bearer " + token_);
-    }
-
-    const String payload = payloadJson();
-    const int status = http.POST(payload);
-    const String response = http.getString();
-    http.end();
-
-    if (status < 200 || status >= 300) {
-      lastError_ = "remote_http_" + String(status);
-      return false;
-    }
-
-    if (priority_ == "remote") {
-      applyRemoteCommands(response);
-    }
-    lastOkMs_ = millis();
-    lastError_ = "";
-    return true;
   }
 
-  String toJson() const {
-    String json = "{";
-    json += "\"enabled\":" + boolJson(enabled_);
-    json += ",\"url\":" + quoteJson(url_);
-    json += ",\"priority\":" + quoteJson(priority_);
-    json += ",\"lastOkMs\":" + String(lastOkMs_);
-    json += ",\"lastAttemptMs\":" + String(lastAttemptMs_);
-    json += ",\"lastError\":";
-    json += lastError_.length() == 0 ? String("null") : quoteJson(lastError_);
-    json += "}";
-    return json;
-  }
-
- private:
-  NetworkService& network_;
-  RelayService& relay_;
-  ScheduleService& scheduler_;
-  EnvironmentService& environment_;
-  WaterService& water_;
-  Preferences prefs_;
-  bool enabled_ = true;
-  String url_;
-  String token_;
-  String priority_ = "local";
-  String lastError_ = "not_synced_yet";
-  uint32_t lastAttemptMs_ = 0;
-  uint32_t lastOkMs_ = 0;
-
-  String payloadJson() {
-    String json = "{";
-    json += "\"deviceId\":" + quoteJson(Config::deviceId);
-    json += ",\"ip\":" + quoteJson(network_.localIp());
-    json += ",\"wifiConnected\":" + boolJson(network_.connected());
-    json += ",\"controlPriority\":" + quoteJson(priority_);
-    json += ",\"uptimeMs\":" + String(millis());
-    json += ",\"relays\":" + relay_.toJson();
-    json += ",\"environment\":" + environment_.toJson();
-    json += ",\"water\":" + water_.toJson();
-    json += "}";
-    return json;
-  }
-
-  void applyRemoteCommands(const String& response) {
-    for (uint8_t channel = 1; channel <= Config::relayCount; channel++) {
-      const String quotedChannel = "\"channel\":" + String(channel);
-      int cursor = response.indexOf(quotedChannel);
-      while (cursor >= 0) {
-        const int objectEnd = response.indexOf('}', cursor);
-        const int nextObject = objectEnd < 0 ? response.length() : objectEnd;
-        const String segment = response.substring(cursor, nextObject);
-        if (segment.indexOf("\"state\":\"on\"") >= 0 ||
-            segment.indexOf("\"state\":\"ON\"") >= 0 ||
-            segment.indexOf("\"on\":true") >= 0) {
-          relay_.set(channel, true);
-          scheduler_.holdManualOverride(channel);
-        } else if (segment.indexOf("\"state\":\"off\"") >= 0 ||
-                   segment.indexOf("\"state\":\"OFF\"") >= 0 ||
-                   segment.indexOf("\"on\":false") >= 0) {
-          relay_.set(channel, false);
-          scheduler_.holdManualOverride(channel);
-        } else if (segment.indexOf("\"state\":\"pulse\"") >= 0) {
-          relay_.pulse(channel);
-        }
-        cursor = response.indexOf(quotedChannel, nextObject);
-      }
+  void startSetupAp(bool forceRestart) {
+    ensureApStaMode();
+    const IPAddress apIp(
+      Config::setupApIp1,
+      Config::setupApIp2,
+      Config::setupApIp3,
+      Config::setupApIp4
+    );
+    const IPAddress gateway = apIp;
+    const IPAddress subnet(255, 255, 255, 0);
+    if (!forceRestart && WiFi.softAPIP() == apIp) {
+      return;
     }
+    if (forceRestart) {
+      WiFi.softAPdisconnect(true);
+      delay(120);
+    }
+    WiFi.softAPConfig(apIp, gateway, subnet);
+    const bool ok = WiFi.softAP(
+      Config::setupApSsid,
+      Config::setupApPassword,
+      Config::setupApChannel,
+      false,
+      Config::setupApMaxClients
+    );
+    Serial.print("AP ");
+    Serial.print(Config::setupApSsid);
+    Serial.print(ok ? " ativo em " : " falhou em ");
+    Serial.println(WiFi.softAPIP());
   }
 };
 
@@ -809,16 +729,14 @@ class ApiServer {
     RelayService& relay,
     ScheduleService& scheduler,
     EnvironmentService& environment,
-    WaterService& water,
-    RemoteSyncService& remote
+    WaterService& water
   ) : server_(Config::httpPort),
       network_(network),
       clock_(clock),
       relay_(relay),
       scheduler_(scheduler),
       environment_(environment),
-      water_(water),
-      remote_(remote) {}
+      water_(water) {}
 
   void begin() {
     server_.on("/", HTTP_GET, [this]() { handleRoot(); });
@@ -842,6 +760,9 @@ class ApiServer {
     server_.on("/api/schedule", HTTP_GET, [this]() { handleScheduleGet(); });
     server_.on("/api/time", HTTP_POST, [this]() { handleTimePost(); });
     server_.on("/api/wifi", HTTP_POST, [this]() { handleWifiPost(); });
+    server_.on("/api/wifi/disconnect", HTTP_POST, [this]() {
+      handleWifiDisconnectPost();
+    });
     server_.onNotFound([this]() { handleNotFound(); });
     server_.begin();
   }
@@ -858,7 +779,6 @@ class ApiServer {
   ScheduleService& scheduler_;
   EnvironmentService& environment_;
   WaterService& water_;
-  RemoteSyncService& remote_;
 
   void addCors() {
     server_.sendHeader("Access-Control-Allow-Origin", "*");
@@ -878,16 +798,17 @@ class ApiServer {
     json += ",\"role\":\"RELAY_CONTROLLER\"";
     json += ",\"wifiConnected\":" + boolJson(network_.connected());
     json += ",\"wifiSsid\":" + quoteJson(network_.ssid());
-    json += ",\"ip\":" + quoteJson(network_.localIp());
+    json += ",\"ip\":" + quoteJson(network_.stationIp());
+    json += ",\"wifiMode\":" + String(static_cast<int>(WiFi.getMode()));
     json += ",\"setupApSsid\":" + quoteJson(Config::setupApSsid);
     json += ",\"setupApIp\":" + quoteJson(network_.setupIp());
-    json += ",\"bluetoothName\":" + quoteJson(Config::bluetoothName);
+    json += ",\"setupApActive\":" + boolJson(network_.setupIp() != "0.0.0.0");
     json += ",\"timeValid\":" + boolJson(clock_.valid());
     json += ",\"localTime\":" + quoteJson(clock_.localTimeText());
     json += ",\"relayActiveLow\":" + boolJson(Config::relayActiveLow);
     json += ",\"relays\":" + relay_.toJson();
     json += ",\"schedules\":" + scheduler_.toJson();
-    json += ",\"remoteSync\":" + remote_.toJson();
+    json += ",\"remoteSync\":{\"enabled\":false,\"priority\":\"local\"}";
     json += ",\"sensorEndpoints\":[\"/api/environment\",\"/api/water\",\"/api/sensors\"]";
     json += ",\"uptimeMs\":" + String(millis());
     json += "}";
@@ -907,6 +828,9 @@ class ApiServer {
     html += "<input name='ssid' placeholder='Nome da rede Wi-Fi'><br>";
     html += "<input name='password' placeholder='Senha' type='password'><br>";
     html += "<button type='submit'>Salvar e conectar</button></form>";
+    html += "<form method='post' action='/api/wifi/disconnect'>";
+    html += "<input type='hidden' name='clear' value='1'>";
+    html += "<button type='submit'>Desconectar Wi-Fi</button></form>";
     html += "</body></html>";
     server_.send(200, "text/html", html);
   }
@@ -946,24 +870,11 @@ class ApiServer {
   }
 
   void handleRemoteGet() {
-    String json = "{\"ok\":true,\"remoteSync\":";
-    json += remote_.toJson();
-    json += "}";
-    sendJson(json);
+    sendJson("{\"ok\":true,\"remoteSync\":{\"enabled\":false,\"priority\":\"local\"}}");
   }
 
   void handleRemotePost() {
-    const bool enabled = !server_.hasArg("enabled") ||
-                         truthyText(server_.arg("enabled"));
-    const String url = server_.hasArg("url") ? server_.arg("url") : remote_.url();
-    const String token = server_.hasArg("token") ? server_.arg("token") : remote_.token();
-    String priority = server_.hasArg("priority") ? server_.arg("priority") : remote_.priority();
-    priority.toLowerCase();
-    remote_.configure(enabled, url, token, priority);
-    String json = "{\"ok\":true,\"remoteSync\":";
-    json += remote_.toJson();
-    json += "}";
-    sendJson(json);
+    sendJson("{\"ok\":true,\"remoteSync\":{\"enabled\":false,\"priority\":\"local\"}}");
   }
 
   void handleRelayGet() {
@@ -1102,11 +1013,27 @@ class ApiServer {
     json += ",\"wifiConnected\":";
     json += boolJson(network_.connected());
     json += ",\"ip\":";
-    json += quoteJson(network_.localIp());
+    json += quoteJson(network_.stationIp());
     json += ",\"setupApIp\":";
     json += quoteJson(network_.setupIp());
     json += "}";
     sendJson(json, connected ? 200 : 202);
+  }
+
+  void handleWifiDisconnectPost() {
+    const bool clear = !server_.hasArg("clear") || truthyText(server_.arg("clear"));
+    network_.disconnect(clear);
+    String json = "{\"ok\":true";
+    json += ",\"wifiConnected\":";
+    json += boolJson(network_.connected());
+    json += ",\"ip\":";
+    json += quoteJson(network_.stationIp());
+    json += ",\"setupApIp\":";
+    json += quoteJson(network_.setupIp());
+    json += ",\"credentialsCleared\":";
+    json += boolJson(clear);
+    json += "}";
+    sendJson(json);
   }
 
   void handleNotFound() {
@@ -1188,227 +1115,6 @@ class ApiServer {
   }
 };
 
-class BluetoothBridge {
- public:
-  BluetoothBridge(
-    NetworkService& network,
-    ClockService& clock,
-    RelayService& relay,
-    ScheduleService& scheduler
-  ) : network_(network), clock_(clock), relay_(relay), scheduler_(scheduler) {}
-
-  void begin() {
-    serial_.begin(Config::bluetoothName);
-    serial_.println("GRANJA SELETO RELE pronto. Digite HELP.");
-  }
-
-  void loop() {
-    while (serial_.available()) {
-      const char character = static_cast<char>(serial_.read());
-      if (character == '\n' || character == '\r') {
-        processLine(input_);
-        input_ = "";
-      } else {
-        input_ += character;
-      }
-    }
-  }
-
- private:
-  BluetoothSerial serial_;
-  NetworkService& network_;
-  ClockService& clock_;
-  RelayService& relay_;
-  ScheduleService& scheduler_;
-  String input_;
-
-  void processLine(String line) {
-    line.trim();
-    if (line.length() == 0) return;
-
-    String command = line;
-    command.toUpperCase();
-
-    if (command == "HELP") {
-      serial_.println(
-        "Comandos: PING, STATUS, RELAY 1 ON, RELAY 1 OFF, PULSE 1, "
-        "SCHEDULE 1 1 04:30 06:10 17:40 20:00 127, "
-        "TIME 1735689600, WIFI Rede|Senha"
-      );
-      return;
-    }
-
-    if (command == "PING") {
-      serial_.println("{\"ok\":true,\"transport\":\"bluetooth\"}");
-      return;
-    }
-
-    if (command == "STATUS") {
-      serial_.println(statusJson());
-      return;
-    }
-
-    if (command.startsWith("RELAY ")) {
-      handleRelayCommand(command);
-      return;
-    }
-
-    if (command.startsWith("PULSE ")) {
-      const uint8_t channel = command.substring(6).toInt();
-      const bool ok = relay_.pulse(channel);
-      serial_.println(relayResultJson(ok, channel));
-      return;
-    }
-
-    if (command.startsWith("SCHEDULE ")) {
-      handleScheduleCommand(command);
-      return;
-    }
-
-    if (command.startsWith("TIME ")) {
-      const time_t epoch = static_cast<time_t>(command.substring(5).toInt());
-      clock_.syncFromEpoch(epoch);
-      scheduler_.applyNow();
-      String json = "{\"ok\":true,\"timeValid\":";
-      json += boolJson(clock_.valid());
-      json += "}";
-      serial_.println(json);
-      return;
-    }
-
-    if (command.startsWith("WIFI ")) {
-      handleWifiCommand(line.substring(5));
-      return;
-    }
-
-    serial_.println("{\"ok\":false,\"error\":\"unknown_command\"}");
-  }
-
-  String statusJson() {
-    String json = "{";
-    json += "\"ok\":true";
-    json += ",\"deviceId\":" + quoteJson(Config::deviceId);
-    json += ",\"transport\":\"bluetooth\"";
-    json += ",\"wifiConnected\":" + boolJson(network_.connected());
-    json += ",\"ip\":" + quoteJson(network_.localIp());
-    json += ",\"setupApIp\":" + quoteJson(network_.setupIp());
-    json += ",\"bluetoothName\":" + quoteJson(Config::bluetoothName);
-    json += ",\"timeValid\":" + boolJson(clock_.valid());
-    json += ",\"localTime\":" + quoteJson(clock_.localTimeText());
-    json += ",\"relays\":" + relay_.toJson();
-    json += ",\"schedules\":" + scheduler_.toJson();
-    json += "}";
-    return json;
-  }
-
-  void handleRelayCommand(const String& command) {
-    const int firstSpace = command.indexOf(' ');
-    const int secondSpace = command.indexOf(' ', firstSpace + 1);
-    if (secondSpace < 0) {
-      serial_.println("{\"ok\":false,\"error\":\"invalid_relay_command\"}");
-      return;
-    }
-
-    const uint8_t channel = command.substring(firstSpace + 1, secondSpace).toInt();
-    const String state = command.substring(secondSpace + 1);
-    bool ok = false;
-
-    if (state == "ON" || state == "1") {
-      ok = relay_.set(channel, true);
-      if (ok) scheduler_.holdManualOverride(channel);
-    } else if (state == "OFF" || state == "0") {
-      ok = relay_.set(channel, false);
-      if (ok) scheduler_.holdManualOverride(channel);
-    } else {
-      serial_.println("{\"ok\":false,\"error\":\"invalid_state\"}");
-      return;
-    }
-
-    serial_.println(relayResultJson(ok, channel));
-  }
-
-  void handleScheduleCommand(const String& command) {
-    const String channelText = commandToken(command, 1);
-    const String enabledText = commandToken(command, 2);
-    const String on1Text = commandToken(command, 3);
-    const String off1Text = commandToken(command, 4);
-    const String maybeOn2Text = commandToken(command, 5);
-    const String maybeOff2Text = commandToken(command, 6);
-    const String maybeDaysText = commandToken(command, 7);
-
-    if (channelText.length() == 0 || enabledText.length() == 0 ||
-        on1Text.length() == 0 || off1Text.length() == 0 ||
-        maybeOn2Text.length() == 0) {
-      serial_.println("{\"ok\":false,\"error\":\"invalid_schedule_command\"}");
-      return;
-    }
-
-    const bool hasSecondWindow = maybeDaysText.length() > 0;
-    const uint8_t channel = channelText.toInt();
-    const bool enabled = enabledText.toInt() == 1 || truthyText(enabledText);
-    const int on1Minute = parseTimeToMinute(on1Text);
-    const int off1Minute = parseTimeToMinute(off1Text);
-    const int on2Minute = hasSecondWindow ? parseTimeToMinute(maybeOn2Text) : 1060;
-    const int off2Minute = hasSecondWindow ? parseTimeToMinute(maybeOff2Text) : 1200;
-    const int days = (hasSecondWindow ? maybeDaysText : maybeOn2Text).toInt();
-
-    if (!relay_.isValidChannel(channel) || on1Minute < 0 || off1Minute < 0 ||
-        on2Minute < 0 || off2Minute < 0 || days < 0 || days > 127) {
-      serial_.println("{\"ok\":false,\"error\":\"invalid_schedule\"}");
-      return;
-    }
-
-    ChannelSchedule schedule;
-    schedule.enabled = enabled;
-    schedule.daysMask = static_cast<uint8_t>(days);
-    schedule.slots[0].enabled = enabled;
-    schedule.slots[0].onMinute = on1Minute;
-    schedule.slots[0].offMinute = off1Minute;
-    schedule.slots[1].enabled = enabled && hasSecondWindow;
-    schedule.slots[1].onMinute = on2Minute;
-    schedule.slots[1].offMinute = off2Minute;
-
-    const bool ok = scheduler_.set(channel, schedule);
-    String json = "{\"ok\":";
-    json += boolJson(ok);
-    json += ",\"cached\":true,\"schedule\":";
-    json += scheduler_.scheduleJson(channel, scheduler_.get(channel));
-    json += "}";
-    serial_.println(json);
-  }
-
-  void handleWifiCommand(String payload) {
-    const int separator = payload.indexOf('|');
-    if (separator < 0) {
-      serial_.println("{\"ok\":false,\"error\":\"use_WIFI_SSID|SENHA\"}");
-      return;
-    }
-    const String ssid = payload.substring(0, separator);
-    const String password = payload.substring(separator + 1);
-    const bool connected = network_.saveAndReconnect(ssid, password);
-    if (connected) clock_.begin();
-    String json = "{\"ok\":";
-    json += boolJson(connected);
-    json += ",\"wifiConnected\":";
-    json += boolJson(network_.connected());
-    json += ",\"ip\":";
-    json += quoteJson(network_.localIp());
-    json += "}";
-    serial_.println(json);
-  }
-
-  String relayResultJson(bool ok, uint8_t channel) {
-    String json = "{\"ok\":";
-    json += boolJson(ok);
-    json += ",\"channel\":";
-    json += String(channel);
-    json += ",\"on\":";
-    json += boolJson(relay_.state(channel));
-    json += "}";
-    return json;
-  }
-};
-
 StorageService storage;
 ClockService clockService;
 NetworkService network(storage);
@@ -1416,23 +1122,14 @@ RelayService relay;
 ScheduleService scheduler(storage, clockService, relay);
 EnvironmentService environmentService;
 WaterService waterService;
-RemoteSyncService remoteSync(
-  network,
-  relay,
-  scheduler,
-  environmentService,
-  waterService
-);
 ApiServer api(
   network,
   clockService,
   relay,
   scheduler,
   environmentService,
-  waterService,
-  remoteSync
+  waterService
 );
-BluetoothBridge bluetooth(network, clockService, relay, scheduler);
 
 void setup() {
   Serial.begin(115200);
@@ -1444,13 +1141,11 @@ void setup() {
   storage.begin();
   environmentService.begin();
   waterService.begin();
-  remoteSync.begin();
   relay.begin();
   network.begin();
   clockService.begin();
   scheduler.begin();
   api.begin();
-  bluetooth.begin();
 
   Serial.print("AP de configuracao: ");
   Serial.print(Config::setupApSsid);
@@ -1461,16 +1156,12 @@ void setup() {
     Serial.print("Wi-Fi conectado. IP: ");
     Serial.println(network.localIp());
   } else {
-    Serial.println("Wi-Fi nao conectado. Use o AP ou Bluetooth para configurar.");
+    Serial.println("Wi-Fi nao conectado. Use o AP para configurar.");
   }
-
-  Serial.print("Bluetooth: ");
-  Serial.println(Config::bluetoothName);
 }
 
 void loop() {
+  network.maintain();
   api.loop();
-  bluetooth.loop();
   scheduler.loop();
-  remoteSync.loop();
 }
