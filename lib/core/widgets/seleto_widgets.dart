@@ -259,12 +259,19 @@ class SeletoInfoStrip extends StatelessWidget {
 }
 
 class SeletoKpiGrid extends StatelessWidget {
-  const SeletoKpiGrid({super.key, required this.children});
+  const SeletoKpiGrid({
+    super.key,
+    required this.children,
+    this.forceTwoColumns = false,
+  });
   final List<Widget> children;
+  final bool forceTwoColumns;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
-      final columns = box.maxWidth >= 1050
+      final columns = forceTwoColumns
+          ? 2
+          : box.maxWidth >= 1050
           ? 4
           : box.maxWidth >= 650
           ? 2
@@ -289,6 +296,125 @@ class SeletoTabList extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       ListView(padding: const EdgeInsets.only(bottom: 16), children: children);
+}
+
+class SeletoCompactGrid extends StatelessWidget {
+  const SeletoCompactGrid({
+    super.key,
+    required this.children,
+    this.minTileHeight = 86,
+    this.spacing = 6,
+  });
+
+  final List<Widget> children;
+  final double minTileHeight;
+  final double spacing;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      const columns = 2;
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: children.length,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          mainAxisSpacing: spacing,
+          crossAxisSpacing: spacing,
+          mainAxisExtent: minTileHeight,
+        ),
+        itemBuilder: (_, index) => children[index],
+      );
+    },
+  );
+}
+
+class SeletoCompactInfoCard extends StatelessWidget {
+  const SeletoCompactInfoCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.primary,
+    this.secondary,
+    this.trailing,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String primary;
+  final String? secondary;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(9, 8, 8, 8),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer.withValues(alpha: .52),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 17, color: scheme.primary),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      primary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (secondary?.isNotEmpty ?? false) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        secondary!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[const SizedBox(width: 6), trailing!],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class SeletoAsyncError extends StatelessWidget {

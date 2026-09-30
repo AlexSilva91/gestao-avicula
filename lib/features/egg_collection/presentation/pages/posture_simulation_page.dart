@@ -19,10 +19,12 @@ class PostureSimulationPage extends ConsumerStatefulWidget {
 
 class _PostureSimulationPageState extends ConsumerState<PostureSimulationPage> {
   final _rate = TextEditingController(text: '80');
+  final _birds = TextEditingController();
 
   @override
   void dispose() {
     _rate.dispose();
+    _birds.dispose();
     super.dispose();
   }
 
@@ -36,7 +38,13 @@ class _PostureSimulationPageState extends ConsumerState<PostureSimulationPage> {
     );
     final ratePercent = _parsePercent(_rate.text);
     final rate = ratePercent / 100;
-    final eggsPerDay = activeBirds * rate;
+    final simulatedBirds = int.tryParse(
+      _birds.text.replaceAll('.', '').replaceAll(',', '').trim(),
+    );
+    final birdBase = simulatedBirds == null || simulatedBirds <= 0
+        ? activeBirds
+        : simulatedBirds;
+    final eggsPerDay = birdBase * rate;
     final today = DateTime.now();
     final todayStart = DateTime(today.year, today.month, today.day);
     final monthEnd = DateTime(today.year, today.month + 1);
@@ -69,6 +77,7 @@ class _PostureSimulationPageState extends ConsumerState<PostureSimulationPage> {
           const SizedBox(height: 16),
           _SimulationInputs(
             rate: _rate,
+            birds: _birds,
             activeBirds: activeBirds,
             onChanged: () => setState(() {}),
           ),
@@ -216,11 +225,13 @@ class _PeriodCard extends StatelessWidget {
 class _SimulationInputs extends StatelessWidget {
   const _SimulationInputs({
     required this.rate,
+    required this.birds,
     required this.activeBirds,
     required this.onChanged,
   });
 
   final TextEditingController rate;
+  final TextEditingController birds;
   final int activeBirds;
   final VoidCallback onChanged;
 
@@ -245,17 +256,35 @@ class _SimulationInputs extends StatelessWidget {
             value: decimal.format(activeBirds),
             icon: Icons.groups_2_outlined,
           );
+          final simulatedBirds = TextFormField(
+            controller: this.birds,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Aves simuladas',
+              prefixIcon: Icon(Icons.edit_outlined),
+              hintText: 'Vazio = aves ativas',
+            ),
+            onChanged: (_) => onChanged(),
+          );
           if (box.maxWidth >= 720) {
             return Row(
               children: [
                 Expanded(child: rateField),
+                const SizedBox(width: 12),
+                Expanded(child: simulatedBirds),
                 const SizedBox(width: 12),
                 Expanded(child: birds),
               ],
             );
           }
           return Column(
-            children: [rateField, const SizedBox(height: 12), birds],
+            children: [
+              rateField,
+              const SizedBox(height: 12),
+              simulatedBirds,
+              const SizedBox(height: 12),
+              birds,
+            ],
           );
         },
       ),

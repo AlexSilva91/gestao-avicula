@@ -28,6 +28,7 @@ class MovementsPage extends ConsumerWidget {
         const SizedBox(height: 16),
         if (ref.watch(birdMetricsProvider).asData case final data?)
           SeletoKpiGrid(
+            forceTwoColumns: true,
             children: [
               SeletoKpiCard(
                 label: 'Aves compradas',

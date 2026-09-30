@@ -691,45 +691,11 @@ class _SideNavigation extends StatelessWidget {
                   ),
                 ),
               for (final d in groups[groupIndex].value)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 1,
-                  ),
-                  child: Tooltip(
-                    message: d.label,
-                    child: ListTile(
-                      selected: path == d.route,
-                      selectedTileColor: Theme.of(
-                        context,
-                      ).colorScheme.primaryContainer.withValues(alpha: .68),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: extended ? 12 : 16,
-                      ),
-                      minLeadingWidth: 24,
-                      horizontalTitleGap: 10,
-                      visualDensity: VisualDensity.compact,
-                      leading: Icon(path == d.route ? d.selectedIcon : d.icon),
-                      iconColor: path == d.route
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                      title: extended
-                          ? Text(
-                              d.label,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontWeight: path == d.route
-                                    ? FontWeight.w800
-                                    : FontWeight.w500,
-                              ),
-                            )
-                          : null,
-                      onTap: path == d.route ? null : () => context.go(d.route),
-                    ),
-                  ),
+                _NavigationTile(
+                  destination: d,
+                  selected: path == d.route,
+                  extended: extended,
+                  onTap: path == d.route ? null : () => context.go(d.route),
                 ),
             ],
           ],
@@ -766,35 +732,126 @@ class _DrawerNavigation extends StatelessWidget {
                   ),
                 ),
                 for (final d in group.value)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 1,
-                    ),
-                    child: ListTile(
-                      selected: path == d.route,
-                      selectedTileColor: Theme.of(
-                        context,
-                      ).colorScheme.primaryContainer.withValues(alpha: .52),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      leading: Icon(path == d.route ? d.selectedIcon : d.icon),
-                      iconColor: path == d.route
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                      title: Text(d.label),
-                      onTap: () {
-                        Navigator.pop(context);
-                        if (path != d.route) context.go(d.route);
-                      },
-                    ),
+                  _NavigationTile(
+                    destination: d,
+                    selected: path == d.route,
+                    extended: true,
+                    onTap: () {
+                      Navigator.pop(context);
+                      if (path != d.route) context.go(d.route);
+                    },
                   ),
               ],
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _NavigationTile extends StatelessWidget {
+  const _NavigationTile({
+    required this.destination,
+    required this.selected,
+    required this.extended,
+    required this.onTap,
+  });
+
+  final SeletoDestination destination;
+  final bool selected;
+  final bool extended;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final foreground = selected ? scheme.primary : scheme.onSurfaceVariant;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: extended ? 10 : 8, vertical: 2),
+      child: Tooltip(
+        message: destination.label,
+        waitDuration: const Duration(milliseconds: 450),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: selected
+                ? scheme.primaryContainer.withValues(alpha: .60)
+                : Colors.transparent,
+            border: Border.all(
+              color: selected
+                  ? scheme.primary.withValues(alpha: .18)
+                  : Colors.transparent,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: onTap,
+              child: SizedBox(
+                height: 42,
+                child: Row(
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      width: 3,
+                      height: selected ? 24 : 0,
+                      decoration: BoxDecoration(
+                        color: scheme.primary,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                    SizedBox(width: extended ? 9 : 0),
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: extended
+                            ? MainAxisAlignment.start
+                            : MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            selected
+                                ? destination.selectedIcon
+                                : destination.icon,
+                            size: 21,
+                            color: foreground,
+                          ),
+                          if (extended) ...[
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                destination.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelLarge
+                                    ?.copyWith(
+                                      color: selected
+                                          ? scheme.onPrimaryContainer
+                                          : scheme.onSurface,
+                                      fontWeight: selected
+                                          ? FontWeight.w900
+                                          : FontWeight.w600,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (extended && selected) ...[
+                      const SizedBox(width: 8),
+                      Icon(Icons.circle, size: 7, color: scheme.primary),
+                      const SizedBox(width: 10),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -155,6 +155,23 @@ void main() {
         actorId: actor,
       );
       expect(await db.feedBalanceFor(batch.batch.id), 22.5);
+      final feeding = (await db.watchFeedings().first).single;
+
+      await db.updateFeeding(
+        feedingId: feeding.id,
+        lotId: lot.lot.id,
+        batchId: batch.batch.id,
+        quantityKg: 3,
+        date: DateTime(2026, 8, 3),
+        notes: 'Correção',
+        actorId: actor,
+      );
+
+      final updated = (await db.watchFeedings().first).single;
+      expect(updated.quantityKg, 3);
+      expect(updated.feedingDate, DateTime(2026, 8, 3));
+      expect(updated.notes, 'Correção');
+      expect(await db.feedBalanceFor(batch.batch.id), 22);
     },
   );
 

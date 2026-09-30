@@ -215,75 +215,30 @@ class _EggMetrics extends StatelessWidget {
   const _EggMetrics({required this.metrics});
   final EggMetrics metrics;
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) {
-      final count = box.maxWidth >= 850
-          ? 3
-          : box.maxWidth >= 520
-          ? 2
-          : 1;
-      return GridView.count(
-        crossAxisCount: count,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        childAspectRatio: count == 1 ? 2.8 : 1.85,
-        children: [
-          _Metric('Ovos hoje', '${metrics.eggsToday}', Icons.egg_alt_outlined),
-          _Metric(
-            'Ovos no mês',
-            '${metrics.eggsThisMonth}',
-            Icons.calendar_month_outlined,
-          ),
-          _Metric(
-            'Estoque',
-            '${metrics.stock} · ${metrics.dozensInStock.toStringAsFixed(1)} dúzias',
-            Icons.inventory_2_outlined,
-          ),
-        ],
-      );
-    },
-  );
-}
-
-class _Metric extends StatelessWidget {
-  const _Metric(this.label, this.value, this.icon);
-  final String label;
-  final String value;
-  final IconData icon;
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.secondaryContainer,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              icon,
-              color: Theme.of(context).colorScheme.onSecondaryContainer,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: Theme.of(context).textTheme.labelLarge),
-                const SizedBox(height: 5),
-                Text(value, style: Theme.of(context).textTheme.titleLarge),
-              ],
-            ),
-          ),
-        ],
+  Widget build(BuildContext context) => SeletoCompactGrid(
+    minTileHeight: 78,
+    children: [
+      SeletoCompactInfoCard(
+        icon: Icons.egg_alt_outlined,
+        title: 'Ovos hoje',
+        primary: '${metrics.eggsToday}',
       ),
-    ),
+      SeletoCompactInfoCard(
+        icon: Icons.calendar_month_outlined,
+        title: 'Ovos no mês',
+        primary: '${metrics.eggsThisMonth}',
+      ),
+      SeletoCompactInfoCard(
+        icon: Icons.inventory_2_outlined,
+        title: 'Estoque',
+        primary: '${metrics.stock} ovos',
+      ),
+      SeletoCompactInfoCard(
+        icon: Icons.inventory_outlined,
+        title: 'Dúzias em estoque',
+        primary: metrics.dozensInStock.toStringAsFixed(1),
+      ),
+    ],
   );
 }
 
@@ -329,33 +284,30 @@ class _CollectionList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final lots = ref.watch(lotSummariesProvider).asData?.value ?? const [];
     final names = {for (final lot in lots) lot.lot.id: lot.lot.name};
-    return Card(
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: collections.length,
-        separatorBuilder: (_, _) => const Divider(height: 1),
-        itemBuilder: (_, index) {
-          final item = collections[index];
-          final usable = item.cleanEggs + item.dirtyEggs;
-          final losses = item.crackedEggs + item.brokenEggs;
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 18,
-              vertical: 7,
-            ),
-            leading: CircleAvatar(child: Text('${item.quantity}')),
-            title: Text(names[item.lotId] ?? 'Lote removido'),
-            subtitle: Text(
-              '${DateFormat('dd/MM/yyyy').format(item.collectedOn)} · '
-              '$usable no estoque · ${item.cleanEggs} limpos · ${item.dirtyEggs} sujos',
-            ),
-            trailing: losses > 0
-                ? Text('$losses perda(s)')
-                : const Icon(Icons.check_circle_outline),
-          );
-        },
-      ),
+    return SeletoCompactGrid(
+      minTileHeight: 88,
+      children: [
+        for (final item in collections)
+          Builder(
+            builder: (context) {
+              final usable = item.cleanEggs + item.dirtyEggs;
+              final losses = item.crackedEggs + item.brokenEggs;
+              return SeletoCompactInfoCard(
+                icon: Icons.egg_alt_outlined,
+                title: DateFormat('dd/MM/yyyy').format(item.collectedOn),
+                primary: names[item.lotId] ?? 'Lote removido',
+                secondary:
+                    '${item.quantity} ovos · $usable estoque · ${item.cleanEggs} limpos · ${item.dirtyEggs} sujos',
+                trailing: losses > 0
+                    ? Text(
+                        '$losses perda',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      )
+                    : const Icon(Icons.check_circle_outline),
+              );
+            },
+          ),
+      ],
     );
   }
 }

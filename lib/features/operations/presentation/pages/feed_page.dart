@@ -838,31 +838,32 @@ class _FeedStockTab extends StatelessWidget {
           );
           return SeletoTabList(
             children: [
-              SeletoKpiGrid(
+              SeletoCompactGrid(
+                minTileHeight: 74,
                 children: [
-                  SeletoKpiCard(
-                    label: 'Saldo total',
-                    value: kg(stock),
+                  SeletoCompactInfoCard(
+                    title: 'Saldo total',
+                    primary: kg(stock),
                     icon: Icons.inventory_2_outlined,
                   ),
-                  SeletoKpiCard(
-                    label: 'Total produzido',
-                    value: kg(made),
+                  SeletoCompactInfoCard(
+                    title: 'Produzido',
+                    primary: kg(made),
                     icon: Icons.factory_outlined,
                   ),
-                  SeletoKpiCard(
-                    label: 'Total consumido',
-                    value: kg(made - stock),
+                  SeletoCompactInfoCard(
+                    title: 'Consumido',
+                    primary: kg(made - stock),
                     icon: Icons.restaurant_outlined,
                   ),
-                  SeletoKpiCard(
-                    label: 'Fabricações',
-                    value: '${items.length}',
+                  SeletoCompactInfoCard(
+                    title: 'Fabricações',
+                    primary: '${items.length}',
                     icon: Icons.numbers,
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 6),
               if (items.isNotEmpty)
                 Card(
                   child: ListView.separated(
@@ -909,68 +910,136 @@ class _FeedStockTab extends StatelessWidget {
       );
 }
 
-class _FeedingsTab extends StatelessWidget {
+class _FeedingsTab extends StatefulWidget {
   const _FeedingsTab({required this.ref});
   final WidgetRef ref;
+
   @override
-  Widget build(BuildContext context) => ref
-      .watch(feedingsProvider)
-      .when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => const SeletoAsyncError(),
-        data: (items) => SeletoTabList(
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => _importConsumption(context),
-                    icon: const Icon(Icons.upload_file_outlined),
-                    label: const Text('Importar consumo'),
+  State<_FeedingsTab> createState() => _FeedingsTabState();
+}
+
+class _FeedingsTabState extends State<_FeedingsTab> {
+  static const _pageSize = 10;
+  int _page = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final batches = widget.ref.watch(feedBatchesProvider).asData?.value;
+    final batchById = {
+      for (final batch in batches ?? <FeedBatchBalance>[])
+        batch.batch.id: batch,
+    };
+    final lots = widget.ref.watch(lotSummariesProvider).asData?.value;
+    final lotById = {for (final lot in lots ?? <LotSummary>[]) lot.lot.id: lot};
+    return widget.ref
+        .watch(feedingsProvider)
+        .when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => const SeletoAsyncError(),
+          data: (items) {
+            final now = DateTime.now();
+            final today = DateTime(now.year, now.month, now.day);
+            final monthStart = DateTime(now.year, now.month);
+            final totalKg = items.fold<double>(
+              0,
+              (sum, item) => sum + item.quantityKg,
+            );
+            final todayKg = items
+                .where(
+                  (item) =>
+                      item.feedingDate.year == today.year &&
+                      item.feedingDate.month == today.month &&
+                      item.feedingDate.day == today.day,
+                )
+                .fold<double>(0, (sum, item) => sum + item.quantityKg);
+            final monthKg = items
+                .where((item) => !item.feedingDate.isBefore(monthStart))
+                .fold<double>(0, (sum, item) => sum + item.quantityKg);
+            final lotCount = items.map((item) => item.lotId).toSet().length;
+
+            return SeletoTabList(
+              children: [
+                _FeedingPanelHeader(
+                  onImport: () => _importConsumption(context),
+                  onRegister: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _FeedingDialog(ref: widget.ref),
                   ),
-                  FilledButton.icon(
-                    onPressed: () => showDialog<void>(
-                      context: context,
-                      builder: (_) => _FeedingDialog(ref: ref),
-                    ),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Registrar alimentação'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (items.isEmpty)
-              const SeletoEmptyState(
-                icon: Icons.restaurant,
-                title: 'Nenhuma alimentação',
-                message: 'Registre o fornecimento diário de ração por lote.',
-              )
-            else
-              Card(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: items.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final f = items[i];
-                    return ListTile(
-                      leading: const Icon(Icons.restaurant_outlined),
-                      title: Text(kg(f.quantityKg)),
-                      subtitle: Text(
-                        '${shortDate.format(f.feedingDate)} · Lote ${f.lotId.substring(0, 8)} · Ração ${f.batchId.substring(0, 8)}',
-                      ),
-                    );
-                  },
                 ),
-              ),
-          ],
-        ),
-      );
+                const SizedBox(height: 6),
+                _FeedingMetricStrip(
+                  metrics: [
+                    _FeedingMetric(
+                      label: 'Hoje',
+                      value: kg(todayKg),
+                      icon: Icons.today_outlined,
+                    ),
+                    _FeedingMetric(
+                      label: 'Mês',
+                      value: kg(monthKg),
+                      icon: Icons.calendar_month_outlined,
+                    ),
+                    _FeedingMetric(
+                      label: 'Total',
+                      value: kg(totalKg),
+                      icon: Icons.scale_outlined,
+                    ),
+                    _FeedingMetric(
+                      label: 'Lotes',
+                      value: '$lotCount',
+                      icon: Icons.grid_view_outlined,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                SeletoSectionHeader(
+                  title: 'Registros recentes',
+                  trailing: items.isEmpty
+                      ? null
+                      : Text(
+                          '${items.length} lançamento(s)',
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                ),
+                if (items.isEmpty)
+                  SeletoEmptyState(
+                    icon: Icons.restaurant,
+                    title: 'Nenhuma alimentação',
+                    message:
+                        'Registre o fornecimento diário de ração por lote.',
+                    action: FilledButton.icon(
+                      onPressed: () => showDialog<void>(
+                        context: context,
+                        builder: (_) => _FeedingDialog(ref: widget.ref),
+                      ),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Registrar alimentação'),
+                    ),
+                  )
+                else
+                  _FeedingPagedList(
+                    items: items,
+                    page: _effectivePage(items.length),
+                    pageSize: _pageSize,
+                    batchById: batchById,
+                    lotById: lotById,
+                    onPageChanged: (page) => setState(() => _page = page),
+                    onEdit: (feeding) => showDialog<void>(
+                      context: context,
+                      builder: (_) =>
+                          _FeedingDialog(ref: widget.ref, feeding: feeding),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+  }
 
   Future<void> _importConsumption(BuildContext context) async {
     try {
@@ -981,7 +1050,7 @@ class _FeedingsTab extends StatelessWidget {
       );
       if (picked == null) return;
       final bytes = await picked.readAsBytes();
-      final result = await ref
+      final result = await widget.ref
           .read(operationsControllerProvider)
           .importFeedRecommendations(picked.name, bytes);
       if (context.mounted) {
@@ -996,6 +1065,422 @@ class _FeedingsTab extends StatelessWidget {
     } catch (e) {
       await showOperationError(context, e);
     }
+  }
+
+  int _effectivePage(int itemCount) {
+    final maxPage = itemCount == 0 ? 0 : (itemCount - 1) ~/ _pageSize;
+    final effective = _page.clamp(0, maxPage);
+    if (effective != _page) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _page = effective);
+      });
+    }
+    return effective;
+  }
+}
+
+class _FeedingPanelHeader extends StatelessWidget {
+  const _FeedingPanelHeader({required this.onImport, required this.onRegister});
+
+  final VoidCallback onImport;
+  final VoidCallback onRegister;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: .92),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .72)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 680;
+            final title = Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer.withValues(alpha: .62),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.restaurant_outlined,
+                    color: scheme.primary,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    'Alimentação dos lotes',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            );
+            final actions = Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: compact ? WrapAlignment.start : WrapAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onImport,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 36),
+                    padding: const EdgeInsets.symmetric(horizontal: 11),
+                  ),
+                  icon: const Icon(Icons.upload_file_outlined),
+                  label: const Text('Importar consumo'),
+                ),
+                FilledButton.icon(
+                  onPressed: onRegister,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 36),
+                    padding: const EdgeInsets.symmetric(horizontal: 11),
+                  ),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Registrar alimentação'),
+                ),
+              ],
+            );
+            if (compact) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [title, const SizedBox(height: 8), actions],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: title),
+                const SizedBox(width: 16),
+                actions,
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedingMetric {
+  const _FeedingMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+}
+
+class _FeedingMetricStrip extends StatelessWidget {
+  const _FeedingMetricStrip({required this.metrics});
+
+  final List<_FeedingMetric> metrics;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const columns = 2;
+        return GridView.count(
+          crossAxisCount: columns,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 5,
+          crossAxisSpacing: 5,
+          childAspectRatio: 4.9,
+          children: [
+            for (final metric in metrics) _FeedingMetricTile(metric: metric),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _FeedingMetricTile extends StatelessWidget {
+  const _FeedingMetricTile({required this.metric});
+
+  final _FeedingMetric metric;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: .88),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .68)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      child: Row(
+        children: [
+          Icon(metric.icon, size: 15, color: scheme.primary),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              metric.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SizeTransition(
+                sizeFactor: animation,
+                axis: Axis.horizontal,
+                child: child,
+              ),
+            ),
+            child: Text(
+              metric.value,
+              key: ValueKey('${metric.label}-${metric.value}'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedingPagedList extends StatelessWidget {
+  const _FeedingPagedList({
+    required this.items,
+    required this.page,
+    required this.pageSize,
+    required this.batchById,
+    required this.lotById,
+    required this.onPageChanged,
+    required this.onEdit,
+  });
+
+  final List<DailyFeeding> items;
+  final int page;
+  final int pageSize;
+  final Map<String, FeedBatchBalance> batchById;
+  final Map<String, LotSummary> lotById;
+  final ValueChanged<int> onPageChanged;
+  final ValueChanged<DailyFeeding> onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final start = page * pageSize;
+    final end = (start + pageSize).clamp(0, items.length);
+    final pageItems = items.sublist(start, end);
+    final pageCount = items.isEmpty ? 1 : ((items.length - 1) ~/ pageSize) + 1;
+    return Column(
+      children: [
+        Card(
+          clipBehavior: Clip.antiAlias,
+          margin: EdgeInsets.zero,
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: pageItems.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (_, i) {
+              final feeding = pageItems[i];
+              return _FeedingListItem(
+                index: i,
+                feeding: feeding,
+                feed: batchById[feeding.batchId],
+                lot: lotById[feeding.lotId],
+                onEdit: () => onEdit(feeding),
+              );
+            },
+          ),
+        ),
+        if (items.length > pageSize) ...[
+          const SizedBox(height: 5),
+          _FeedingPaginationBar(
+            page: page,
+            pageCount: pageCount,
+            start: start + 1,
+            end: end,
+            total: items.length,
+            onPageChanged: onPageChanged,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FeedingPaginationBar extends StatelessWidget {
+  const _FeedingPaginationBar({
+    required this.page,
+    required this.pageCount,
+    required this.start,
+    required this.end,
+    required this.total,
+    required this.onPageChanged,
+  });
+
+  final int page;
+  final int pageCount;
+  final int start;
+  final int end;
+  final int total;
+  final ValueChanged<int> onPageChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: .80),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .58)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 160),
+                child: Text(
+                  '$start-$end de $total',
+                  key: ValueKey('$start-$end-$total'),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Página anterior',
+              onPressed: page == 0 ? null : () => onPageChanged(page - 1),
+              icon: const Icon(Icons.chevron_left),
+              style: IconButton.styleFrom(
+                minimumSize: const Size(32, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '${page + 1}/$pageCount',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Próxima página',
+              onPressed: page >= pageCount - 1
+                  ? null
+                  : () => onPageChanged(page + 1),
+              icon: const Icon(Icons.chevron_right),
+              style: IconButton.styleFrom(
+                minimumSize: const Size(32, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedingListItem extends StatelessWidget {
+  const _FeedingListItem({
+    required this.index,
+    required this.feeding,
+    required this.feed,
+    required this.lot,
+    required this.onEdit,
+  });
+
+  final int index;
+  final DailyFeeding feeding;
+  final FeedBatchBalance? feed;
+  final LotSummary? lot;
+  final VoidCallback onEdit;
+
+  String get _feedName {
+    final item = feed;
+    if (item == null) return feeding.batchId.substring(0, 8);
+    if (item.isReadyFeed) return item.displayName;
+    return item.formulaName ?? item.batch.code;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lotName = lot?.lot.name ?? 'Lote ${feeding.lotId.substring(0, 8)}';
+    final delay = Duration(milliseconds: (index.clamp(0, 8) * 22).round());
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 180 + delay.inMilliseconds),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) => Opacity(
+        opacity: value,
+        child: Transform.translate(
+          offset: Offset(0, (1 - value) * 8),
+          child: child,
+        ),
+      ),
+      child: ListTile(
+        dense: true,
+        leading: const Icon(Icons.restaurant_outlined),
+        title: Text(lotName, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          '${shortDate.format(feeding.feedingDate)} · $_feedName',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 4,
+          children: [
+            Text(
+              kg(feeding.quantityKg),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            IconButton(
+              tooltip: 'Editar alimentação',
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined),
+              style: IconButton.styleFrom(
+                minimumSize: const Size(34, 34),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -2438,8 +2923,9 @@ class _FeedAdjustmentDialogState extends State<_FeedAdjustmentDialog> {
 }
 
 class _FeedingDialog extends StatefulWidget {
-  const _FeedingDialog({required this.ref});
+  const _FeedingDialog({required this.ref, this.feeding});
   final WidgetRef ref;
+  final DailyFeeding? feeding;
   @override
   State<_FeedingDialog> createState() => _FeedingDialogState();
 }
@@ -2451,6 +2937,21 @@ class _FeedingDialogState extends State<_FeedingDialog> {
   final notes = TextEditingController();
   DateTime date = DateTime.now();
   bool saving = false;
+
+  bool get editing => widget.feeding != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final feeding = widget.feeding;
+    if (feeding == null) return;
+    lot = feeding.lotId;
+    batch = feeding.batchId;
+    qty.text = decimal.format(feeding.quantityKg);
+    notes.text = feeding.notes ?? '';
+    date = feeding.feedingDate;
+  }
+
   @override
   void dispose() {
     qty.dispose();
@@ -2513,7 +3014,7 @@ class _FeedingDialogState extends State<_FeedingDialog> {
     }
 
     return AlertDialog(
-      title: const Text('Registrar alimentação'),
+      title: Text(editing ? 'Editar alimentação' : 'Registrar alimentação'),
       content: SizedBox(
         width: 460,
         child: SingleChildScrollView(
@@ -2525,7 +3026,9 @@ class _FeedingDialogState extends State<_FeedingDialog> {
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Lote'),
                 items: [
-                  for (final l in lots.where((l) => l.activeBirds > 0))
+                  for (final l in lots.where(
+                    (l) => l.activeBirds > 0 || l.lot.id == lot,
+                  ))
                     DropdownMenuItem(
                       value: l.lot.id,
                       child: Text(
@@ -2590,7 +3093,9 @@ class _FeedingDialogState extends State<_FeedingDialog> {
                   labelText: 'Fabricação de ração',
                 ),
                 items: [
-                  for (final b in batches.where((b) => b.balanceKg > 0))
+                  for (final b in batches.where(
+                    (b) => b.balanceKg > 0 || b.batch.id == batch,
+                  ))
                     DropdownMenuItem(
                       value: b.batch.id,
                       child: Text(
@@ -2638,22 +3143,30 @@ class _FeedingDialogState extends State<_FeedingDialog> {
               : () async {
                   setState(() => saving = true);
                   try {
-                    await widget.ref
-                        .read(operationsControllerProvider)
-                        .feed(
-                          lot!,
-                          batch!,
-                          parseDecimal(qty.text),
-                          date,
-                          notes.text,
-                        );
+                    final quantity = parseDecimal(qty.text);
+                    if (editing) {
+                      await widget.ref
+                          .read(operationsControllerProvider)
+                          .updateFeeding(
+                            widget.feeding!.id,
+                            lot!,
+                            batch!,
+                            quantity,
+                            date,
+                            notes.text,
+                          );
+                    } else {
+                      await widget.ref
+                          .read(operationsControllerProvider)
+                          .feed(lot!, batch!, quantity, date, notes.text);
+                    }
                     if (context.mounted) Navigator.pop(context);
                   } catch (e) {
                     await showOperationError(context, e);
                     if (mounted) setState(() => saving = false);
                   }
                 },
-          child: const Text('Registrar'),
+          child: Text(editing ? 'Salvar' : 'Registrar'),
         ),
       ],
     );

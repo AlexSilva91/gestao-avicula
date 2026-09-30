@@ -412,6 +412,22 @@ class OperationsController {
     notes: notes,
     actorId: _actor('feeding.register'),
   );
+  Future<void> updateFeeding(
+    String feedingId,
+    String lotId,
+    String batchId,
+    double kg,
+    DateTime date,
+    String? notes,
+  ) => _db.updateFeeding(
+    feedingId: feedingId,
+    lotId: lotId,
+    batchId: batchId,
+    quantityKg: kg,
+    date: date,
+    notes: notes,
+    actorId: _actor('feeding.register'),
+  );
   Future<void> adjustFeed(
     String batchId,
     double kg,

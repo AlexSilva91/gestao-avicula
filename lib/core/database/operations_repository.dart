@@ -2000,6 +2000,104 @@ extension OperationsRepository on AppDatabase {
     });
   }
 
+  Future<void> updateFeeding({
+    required String feedingId,
+    required String lotId,
+    required String batchId,
+    required double quantityKg,
+    required DateTime date,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (quantityKg <= 0) throw ArgumentError('Informe uma quantidade válida.');
+    final feeding = await (select(
+      dailyFeedings,
+    )..where((f) => f.id.equals(feedingId))).getSingleOrNull();
+    if (feeding == null) {
+      throw StateError('Alimentação não encontrada.');
+    }
+    await _assertActorCanUseRecord(
+      tableName: 'daily_feedings',
+      recordId: feedingId,
+      actorId: actorId,
+    );
+    await _assertActorCanUseRecord(
+      tableName: 'lots',
+      recordId: lotId,
+      actorId: actorId,
+    );
+    await _assertActorCanUseRecord(
+      tableName: 'feed_batches',
+      recordId: batchId,
+      actorId: actorId,
+    );
+    if (lotId != feeding.lotId && await activeBirdsFor(lotId) <= 0) {
+      throw StateError('O lote não possui aves ativas.');
+    }
+
+    final balance = await feedBalanceFor(batchId);
+    final available = batchId == feeding.batchId
+        ? balance + feeding.quantityKg
+        : balance;
+    if (quantityKg > available + .0001) {
+      throw StateError('Saldo insuficiente. Disponível: ${kg(available)}.');
+    }
+
+    final movement =
+        await (select(feedStockMovements)
+              ..where(
+                (m) =>
+                    m.feedingId.equals(feedingId) &
+                    m.type.equals('FEEDING_OUT'),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+
+    await transaction(() async {
+      await (update(dailyFeedings)..where((f) => f.id.equals(feedingId))).write(
+        DailyFeedingsCompanion(
+          feedingDate: Value(date),
+          lotId: Value(lotId),
+          batchId: Value(batchId),
+          quantityKg: Value(quantityKg),
+          notes: Value(_cleanValue(notes)),
+        ),
+      );
+      if (movement == null) {
+        await into(feedStockMovements).insert(
+          FeedStockMovementsCompanion.insert(
+            id: _uuid.v4(),
+            type: 'FEEDING_OUT',
+            occurredAt: date,
+            batchId: batchId,
+            quantityKg: quantityKg,
+            feedingId: Value(feedingId),
+            createdBy: actorId,
+            createdAt: DateTime.now(),
+          ),
+        );
+      } else {
+        await (update(
+          feedStockMovements,
+        )..where((m) => m.id.equals(movement.id))).write(
+          FeedStockMovementsCompanion(
+            occurredAt: Value(date),
+            batchId: Value(batchId),
+            quantityKg: Value(quantityKg),
+            notes: Value(_cleanValue(notes)),
+          ),
+        );
+      }
+      await addAudit(
+        userId: actorId,
+        action: 'feeding.update',
+        entityType: 'daily_feeding',
+        entityId: feedingId,
+        description: 'Alimentação atualizada para ${kg(quantityKg)}.',
+      );
+    });
+  }
+
   Future<double> feedBalanceFor(String batchId) async {
     final row = await customSelect(
       "SELECT COALESCE(SUM(CASE WHEN type IN ('PRODUCTION_IN','ADJUSTMENT_IN') THEN quantity_kg ELSE -quantity_kg END),0) balance FROM feed_stock_movements WHERE batch_id=?",

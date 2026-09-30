@@ -41,15 +41,13 @@ class _LotsContent extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.icon(
-            onPressed: () => _showPurchase(context, ref),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Novo lote'),
-          ),
+        _LotsHeader(
+          lotCount: lots.length,
+          activeLots: activeLots,
+          birds: birds,
+          onCreate: () => _showPurchase(context, ref),
         ),
-        const SizedBox(height: SeletoTokens.spacingLg),
+        const SizedBox(height: SeletoTokens.spacingMd),
         LayoutBuilder(
           builder: (context, box) {
             final crossAxisCount = box.maxWidth >= 850
@@ -84,7 +82,7 @@ class _LotsContent extends ConsumerWidget {
             );
           },
         ),
-        const SizedBox(height: SeletoTokens.spacingLg),
+        const SizedBox(height: SeletoTokens.spacingMd),
         if (lots.isEmpty)
           _LotEmpty(onCreate: () => _showPurchase(context, ref))
         else
@@ -100,7 +98,7 @@ class _LotsContent extends ConsumerWidget {
                   crossAxisCount: columns,
                   mainAxisSpacing: 10,
                   crossAxisSpacing: 10,
-                  mainAxisExtent: 236,
+                  mainAxisExtent: 224,
                 ),
                 itemCount: lots.length,
                 itemBuilder: (_, index) => _LotCard(summary: lots[index]),
@@ -139,6 +137,79 @@ class _LotsContent extends ConsumerWidget {
   );
 }
 
+class _LotsHeader extends StatelessWidget {
+  const _LotsHeader({
+    required this.lotCount,
+    required this.activeLots,
+    required this.birds,
+    required this.onCreate,
+  });
+
+  final int lotCount;
+  final int activeLots;
+  final int birds;
+  final VoidCallback onCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: .90),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .72)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer.withValues(alpha: .62),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.egg_alt_outlined, color: scheme.primary),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Gestão de lotes',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$activeLots ativo(s) de $lotCount lote(s) · $birds aves ativas',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            FilledButton.icon(
+              onPressed: onCreate,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Novo lote'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.label,
@@ -149,33 +220,56 @@ class _SummaryCard extends StatelessWidget {
   final String value;
   final IconData icon;
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(8),
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(11),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer.withValues(alpha: .62),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 19, color: scheme.primary),
             ),
-            child: Icon(icon, color: Theme.of(context).colorScheme.primary),
-          ),
-          const SizedBox(width: 14),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: Theme.of(context).textTheme.labelLarge),
-              const SizedBox(height: 4),
-              Text(value, style: Theme.of(context).textTheme.headlineSmall),
-            ],
-          ),
-        ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _LotCard extends ConsumerWidget {
@@ -220,7 +314,7 @@ class _LotCard extends ConsumerWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
+            padding: const EdgeInsets.fromLTRB(13, 11, 10, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -253,15 +347,23 @@ class _LotCard extends ConsumerWidget {
                             style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(fontWeight: FontWeight.w800),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            lot.strain?.isNotEmpty == true
-                                ? lot.strain!
-                                : 'Linhagem não informada',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: scheme.onSurfaceVariant),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              _MiniInfoPill(
+                                icon: Icons.category_outlined,
+                                label: lot.strain?.isNotEmpty == true
+                                    ? lot.strain!
+                                    : 'Sem linhagem',
+                              ),
+                              _MiniInfoPill(
+                                icon: Icons.event_outlined,
+                                label:
+                                    'Entrada ${DateFormat('dd/MM/yyyy').format(lot.receivedAt)}',
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -306,7 +408,7 @@ class _LotCard extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
@@ -384,6 +486,45 @@ class _LotCard extends ConsumerWidget {
         context: context,
         builder: (_) => _OutflowDialog(ref: ref, lot: summary, type: type),
       );
+}
+
+class _MiniInfoPill extends StatelessWidget {
+  const _MiniInfoPill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 150),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: .78),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .66)),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: scheme.primary),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _LotMetric extends StatelessWidget {

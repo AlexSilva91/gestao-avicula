@@ -151,11 +151,103 @@ class _AuditLogTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       trailing: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 64),
-        child: Text(
-          '${shortDate.format(log.timestamp)}\n$time',
-          textAlign: TextAlign.end,
+        constraints: const BoxConstraints(minWidth: 112),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${shortDate.format(log.timestamp)}\n$time',
+              textAlign: TextAlign.end,
+            ),
+            IconButton(
+              tooltip: 'Detalhes',
+              onPressed: () => _showDetails(context),
+              icon: const Icon(Icons.info_outline),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _showDetails(BuildContext context) => showDialog<void>(
+    context: context,
+    builder: (_) {
+      final detailTime =
+          '${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}';
+      return AlertDialog(
+        title: const Text('Detalhes da auditoria'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _AuditDetailRow('Descrição', log.description),
+                _AuditDetailRow('Ação', auditActionLabel(log.action)),
+                _AuditDetailRow('Código da ação', log.action),
+                _AuditDetailRow('Entidade', auditEntityLabel(log.entityType)),
+                _AuditDetailRow('Tipo da entidade', log.entityType),
+                _AuditDetailRow(
+                  'ID da entidade',
+                  log.entityId ?? 'Não informado',
+                ),
+                _AuditDetailRow('Usuário', log.userId ?? 'Não informado'),
+                _AuditDetailRow(
+                  'Data e hora',
+                  '${shortDate.format(log.timestamp)} $detailTime',
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fechar'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+class _AuditDetailRow extends StatelessWidget {
+  const _AuditDetailRow(this.label, this.value);
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow.withValues(alpha: .9),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .7)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          SelectableText(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ],
       ),
     );
   }

@@ -23,36 +23,83 @@ class SettingsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => AppShell(
     title: 'Configurações',
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        LayoutBuilder(
-          builder: (context, box) => box.maxWidth > 820
-              ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: _ProductionSettings(ref: ref)),
-                    const SizedBox(width: 16),
-                    Expanded(child: _BackupCard(ref: ref)),
-                  ],
-                )
-              : Column(
-                  children: [
-                    _ProductionSettings(ref: ref),
-                    const SizedBox(height: 16),
-                    _BackupCard(ref: ref),
-                  ],
-                ),
-        ),
-        const SizedBox(height: 16),
-        _AppUpdateCard(ref: ref),
-        const SizedBox(height: 16),
-        _CameraSettingsCard(ref: ref),
-        const SizedBox(height: 16),
-        _NotificationsCard(ref: ref),
-      ],
+    child: LayoutBuilder(
+      builder: (context, box) {
+        final operation = _SettingsSection(
+          icon: Icons.tune_outlined,
+          title: 'Operação',
+          children: [
+            _ProductionSettings(ref: ref),
+            _NotificationsCard(ref: ref),
+          ],
+        );
+        final system = _SettingsSection(
+          icon: Icons.admin_panel_settings_outlined,
+          title: 'Sistema e integrações',
+          children: [
+            _AppUpdateCard(ref: ref),
+            _BackupCard(ref: ref),
+            _CameraSettingsCard(ref: ref),
+          ],
+        );
+        if (box.maxWidth >= 980) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: operation),
+              const SizedBox(width: 12),
+              Expanded(child: system),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [operation, const SizedBox(height: 12), system],
+        );
+      },
     ),
   );
+}
+
+class _SettingsSection extends StatelessWidget {
+  const _SettingsSection({
+    required this.icon,
+    required this.title,
+    required this.children,
+  });
+
+  final IconData icon;
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(2, 0, 2, 8),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: scheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+        ),
+        for (var i = 0; i < children.length; i++) ...[
+          children[i],
+          if (i != children.length - 1) const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
 }
 
 class _ProductionSettings extends StatelessWidget {
@@ -873,6 +920,12 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
   bool _checkingHealth = false;
   bool _testing = false;
   bool _syncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkHealth());
+  }
 
   @override
   Widget build(BuildContext context) {
