@@ -1,73 +1,102 @@
-# Prompt mestre para implementar as integracoes de sensores e animacoes do GRANJA SELETO
+# Prompt mestre atualizado para implementar integracoes, sensores e animacoes do GRANJA SELETO
 
-Este documento deve ser usado como prompt/roteiro tecnico para replicar, em outro sistema, as integracoes de sensores, camera, automacoes de rele e animacoes atualmente existentes no GRANJA SELETO.
+Este documento deve ser usado como prompt/roteiro tecnico para replicar, em outro sistema, as integracoes de hardware e a experiencia visual existentes hoje no GRANJA SELETO.
 
-Objetivo: permitir que outro desenvolvedor implemente a mesma experiencia com o menor numero possivel de decisoes abertas.
+O foco e reproduzir o estado atual do projeto, nao uma lista idealizada. Quando houver diferenca entre documentacao de circuito e codigo ja integrado ao app, trate esta especificacao como fonte principal e consulte os arquivos indicados.
 
-## 1. Escopo que deve ser replicado
+## 1. Referencias reais do projeto atual
+
+Use estes arquivos como base de implementacao:
+
+- `lib/features/operations/application/hardware_esp_client.dart`
+- `lib/features/operations/application/hardware_esp_client_io.dart`
+- `lib/features/operations/application/hardware_esp_client_stub.dart`
+- `lib/features/operations/application/camera_monitoring.dart`
+- `lib/features/operations/presentation/pages/hardware_integrations_page.dart`
+- `lib/features/operations/presentation/pages/hardware_sensor_pages.dart`
+- `lib/features/operations/presentation/pages/camera_monitor_page.dart`
+- `lib/features/operations/presentation/pages/settings_page.dart`
+- `lib/core/database/operations_tables.dart`
+- `lib/core/database/operations_repository.dart`
+- `lib/core/routing/app_router.dart`
+- `android/app/src/main/kotlin/com/seleto/seleto/MainActivity.kt`
+- `docs/hardware/firmware/esp32-granja-seleto/granja_seleto_wifi_bluetooth.ino`
+- `docs/hardware/firmware/esp32-granja-seleto/MANUAL_CONEXAO_APP_GRANJA.md`
+- `docs/hardware/circuitos/ambiente/`
+- `docs/hardware/circuitos/reservatorio-agua/`
+- `docs/hardware/circuitos/iluminacao/`
+- `docs/hardware/circuitos/ventiladores/`
+- `docs/hardware/circuitos/cameras/`
+
+## 2. Escopo que deve ser replicado
 
 Implemente uma aplicacao Flutter com:
 
-1. Integracao com ESP32 via Wi-Fi local.
-2. Preparacao de configuracao Bluetooth/identificador do ESP32.
-3. Descoberta automatica do ESP32 na rede local.
-4. Configuracao de Wi-Fi do ESP32 pelo endpoint de setup.
-5. Controle de reles para iluminacao.
-6. Controle de reles para ventilacao.
-7. Leitura de balanca com HX711/celula de carga.
-8. Tara, calibracao e taxa de leitura da balanca.
-9. Leitura de temperatura e umidade do ar.
-10. Leitura de dados de agua/reservatorio: nivel, temperatura, pH e TDS.
-11. Cadastro e exibicao de cameras IP/ONVIF/RTSP.
-12. Grade de liveview com abertura/fechamento por camera.
-13. Controle de audio por camera.
-14. Estado visual de carregamento, online, offline, erro e pronto.
-15. Animacoes para ventiladores, reservatorio, ambiente, balanca, iluminacao e dashboard.
-16. Persistencia local das configuracoes.
-17. Logs visuais para debug de conexao do ESP32.
+1. Integracao com ESP32 via HTTP em rede local.
+2. Descoberta automatica do ESP32 no AP padrao `192.168.4.1` e na sub-rede Wi-Fi atual.
+3. Configuracao de Wi-Fi do ESP32 pelo app.
+4. Terminal visual de logs da descoberta, handshake, configuracao Wi-Fi, sincronizacao remota e comandos.
+5. Controle de 4 canais de iluminacao nos reles ESP32 1 a 4.
+6. Agenda de iluminacao com dois periodos diarios: manha e noite.
+7. Sincronizacao individual de agenda por canal.
+8. Sincronizacao em grupo de agenda para canais selecionados.
+9. Sincronizacao de hora do app para o ESP32.
+10. Controle de 8 canais de ventilacao nos reles ESP32 5 a 12.
+11. Leitura de temperatura e umidade do ambiente.
+12. Leitura de agua/reservatorio: nivel, temperatura, pH, TDS e ORP/cloro opcional.
+13. Leitura agregada de sensores por `/api/sensors`.
+14. Configuracao de sincronizacao remota do ESP32 por `/api/remote`.
+15. Cadastro de cameras IP/ONVIF com credenciais, porta e snapshot opcional.
+16. Resolucao de snapshot ONVIF via SOAP.
+17. Grade de cameras RTSP ao vivo com media_kit.
+18. Abertura/fechamento de cada camera na grade.
+19. Popup fullscreen por camera.
+20. Controle de audio por camera.
+21. Persistencia local de configuracoes em `app_settings`.
+22. Estados visuais de carregamento, erro, ativo, inativo, online e ultima leitura.
+23. Animacoes/instrumentos visuais para iluminacao, ambiente, agua, ventilacao e cameras.
 
-## 2. Stack tecnica recomendada
+## 3. Stack tecnica usada hoje
 
-Use:
-
-- Flutter.
-- Riverpod para estado.
-- GoRouter para navegacao.
-- Drift/SQLite para persistencia local.
-- SharedPreferences apenas para preferencias simples, se o projeto ja usar.
-- `http` para ONVIF/SOAP.
-- `dart:io` `HttpClient` para chamadas ao ESP32 em plataformas nativas.
-- `media_kit`, `media_kit_video` e `media_kit_libs_video` para RTSP.
-- `xml` para parse de resposta ONVIF.
-- `uuid` para ids de cameras.
-- `crypto` para cabecalho WS-Security quando necessario.
-- Material 3.
-
-No `pubspec.yaml`, inclua no minimo:
+Use Flutter com:
 
 ```yaml
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
   flutter_riverpod: ^3.3.1
   go_router: ^17.1.0
   drift: ^2.32.0
   drift_flutter: ^0.3.0
   sqlite3_flutter_libs: ^0.6.0+eol
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  crypto: ^3.0.7
+  uuid: ^4.5.2
+  intl: ^0.20.2
+  fl_chart: ^1.1.1
+  table_calendar: ^3.2.0
+  flutter_local_notifications: ^20.0.0
   shared_preferences: ^2.5.3
+  timezone: ^0.10.1
+  cupertino_icons: ^1.0.8
+  file_picker: ^12.2.0
+  share_plus: ^13.3.0
+  csv: ^8.0.0
+  xml: ^6.6.1
+  excel: ^4.0.6
+  connectivity_plus: ^7.3.1
   http: ^1.6.0
   media_kit: ^1.2.6
   media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
-  xml: ^6.6.1
-  uuid: ^4.5.2
-  crypto: ^3.0.7
-  intl: ^0.20.2
 ```
 
-## 3. Arquitetura de pastas recomendada
+## 4. Arquitetura minima
 
-Crie uma organizacao equivalente:
+Crie uma estrutura equivalente:
 
 ```text
 lib/
@@ -78,13 +107,9 @@ lib/
       operations_tables.dart
     routing/
       app_router.dart
-    theme/
-      app_theme.dart
     widgets/
       app_shell.dart
-      app_widgets.dart
-    utils/
-      formatters.dart
+      seleto_widgets.dart
   features/
     operations/
       application/
@@ -99,89 +124,176 @@ lib/
           hardware_sensor_pages.dart
           camera_monitor_page.dart
           settings_page.dart
-          dashboard_page.dart
+android/
+  app/src/main/kotlin/.../MainActivity.kt
 docs/
   hardware/
-    circuitos/
-    firmware/
-    sensores/
 ```
 
-## 4. Modelo de persistencia das configuracoes
+Rotas esperadas:
 
-Crie uma tabela simples de configuracoes:
+- `/integrations`
+- `/hardware-environment`
+- `/hardware-ventilation`
+- `/hardware-water`
+- `/hardware-water-quality`
+- `/cameras`
+- `/settings`
+
+## 5. Persistencia local
+
+Use Drift/SQLite e crie a tabela:
 
 ```sql
 app_settings(
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at DATETIME NOT NULL,
+  updated_by TEXT NULL
 )
 ```
 
-Implemente no repositorio:
+Implemente:
 
-- `Future<List<AppSetting>> watchSettings()` ou stream equivalente.
-- `Future<void> saveSetting(String key, String value)`.
-- `Future<void> deleteSetting(String key)`.
+- `Stream<List<AppSetting>> watchAppSettings()`
+- `Future<void> saveAppSetting(String key, String value, String actorId)`
+- no controller: `Future<void> saveSetting(String key, String value)`
 
-Use sempre chaves estaveis. Nao altere nomes depois que estiver em producao.
+As configuracoes de hardware sao simples pares chave/valor. Nao renomeie chaves depois de uso em producao.
 
-### 4.1. Chaves de balanca
+## 6. Chaves de configuracao usadas hoje
+
+### 6.1. ESP32 e Wi-Fi
 
 ```text
-hardware_scale_enabled=true|false
-hardware_scale_connection=WIFI|BLUETOOTH
-hardware_scale_mode=BOTH|INGREDIENT_PURCHASE|FEEDING
-hardware_scale_device=<nome ou identificador>
-hardware_scale_endpoint=<ip ou endpoint http do ESP32>
-hardware_scale_last_weight_kg=<decimal>
-hardware_scale_rate_hz=10|80
+hardware_esp_setup_endpoint=192.168.4.1
+hardware_esp_wifi_ssid=<ssid>
+hardware_esp_wifi_password=<senha>
+hardware_esp_remote_sync_enabled=true|false
+hardware_esp_remote_sync_url=http://solveontecnology.com.br:5005/iot/v1/esp/sync
+hardware_esp_remote_sync_token=<token opcional>
+hardware_esp_control_priority=local|remote
 ```
 
-### 4.2. Chaves de iluminacao
+### 6.2. Iluminacao
 
 ```text
 hardware_lighting_enabled=true|false
 hardware_lighting_connection=WIFI|BLUETOOTH
 hardware_lighting_endpoint=<ip ou endpoint http do ESP32>
 hardware_lighting_relay_pin=23
-hardware_lighting_channel_1_name=Canal 1
-hardware_lighting_channel_1_pin=23
-hardware_lighting_channel_1_enabled=true
-hardware_lighting_channel_1_morning_enabled=true
-hardware_lighting_channel_1_morning_on=04:30
-hardware_lighting_channel_1_morning_off=06:10
-hardware_lighting_channel_1_evening_enabled=true
-hardware_lighting_channel_1_evening_on=17:40
-hardware_lighting_channel_1_evening_off=20:00
+hardware_lighting_general_morning_enabled=true|false
+hardware_lighting_general_morning_on_time=04:30
+hardware_lighting_general_morning_off_time=06:10
+hardware_lighting_general_evening_enabled=true|false
+hardware_lighting_general_evening_on_time=17:40
+hardware_lighting_general_evening_off_time=20:00
+hardware_lighting_general_channel_1_selected=true|false
+hardware_lighting_general_channel_2_selected=true|false
+hardware_lighting_general_channel_3_selected=true|false
+hardware_lighting_general_channel_4_selected=true|false
 ```
 
-Repita para canais `1` a `4`.
+Para canais `1` a `4`, persista:
 
-### 4.3. Chaves de ventilacao
+```text
+hardware_lighting_channel_<n>_name=<nome>
+hardware_lighting_channel_<n>_pin=<gpio>
+hardware_lighting_channel_<n>_enabled=true|false
+hardware_lighting_channel_<n>_on_time=04:30
+hardware_lighting_channel_<n>_off_time=06:10
+hardware_lighting_channel_<n>_morning_enabled=true|false
+hardware_lighting_channel_<n>_morning_on_time=04:30
+hardware_lighting_channel_<n>_morning_off_time=06:10
+hardware_lighting_channel_<n>_evening_enabled=true|false
+hardware_lighting_channel_<n>_evening_on_time=17:40
+hardware_lighting_channel_<n>_evening_off_time=20:00
+hardware_lighting_channel_<n>_last_test_state=ON|OFF
+```
+
+Pins padrao da iluminacao no firmware:
+
+```text
+Canal ESP 1 = GPIO23
+Canal ESP 2 = GPIO22
+Canal ESP 3 = GPIO21
+Canal ESP 4 = GPIO19
+```
+
+### 6.3. Ventilacao
 
 ```text
 hardware_ventilation_enabled=true|false
 hardware_ventilation_endpoint=<ip ou endpoint http do ESP32>
-hardware_ventilation_channel_1_name=Ventilador 1
-hardware_ventilation_channel_1_pin=18
-hardware_ventilation_channel_1_enabled=true
-hardware_ventilation_channel_1_last_test_state=ON|OFF
 ```
 
-Repita para canais `1` a `8`.
-
-### 4.4. Chaves de sensores independentes
+Para canais de ventilacao `1` a `8`, persista:
 
 ```text
-hardware_environment_endpoint=<endpoint do ESP32>
-hardware_water_endpoint=<endpoint do ESP32>
+hardware_ventilation_channel_<n>_name=Ventilador <n>
+hardware_ventilation_channel_<n>_pin=<gpio>
+hardware_ventilation_channel_<n>_enabled=true|false
+hardware_ventilation_channel_<n>_last_test_state=ON|OFF
 ```
 
-Se preferir, reutilize o mesmo endpoint salvo em `hardware_scale_endpoint` ou `hardware_lighting_endpoint`, desde que o app deixe claro ao usuario.
+Mapeamento atual:
 
-### 4.5. Chaves de camera
+```text
+Ventilacao 1 = canal ESP 5  = GPIO18
+Ventilacao 2 = canal ESP 6  = GPIO5
+Ventilacao 3 = canal ESP 7  = GPIO17
+Ventilacao 4 = canal ESP 8  = GPIO16
+Ventilacao 5 = canal ESP 9  = GPIO4
+Ventilacao 6 = canal ESP 10 = GPIO25
+Ventilacao 7 = canal ESP 11 = GPIO2
+Ventilacao 8 = canal ESP 12 = GPIO15
+```
+
+Valide para ventilacao que o GPIO nao esteja vazio, nao esteja repetido e nao use os pinos reservados:
+
+```text
+23, 22, 21, 19, 27, 34, 35, 36, 39
+```
+
+### 6.4. Ambiente
+
+```text
+hardware_environment_endpoint=<ip ou endpoint http do ESP32>
+hardware_environment_last_temperature_c=<decimal>
+hardware_environment_last_humidity_percent=<decimal>
+```
+
+Pontos esperados na UI:
+
+```text
+T/U galpao       = GPIO27
+T/U pinteiro 1   = I2C/exp.
+T/U pinteiro 2   = I2C/exp.
+```
+
+### 6.5. Agua e reservatorio
+
+```text
+hardware_water_endpoint=<ip ou endpoint http do ESP32>
+hardware_water_quality_endpoint=<ip ou endpoint http do ESP32>
+hardware_water_last_level_percent=<decimal>
+hardware_water_last_temperature_c=<decimal>
+hardware_water_last_ph=<decimal>
+hardware_water_last_tds_ppm=<decimal>
+hardware_water_last_chlorine_orp_mv=<decimal opcional>
+```
+
+Pontos esperados:
+
+```text
+Nivel da agua = GPIO34
+Temperatura   = GPIO35
+pH            = GPIO36
+TDS           = GPIO39
+Cloro/ORP     = ADS1115/I2C
+```
+
+### 6.6. Cameras
 
 Use uma unica chave JSON:
 
@@ -200,13 +312,35 @@ hardware_onvif_cameras=[
 ]
 ```
 
-## 5. Contrato HTTP do ESP32
+## 7. Cliente ESP32
 
-O aplicativo deve tratar o ESP32 como uma API HTTP local.
+Exporte `hardware_esp_client.dart` assim:
 
-### 5.1. Endpoint base
+```dart
+export 'hardware_esp_client_stub.dart'
+    if (dart.library.io) 'hardware_esp_client_io.dart';
+```
 
-O usuario pode informar:
+No stub web, todos os metodos diretos do ESP32 devem retornar `UnsupportedError`, exceto `discover`, que deve avisar que a varredura automatica nao esta disponivel na plataforma.
+
+No cliente nativo, use `dart:io` `HttpClient`. Em Android, para endpoints locais, use tambem um `MethodChannel('seleto/network')` com:
+
+- `wifiIpv4Address`
+- `bindProcessToWifi`
+- `clearNetworkBinding`
+
+Isso evita que o Android tente enviar chamadas locais pelo link errado quando ha Wi-Fi sem internet ou dados moveis ativos.
+
+## 8. Normalizacao de endpoint
+
+Normalize qualquer endpoint informado pelo usuario:
+
+1. `trim()`.
+2. Se vazio, use `http://192.168.4.1`.
+3. Se nao comecar com `http://` ou `https://`, prefixe `http://`.
+4. Remova barra final.
+
+Exemplos aceitos:
 
 ```text
 192.168.0.50
@@ -214,885 +348,465 @@ http://192.168.0.50
 http://192.168.4.1
 ```
 
-Normalize internamente:
+## 9. Descoberta do ESP32
 
-1. Remova espacos.
-2. Se nao tiver `http://` ou `https://`, prefixe `http://`.
-3. Remova barra final.
-4. Se vazio, use `http://192.168.4.1`.
+Fluxo atual:
 
-### 5.2. Endpoints obrigatorios
+1. Testar primeiro `http://192.168.4.1/api/status`.
+2. Se nao encontrar, obter o IPv4 Wi-Fi local.
+3. Montar a base da sub-rede, por exemplo `192.168.0`.
+4. Varrer hosts `.1` a `.254` em lotes de 24.
+5. Para cada host, chamar `ping()` com timeout de 1500 ms.
+6. Aceitar somente resposta com `app == "GRANJA_SELETO"` ou `deviceId` contendo `GRANJA-SELETO`.
+7. Registrar logs visuais como `SYS>`, `SCAN>`, `ESP>` e `ERR>`.
+
+## 10. Contrato HTTP do firmware atual
+
+O firmware atual expoe:
 
 ```http
 GET  /api/ping
 GET  /api/status
-GET  /api/scale
-POST /api/scale/tare
-POST /api/scale/calibrate
-POST /api/scale/rate
 GET  /api/environment
 GET  /api/water
 GET  /api/sensors
-POST /api/wifi
+GET  /api/remote
+POST /api/remote
 GET  /api/relay?channel=1
 POST /api/relay
-POST /api/time
 POST /api/channel_schedule
 POST /api/group_schedule
+GET  /api/schedule
+POST /api/time
+POST /api/wifi
 ```
 
-### 5.3. Resposta de status
+### 10.1. Ping/status
 
-Exija JSON em formato de mapa.
-
-Exemplo:
+`GET /api/status` deve retornar JSON com, no minimo:
 
 ```json
 {
   "ok": true,
   "app": "GRANJA_SELETO",
-  "deviceId": "GRANJA-SELETO-ESP32",
+  "deviceId": "GRANJA-SELETO-RELE-01",
   "ip": "192.168.0.50",
   "setupApIp": "192.168.4.1",
-  "relayActiveLow": true
+  "relayActiveLow": true,
+  "relays": [
+    {"channel": 1, "pin": 23, "on": false}
+  ],
+  "sensorEndpoints": ["/api/environment", "/api/water", "/api/sensors"]
 }
 ```
 
-### 5.4. Descoberta automatica
+O app usa `ip` para atualizar o endpoint resolvido quando disponivel.
 
-Implemente:
+### 10.2. Ambiente
 
-1. Tentar primeiro `http://192.168.4.1/api/status`.
-2. Se responder com `app=GRANJA_SELETO` ou `deviceId` contendo `GRANJA-SELETO`, usar esse endpoint.
-3. Se nao responder, obter interfaces IPv4 locais.
-4. Para cada rede local, varrer `base.1` ate `base.254`.
-5. Usar lotes de 24 hosts por vez para nao travar a UI.
-6. Timeout curto de probe: 850 ms.
-7. Timeout de requisicao normal: 3 s.
-8. Registrar logs visuais:
-   - `SYS> iniciando descoberta automatica do ESP32`
-   - `SCAN> varrendo 192.168.0.1 ate 192.168.0.254`
-   - `ESP> handshake OK em http://192.168.0.50`
-   - `SYS> fallback: Wi-Fi GRANJA-SELETO-SETUP / seleto1234`
-
-### 5.5. Android: vinculo de rede Wi-Fi
-
-Em Android, quando o endpoint for local (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x` ou `192.168.4.1`), implemente um MethodChannel:
-
-```dart
-const MethodChannel('seleto/network');
-```
-
-Metodos:
-
-```text
-bindProcessToWifi
-clearNetworkBinding
-```
-
-Use antes/depois de cada chamada local, para evitar que o Android tente usar dados moveis quando o Wi-Fi do ESP nao tem internet.
-
-## 6. Mapeamento de pinos e canais
-
-### 6.1. Iluminacao
-
-| Canal ESP | Uso | GPIO |
-| --- | --- | --- |
-| 1 | Iluminacao 1 | GPIO23 |
-| 2 | Iluminacao 2 | GPIO22 |
-| 3 | Iluminacao 3 | GPIO21 |
-| 4 | Iluminacao 4 | GPIO19 |
-
-### 6.2. Ventilacao
-
-| Canal ESP | Uso | GPIO |
-| --- | --- | --- |
-| 5 | Ventilacao 1 | GPIO18 |
-| 6 | Ventilacao 2 | GPIO5 |
-| 7 | Ventilacao 3 | GPIO17 |
-| 8 | Ventilacao 4 | GPIO16 |
-| 9 | Ventilacao 5 | GPIO4 |
-| 10 | Ventilacao 6 | GPIO25 |
-| 11 | Ventilacao 7 | GPIO2 |
-| 12 | Ventilacao 8 | GPIO15 |
-
-No app, mostre ventilacao como canais visuais `1` a `8`, mas envie ao ESP os canais reais `5` a `12`.
-
-Formula:
-
-```dart
-const ventilationRelayOffset = 4;
-final espChannel = ventilationRelayOffset + visualIndex + 1;
-```
-
-### 6.3. Balanca
-
-| Funcao | GPIO |
-| --- | --- |
-| HX711 DT/DOUT | GPIO32 |
-| HX711 SCK/CLK | GPIO33 |
-| Botao tara | GPIO13 |
-| Botao calibracao | GPIO14 |
-| Botao taxa | GPIO26 |
-
-### 6.4. Ambiente
-
-| Funcao | GPIO |
-| --- | --- |
-| DHT22/AM2302 DATA | GPIO27 |
-
-### 6.5. Agua
-
-| Funcao | GPIO |
-| --- | --- |
-| Nivel da agua analogico | GPIO34 |
-| Temperatura da agua analogica | GPIO35 |
-| pH analogico | GPIO36 |
-| TDS/EC analogico | GPIO39 |
-
-Observacao: no firmware futuro, prefira DS18B20 digital para temperatura da agua, ADS1115 para pH/TDS/nivel analogico e SHT31 I2C para ambiente.
-
-## 7. Cliente ESP32 no app
-
-Crie uma classe `HardwareEspClient`.
-
-### 7.1. Modelos
-
-```dart
-class EspDeviceProbe {
-  final String endpoint;
-  final String deviceId;
-  final String message;
-  final Map<String, Object?> payload;
-}
-
-class EspScaleReading {
-  final double weightKg;
-  final String message;
-  final Map<String, Object?> payload;
-}
-
-class EspEnvironmentReading {
-  final double airTemperatureC;
-  final double airHumidityPercent;
-  final String message;
-  final Map<String, Object?> payload;
-}
-
-class EspWaterReading {
-  final double levelPercent;
-  final double temperatureC;
-  final double ph;
-  final double tdsPpm;
-  final String message;
-  final Map<String, Object?> payload;
-}
-
-class EspRelayResult {
-  final int channel;
-  final bool on;
-  final String message;
-  final Map<String, Object?> payload;
-}
-
-class EspChannelSchedule {
-  final int channel;
-  final bool enabled;
-  final bool morningEnabled;
-  final String morningOnTime;
-  final String morningOffTime;
-  final bool eveningEnabled;
-  final String eveningOnTime;
-  final String eveningOffTime;
-  final int daysMask;
-}
-```
-
-### 7.2. Metodos obrigatorios
-
-```dart
-Future<EspDeviceProbe?> discover({void Function(String message)? onLog});
-Future<EspDeviceProbe> ping(String endpoint);
-Future<EspScaleReading> readScale(String endpoint);
-Future<EspEnvironmentReading> readEnvironment(String endpoint);
-Future<EspWaterReading> readWater(String endpoint);
-Future<Map<String, Object?>> readSensors(String endpoint);
-Future<Map<String, Object?>> tareScale(String endpoint);
-Future<Map<String, Object?>> calibrateScale({required String endpoint, required double knownWeightKg});
-Future<Map<String, Object?>> setScaleRate({required String endpoint, required int rateHz});
-Future<Map<String, Object?>> configureWifi({required String endpoint, required String ssid, required String password});
-Future<EspRelayResult> setRelay({required String endpoint, required int channel, required bool turnOn});
-Future<EspRelayResult> pulseRelay({required String endpoint, required int channel});
-Future<Map<String, Object?>> syncTime(String endpoint, DateTime now);
-Future<Map<String, Object?>> setChannelSchedule({required String endpoint, required EspChannelSchedule schedule});
-Future<Map<String, Object?>> setGroupSchedule({required String endpoint, required List<int> channels, required EspChannelSchedule schedule});
-```
-
-### 7.3. Formato dos posts
-
-Use `application/x-www-form-urlencoded`.
-
-Relay:
-
-```text
-channel=1&state=on
-channel=1&state=off
-channel=1&state=pulse
-```
-
-Agenda individual:
-
-```text
-channel=1
-enabled=1
-en1=1
-on1=04:30
-off1=06:10
-en2=1
-on2=17:40
-off2=20:00
-days=127
-```
-
-Agenda em grupo:
-
-```text
-channels=1,2,3,4
-enabled=1
-en1=1
-on1=04:30
-off1=06:10
-en2=1
-on2=17:40
-off2=20:00
-days=127
-```
-
-## 8. Firmware ESP32 esperado
-
-Implemente no firmware:
-
-1. Modo Wi-Fi STA com credenciais salvas.
-2. Fallback AP:
-   - SSID: `GRANJA-SELETO-SETUP`
-   - Senha: `seleto1234`
-   - IP: `192.168.4.1`
-3. Servidor HTTP na porta 80.
-4. JSON em todas as respostas.
-5. `relayActiveLow` configuravel.
-6. Array de pinos:
-
-```cpp
-constexpr uint8_t relayPins[] = {23, 22, 21, 19, 18, 5, 17, 16, 4, 25, 2, 15};
-```
-
-7. Canais 1-4: iluminacao.
-8. Canais 5-12: ventilacao.
-9. NTP quando conectado a Wi-Fi.
-10. Cache local de agendas.
-11. Endpoint de ajuste manual de hora.
-12. Endpoints de sensores mesmo que inicialmente retornem valores mockados; isso permite evolucao sem quebrar o app.
-
-## 9. Telas que devem existir
-
-### 9.1. Tela de integracoes de hardware
-
-Crie uma tela chamada `HardwareIntegrationsPage`.
-
-Ela deve permitir:
-
-- Ativar/desativar balanca.
-- Escolher conexao da balanca: Wi-Fi ou Bluetooth.
-- Informar endpoint/IP da balanca/ESP32.
-- Testar Wi-Fi.
-- Testar Bluetooth.
-- Ler peso.
-- Tara.
-- Calibrar com peso conhecido.
-- Definir taxa de leitura `10 Hz` ou `80 Hz`.
-- Ativar/desativar iluminacao.
-- Escolher conexao da iluminacao: Wi-Fi ou Bluetooth.
-- Informar endpoint/IP do ESP32.
-- Configurar os quatro canais de iluminacao.
-- Nomear canal.
-- Definir GPIO.
-- Definir agenda manha e tarde/noite por canal.
-- Sincronizar agenda geral.
-- Testar canal individual: ligar/desligar/pulso.
-- Configurar Wi-Fi do ESP32 pelo AP.
-- Exibir terminal visual de logs.
-
-### 9.2. Paginas dedicadas de sensores
-
-Crie `hardware_sensor_pages.dart` com:
-
-- `ScaleSensorPage`.
-- `EnvironmentSensorPage`.
-- `WaterSystemSensorPage`.
-- `VentilationSensorPage`.
-
-Todas devem usar o mesmo layout-base `_SensorExperience`.
-
-### 9.3. Pagina de cameras
-
-Crie `CameraMonitorPage`.
-
-Ela deve:
-
-- Ler cameras de `hardware_onvif_cameras`.
-- Mostrar grade responsiva.
-- Abrir stream RTSP quando `visible=true`.
-- Fechar stream e liberar player quando `visible=false`.
-- Controlar audio por `ValueNotifier<String?> audioEnabledId`.
-- Permitir popup/ampliar camera.
-- Mostrar estado vazio quando nao houver camera.
-
-### 9.4. Configuracoes de cameras
-
-Na tela de configuracoes:
-
-- Formulario de camera:
-  - Nome.
-  - IP/host.
-  - Usuario.
-  - Senha.
-  - Porta.
-  - Snapshot URL opcional.
-  - Ativo/inativo.
-- Botao para copiar RTSP.
-- Botao para testar snapshot ONVIF.
-- Salvar tudo em JSON na chave `hardware_onvif_cameras`.
-
-## 10. ONVIF e RTSP
-
-### 10.1. Modelo de camera
-
-```dart
-class OnvifCameraConfig {
-  final String id;
-  final String name;
-  final String host;
-  final String username;
-  final String password;
-  final int? port;
-  final String? snapshotUrl;
-  final bool enabled;
-}
-```
-
-### 10.2. RTSP
-
-Monte:
-
-```dart
-rtsp://usuario:senha@host:porta
-```
-
-Se nao houver porta, omita.
-
-Exiba versao mascarada:
-
-```dart
-rtsp://admin:****@192.168.0.80
-```
-
-### 10.3. ONVIF snapshot
-
-Fluxo:
-
-1. Se `snapshotUrl` manual existir, usar direto.
-2. Caso contrario, POST SOAP em:
-
-```text
-http://host:porta/onvif/device_service
-```
-
-3. Chamar `GetCapabilities` com categoria `Media`.
-4. Obter `XAddr`.
-5. Chamar `GetProfiles`.
-6. Ler primeiro token de `Profiles`.
-7. Chamar `GetSnapshotUri`.
-8. Retornar a URI.
-
-### 10.4. Autenticacao
-
-Para imagem simples, use Basic Auth quando a camera exigir:
-
-```dart
-Authorization: Basic base64(username:password)
-```
-
-Para SOAP ONVIF, implemente WS-Security UsernameToken se a camera nao aceitar Basic.
-
-## 11. Animacoes e componentes visuais
-
-### 11.1. Principio visual geral
-
-Todos os instrumentos devem:
-
-- Usar `Container` com `borderRadius: 8`.
-- Usar `CustomPaint` para ilustracoes leves.
-- Usar icones Material.
-- Evitar hero grande.
-- Evitar cartoes dentro de cartoes.
-- Mostrar status textual e visual.
-- Ser responsivos.
-- Manter altura fixa para nao saltar layout.
-
-### 11.2. `_SensorExperience`
-
-Crie um widget-base com:
-
-- Icone tecnico.
-- Titulo.
-- Subtitulo.
-- Pílula de status.
-- Faixa de status.
-- Visual animado.
-- Trilho de metricas.
-- Acoes.
-- Portas/GPIOs.
-- Payload JSON expandivel ou exibivel.
-- Cards de configuracao.
-
-Entradas:
-
-```dart
-icon
-title
-subtitle
-status
-visual
-metrics
-actions
-ports
-config
-payload
-```
-
-### 11.3. Balanca animada
-
-Widget: `_ScaleInstrument`.
-
-Elementos:
-
-- Altura: `184`.
-- Desenho com `CustomPainter`.
-- Plataforma da balanca.
-- Base trapezoidal.
-- Texto `LOAD CELL / HX711`.
-- Peso grande no rodape.
-- Taxa de leitura no canto.
-
-Regras:
-
-- Se `weightKg == null`, mostrar `--,-- kg`.
-- Se houver leitura, formatar com `kg()`.
-- `active = weightKg != null`.
-- `working` deve ativar brilho mesmo sem leitura.
-
-### 11.4. Ambiente animado
-
-Widget: `_EnvironmentHouseInstrument`.
-
-Elementos:
-
-- Altura: `190`.
-- Casa simples em `CustomPainter`.
-- Circulo de temperatura muda de turquesa para vermelho conforme temperatura.
-- Gota/bolha de umidade cresce conforme percentual.
-- Badge de temperatura no topo esquerdo.
-- Badge de umidade no topo direito.
-
-Formula:
-
-```dart
-final temp = ((temperatureC ?? 25) - 15).clamp(0, 25) / 25;
-final humidity = ((humidityPercent ?? 50).clamp(0, 100)) / 100;
-```
-
-### 11.5. Reservatorio animado
-
-Widget: `_WaterReservoirInstrument`.
-
-Elementos:
-
-- Altura: `218`.
-- `TweenAnimationBuilder<double>` para nivel.
-- Duracao: `700 ms`.
-- Curva: `Curves.easeOutCubic`.
-- Tanque arredondado.
-- Agua preenchendo de baixo para cima.
-- Linha de onda na superficie.
-- Badges:
-  - Nivel.
-  - pH.
-  - Temperatura.
-  - TDS.
-
-Formula:
-
-```dart
-final level = ((levelPercent ?? 0) / 100).clamp(0.0, 1.0);
-```
-
-### 11.6. Ventilacao animada
-
-Widget: `_VentilationInstrument`.
-
-Elementos:
-
-- Altura: `230`.
-- Fundo com linhas de fluxo de ar.
-- 8 ventiladores desenhados.
-- Cada ventilador tem label `1` a `8`.
-- Ventiladores ativos giram.
-- Pílula inferior esquerda: `N girando` ou `parado`.
-- Pílula inferior direita: `8 canais`.
-
-Use:
-
-```dart
-AnimationController(
-  vsync: this,
-  duration: Duration(milliseconds: 760),
-)
-```
-
-Se ativo:
-
-```dart
-controller.repeat();
-```
-
-Se inativo:
-
-```dart
-controller.stop();
-```
-
-Rotacao:
-
-```dart
-Transform.rotate(
-  angle: controller.value * math.pi * 2,
-  child: CustomPaint(painter: _FanPainter(...)),
-)
-```
-
-Fluxo de ar:
-
-- `CustomPainter` com 5 curvas cubicas horizontais.
-- Alpha maior quando ativo.
-- Alpha menor quando parado.
-
-### 11.7. Iluminacao animada
-
-Widget: `_LightingControlInstrument`.
-
-Elementos:
-
-- Painel visual com placa/rele.
-- 4 nos de lampada.
-- Cada no mostra:
-  - Icone de lampada ligada/desligada.
-  - Nome do canal.
-  - GPIO.
-  - Indicador manha.
-  - Indicador noite.
-- Trilho de metricas:
-  - Modo.
-  - Canais.
-  - Ligados.
-  - Conexao.
-
-Painter:
-
-- Barramento horizontal.
-- 4 descidas ate lampadas.
-- Quando canal estiver ligado, desenhar brilho circular.
-
-### 11.8. Dashboard
-
-Crie previews compactos:
-
-- Agua: `TweenAnimationBuilder` de nivel.
-- Ventilacao: 8 mini fans girando quando ativo.
-- Iluminacao: 4 lampadas com brilho quando ligadas.
-- Balanca: desenho compacto de plataforma.
-- Ambiente: casa com bolhas de temperatura/umidade.
-
-No dashboard, nao use botoes de configuracao; apenas leitura/status.
-
-### 11.9. Camera liveview
-
-Widget: `_LiveCameraTile`.
-
-Comportamento:
-
-- Ao criar, instanciar `Player()` e `VideoController(player)`.
-- Se `visible=true`, abrir RTSP.
-- Se `visible=false`, mostrar `_ClosedCameraBackdrop`.
-- Ao mudar camera ou RTSP, reabrir stream.
-- Ao fechar, `player.stop()`.
-- Ao destruir, `player.dispose()`.
-- Durante abertura, mostrar overlay preto com `CircularProgressIndicator`.
-
-Topo:
-
-- Gradiente preto para leitura do nome.
-- `_CameraLiveDot`:
-  - Amarelo e `...` abrindo.
-  - Vermelho e `LIVE` quando aberto.
-
-Rodape:
-
-- Botoes redondos:
-  - Mostrar/ocultar video.
-  - Ativar/desativar audio.
-  - Ampliar.
-
-## 12. Validacoes obrigatorias
-
-### 12.1. Ventilacao
-
-Pinos reservados:
-
-```dart
-const reservedPins = {
-  '23', '22', '21', '19',
-  '32', '33', '13', '14', '26',
-  '27', '34', '35', '36', '39',
-};
-```
-
-Regras:
-
-1. Canal ativo deve ter GPIO.
-2. GPIO nao pode estar em `reservedPins`.
-3. GPIO nao pode repetir em outro canal de ventilacao.
-4. Se ventilacao desativada, nao permitir teste.
-5. Se endpoint vazio, nao permitir teste.
-
-### 12.2. Iluminacao
-
-Regras:
-
-1. Canal ativo deve ter GPIO.
-2. Canal 1 padrao `23`.
-3. Canal 2 padrao `22`.
-4. Canal 3 padrao `21`.
-5. Canal 4 padrao `19`.
-6. Horarios devem estar em `HH:mm`.
-7. Agenda geral so sincroniza via Wi-Fi.
-
-### 12.3. Balanca
-
-Regras:
-
-1. Tara exige endpoint.
-2. Calibracao exige peso conhecido > 0.
-3. Taxa aceita apenas `10` ou `80`.
-4. Ao iniciar leitura ao vivo, usar timer.
-5. Ao sair da tela, cancelar timer.
-6. Guardar amostras:
-   - total.
-   - minima.
-   - maxima.
-   - ultima.
-
-### 12.4. Agua
-
-Regras:
-
-1. Nivel deve ser limitado entre `0` e `100`.
-2. pH deve ser exibido com duas casas.
-3. TDS em ppm sem casas ou com uma casa.
-4. Temperatura com uma casa.
-5. Se JSON vier sem campo, usar `0` internamente mas mostrar status de falha ou sem leitura conforme contexto.
-
-### 12.5. Camera
-
-Regras:
-
-1. Host nao pode ser vazio.
-2. Nome nao pode ser vazio.
-3. Usuario padrao: `admin`.
-4. Porta padrao ONVIF: `80`.
-5. Nao exibir senha aberta fora do formulario.
-6. Nao abrir stream de camera desativada.
-
-## 13. Firmware: respostas JSON esperadas
-
-### 13.1. Balanca
-
-```json
-{
-  "ok": true,
-  "weightKg": 12.345,
-  "rateHz": 10
-}
-```
-
-### 13.2. Ambiente
+`GET /api/environment` deve retornar:
 
 ```json
 {
   "ok": true,
   "airTemperatureC": 28.4,
-  "airHumidityPercent": 66.2
-}
-```
-
-### 13.3. Agua
-
-```json
-{
-  "ok": true,
-  "levelPercent": 72,
-  "temperatureC": 25.8,
-  "ph": 6.85,
-  "tdsPpm": 420
-}
-```
-
-### 13.4. Rele
-
-```json
-{
-  "ok": true,
-  "channel": 5,
-  "on": true
-}
-```
-
-### 13.5. Sensores agregados
-
-```json
-{
-  "ok": true,
-  "scale": {"weightKg": 12.345},
-  "environment": {"airTemperatureC": 28.4, "airHumidityPercent": 66.2},
-  "water": {"levelPercent": 72, "temperatureC": 25.8, "ph": 6.85, "tdsPpm": 420},
-  "relays": [
-    {"channel": 1, "pin": 23, "on": false},
-    {"channel": 5, "pin": 18, "on": true}
+  "airHumidityPercent": 71.2,
+  "zones": [
+    {
+      "id": "galpao_centro",
+      "label": "Galpao centro",
+      "temperatureC": 28.4,
+      "humidityPercent": 71.2
+    }
   ]
 }
 ```
 
-## 14. Telas e rotas sugeridas
+O app tambem aceita aliases:
 
-```text
-/hardware/integracoes
-/hardware/balanca
-/hardware/ambiente
-/hardware/agua
-/hardware/ventilacao
-/cameras
-/configuracoes
-/dashboard
+- `points` no lugar de `zones`
+- `galpaoCentro` ou `galpao`
+- `pinteiroPiso1` ou `pinteiro1`
+- `pinteiroPiso2` ou `pinteiro2`
+- `tempC`, `airTemperatureC`, `temperatureC`
+- `humidity`, `airHumidityPercent`, `humidityPercent`
+
+Se nao vier lista de zonas, o app cria uma zona fallback `galpao_centro`.
+
+### 10.3. Agua
+
+`GET /api/water` deve retornar:
+
+```json
+{
+  "ok": true,
+  "levelPercent": 82.0,
+  "temperatureC": 25.1,
+  "ph": 7.2,
+  "tdsPpm": 320,
+  "chlorineOrpMv": 650
+}
 ```
 
-## 15. Sequencia de implementacao sem margem para erro
+Aliases aceitos para ORP/cloro:
 
-1. Criar dependencias no `pubspec.yaml`.
-2. Criar tabela `app_settings`.
-3. Criar provider/repository de configuracoes.
-4. Criar `HardwareEspClient` com normalizacao de endpoint.
-5. Implementar `GET` e `POST form-urlencoded`.
-6. Implementar `ping`.
-7. Implementar `discover`.
-8. Implementar `readScale`.
-9. Implementar `tareScale`.
-10. Implementar `calibrateScale`.
-11. Implementar `setScaleRate`.
-12. Implementar `readEnvironment`.
-13. Implementar `readWater`.
-14. Implementar `readSensors`.
-15. Implementar `setRelay`.
-16. Implementar `pulseRelay`.
-17. Implementar `syncTime`.
-18. Implementar `setChannelSchedule`.
-19. Implementar `setGroupSchedule`.
-20. Criar tela de integracoes com terminal visual.
-21. Criar card de configuracao Wi-Fi do ESP32.
-22. Criar card de balanca.
-23. Criar card de iluminacao.
-24. Criar pagina de balanca.
-25. Criar pagina de ambiente.
-26. Criar pagina de agua.
-27. Criar pagina de ventilacao.
-28. Criar `_SensorExperience`.
-29. Criar `_ScaleInstrument`.
-30. Criar `_EnvironmentHouseInstrument`.
-31. Criar `_WaterReservoirInstrument`.
-32. Criar `_VentilationInstrument`.
-33. Criar `_AnimatedFan`.
-34. Criar `_FanPainter`.
-35. Criar `_VentilationAirflowPainter`.
-36. Criar `_LightingControlInstrument`.
-37. Criar `_LightingInstrumentPainter`.
-38. Criar modelos ONVIF.
-39. Criar encode/decode JSON de cameras.
-40. Criar cliente ONVIF.
-41. Criar tela de configuracao de cameras.
-42. Criar live tile RTSP com `media_kit`.
-43. Criar grade responsiva de cameras.
-44. Criar popup/ampliacao de camera.
-45. Criar dashboard com previews.
-46. Testar app sem hardware usando endpoints vazios e estados mock.
-47. Testar ESP32 no AP `192.168.4.1`.
-48. Testar configuracao de Wi-Fi.
-49. Testar descoberta na rede local.
-50. Testar relay canal 1 a 4.
-51. Testar relay canal 5 a 12.
-52. Testar leitura da balanca.
-53. Testar tara.
-54. Testar calibracao.
-55. Testar ambiente.
-56. Testar agua.
-57. Testar cadastro de camera.
-58. Testar snapshot ONVIF.
-59. Testar RTSP.
-60. Testar audio.
-61. Testar responsividade mobile/desktop.
-62. Testar navegacao e descarte de players/timers.
+- `chlorineOrpMv`
+- `orpMv`
+- `chlorineMv`
+- `cloroOrpMv`
 
-## 16. Checklist de aceite
+### 10.4. Sensores agregados
 
-Considere concluido somente quando:
+`GET /api/sensors` deve retornar:
 
-- O app encontra o ESP32 automaticamente em rede local.
-- O app funciona conectado no AP do ESP32.
-- O endpoint manual funciona com e sem `http://`.
-- A balanca le peso e salva ultima leitura.
-- Tara responde sem travar a UI.
-- Calibracao envia `knownWeightKg`.
-- Ambiente exibe temperatura e umidade.
-- Agua exibe nivel, temperatura, pH e TDS.
-- Iluminacao controla 4 canais.
-- Iluminacao sincroniza agenda individual e geral.
-- Ventilacao controla 8 canais usando ESP 5-12.
-- Pinos duplicados sao bloqueados.
-- Pinos reservados sao bloqueados.
-- Camera ONVIF resolve snapshot ou aceita URL manual.
-- RTSP abre e fecha sem vazamento de player.
-- Audio so fica ativo em uma camera por vez.
-- Animacao de ventilador para quando canal desliga.
-- Animacao de reservatorio transiciona suavemente.
-- Dashboard reflete estados salvos.
-- Nenhuma tela quebra em largura mobile.
-- Nenhum texto estoura botoes ou cards.
+```json
+{
+  "ok": true,
+  "environment": {},
+  "water": {}
+}
+```
 
-## 17. Prompt resumido para colar em outra IA
+### 10.5. Rele
+
+Leitura:
+
+```http
+GET /api/relay?channel=1
+```
+
+Resposta:
+
+```json
+{
+  "ok": true,
+  "channel": 1,
+  "on": true
+}
+```
+
+Comando:
+
+```http
+POST /api/relay
+Content-Type: application/x-www-form-urlencoded
+
+channel=1&state=on
+```
+
+Estados aceitos:
+
+- `on` ou `1`
+- `off` ou `0`
+- `pulse`
+
+Resposta:
+
+```json
+{
+  "ok": true,
+  "channel": 1,
+  "on": true
+}
+```
+
+No app, `off` tenta confirmar o endpoint com status antes do envio. Para `on` e `pulse`, tente ate 3 vezes; se falhar, rode descoberta automatica e tente no endpoint descoberto.
+
+### 10.6. Agenda de canal
+
+```http
+POST /api/channel_schedule
+Content-Type: application/x-www-form-urlencoded
+
+channel=1&enabled=1&en1=1&on1=04:30&off1=06:10&en2=1&on2=17:40&off2=20:00&days=127
+```
+
+Campos:
+
+- `channel`: canal ESP.
+- `enabled`: agenda ativa no canal.
+- `en1`: periodo da manha ativo.
+- `on1`: hora de ligar no periodo 1.
+- `off1`: hora de desligar no periodo 1.
+- `en2`: periodo da noite ativo.
+- `on2`: hora de ligar no periodo 2.
+- `off2`: hora de desligar no periodo 2.
+- `days`: mascara de dias. Use `127` para todos os dias.
+
+Resposta esperada:
+
+```json
+{
+  "ok": true,
+  "cached": true,
+  "schedule": {}
+}
+```
+
+### 10.7. Agenda em grupo
+
+```http
+POST /api/group_schedule
+Content-Type: application/x-www-form-urlencoded
+
+channels=1,2,4&enabled=1&en1=1&on1=04:30&off1=06:10&en2=1&on2=17:40&off2=20:00&days=127
+```
+
+Resposta:
+
+```json
+{
+  "ok": true,
+  "cached": true,
+  "channels": [1, 2, 4],
+  "schedules": []
+}
+```
+
+### 10.8. Hora
+
+```http
+POST /api/time
+Content-Type: application/x-www-form-urlencoded
+
+epoch=1735689600
+```
+
+O app envia `DateTime.now().millisecondsSinceEpoch ~/ 1000` antes de sincronizar agenda.
+
+### 10.9. Wi-Fi
+
+```http
+POST /api/wifi
+Content-Type: application/x-www-form-urlencoded
+
+ssid=NomeDaRede&password=SenhaDaRede
+```
+
+Timeout do app: 35 segundos. Apos configurar, o app deve tentar pingar o endpoint retornado ou o endpoint informado por ate 12 tentativas, esperando o ESP reconectar.
+
+Quando o firmware retornar `ip`, salve este endpoint em:
 
 ```text
-Implemente em Flutter uma experiencia de integracao de hardware rural igual ao GRANJA SELETO. Use Riverpod, Drift/SQLite, GoRouter, media_kit para RTSP e http/xml/crypto/uuid para ONVIF. Crie um cliente ESP32 que normalize endpoint, descubra automaticamente o ESP em 192.168.4.1 e na sub-rede local, e consuma endpoints /api/status, /api/scale, /api/environment, /api/water, /api/sensors, /api/relay, /api/channel_schedule, /api/group_schedule, /api/wifi e /api/time. Persistir configuracoes em app_settings key/value.
-
-Mapeie iluminacao nos canais ESP 1-4 com GPIO23, GPIO22, GPIO21, GPIO19. Mapeie ventilacao nos canais ESP 5-12 com GPIO18, GPIO5, GPIO17, GPIO16, GPIO4, GPIO25, GPIO2, GPIO15. Mapeie balanca HX711 em GPIO32/33 e botoes em GPIO13/14/26. Mapeie ambiente DHT22 em GPIO27. Mapeie agua em GPIO34 nivel, GPIO35 temperatura, GPIO36 pH, GPIO39 TDS.
-
-Crie telas: integracoes de hardware, balanca, ambiente, agua, ventilacao, cameras, configuracoes e dashboard. Crie animacoes com CustomPainter: balanca, casa/ambiente, reservatorio com TweenAnimationBuilder, ventiladores com AnimationController e Transform.rotate, iluminacao com lampadas e brilho, camera live tile com Video do media_kit, overlay de carregamento e botoes redondos.
-
-Implemente validacoes de pinos reservados, endpoint vazio, horarios HH:mm, peso conhecido > 0, uma camera com audio por vez, stop/dispose de players e cancelamento de timers. Entregar UI responsiva e logs visuais do ESP32.
+hardware_lighting_endpoint
 ```
+
+e habilite:
+
+```text
+hardware_lighting_connection=WIFI
+hardware_lighting_enabled=true
+```
+
+### 10.10. Sincronizacao remota do ESP
+
+Leitura:
+
+```http
+GET /api/remote
+```
+
+Configuracao:
+
+```http
+POST /api/remote
+Content-Type: application/x-www-form-urlencoded
+
+enabled=1&url=http://servidor/iot/v1/esp/sync&token=TOKEN&priority=local
+```
+
+Campos:
+
+- `enabled`: `1`/`0`.
+- `url`: endpoint remoto de sincronizacao.
+- `token`: opcional.
+- `priority`: `local` ou `remote`.
+
+O firmware atual usa como padrao:
+
+```text
+http://solveontecnology.com.br:5005/iot/v1/esp/sync
+```
+
+## 11. Bluetooth
+
+O firmware atual tambem expoe Bluetooth Serial com nome:
+
+```text
+GRANJA_SELETO_RELE
+```
+
+Comandos documentados:
+
+```text
+PING
+STATUS
+RELAY 1 ON
+RELAY 1 OFF
+PULSE 1
+SCHEDULE 1 1 04:30 06:10 17:40 20:00 127
+TIME 1735689600
+WIFI Nome da Rede|Senha da Rede
+```
+
+No app atual, Bluetooth aparece como opcao/identificador visual, mas a integracao operacional implementada no cliente e HTTP/Wi-Fi. Nao implemente pareamento Bluetooth completo sem tratar isso como expansao.
+
+## 12. Cameras ONVIF/RTSP
+
+Implemente `OnvifCameraConfig` com:
+
+- `id`
+- `name`
+- `host`
+- `username`
+- `password`
+- `port`
+- `snapshotUrl`
+- `enabled`
+
+Limpeza de host:
+
+1. Remover scheme (`http://`, `rtsp://`, etc.).
+2. Remover credenciais antes de `@`.
+3. Remover path depois de `/`.
+4. Remover porta depois de `:`.
+
+RTSP gerado:
+
+```text
+rtsp://usuario:senha@host:porta
+```
+
+Se `username` estiver vazio, nao inclua credenciais.
+
+Servico ONVIF:
+
+```text
+http://host:porta/onvif/device_service
+```
+
+Resolucao de snapshot:
+
+1. Se `snapshotUrl` manual existir, use diretamente.
+2. Caso contrario, envie SOAP `GetCapabilities`.
+3. Obtenha o `XAddr` do Media service.
+4. Envie `GetProfiles`.
+5. Use o primeiro profile token.
+6. Envie `GetSnapshotUri`.
+7. Use o primeiro `Uri` retornado.
+
+Autenticacao ONVIF:
+
+- Use WS-Security UsernameToken com nonce aleatorio.
+- Gere digest com SHA1 de `nonce + created + password`.
+- Para imagem/snapshot direto, use Basic Auth quando houver usuario.
+
+Liveview:
+
+- Use `media_kit`, `media_kit_video` e `media_kit_libs_video`.
+- Inicialize `MediaKit.ensureInitialized()` no bootstrap do app.
+- Mostre grade responsiva de cameras ativas.
+- Permita fechar/reabrir cada camera sem excluir cadastro.
+- Permita popup fullscreen.
+- Permita audio ligado somente para uma camera por vez.
+
+## 13. Experiencia visual e animacoes
+
+Replicar a experiencia visual atual com Material 3, `AppShell`, `Seleto` widgets e instrumentos compactos.
+
+Estados comuns:
+
+- carregando com `CircularProgressIndicator`;
+- erro com componente de erro padrao;
+- configuracao ausente;
+- lendo/testando;
+- ativo/inativo;
+- ultima leitura carregada;
+- falha de ESP com mensagem exibida na propria tela.
+
+Use animacoes e pintura customizada onde fizer sentido:
+
+- Iluminacao: painel com canais, chips de manha/noite, status de ativo/off e indicador de canais ligados.
+- Ventilacao: instrumento com fluxo de ar animado/pintado, contagem de canais ligados e canais ativos.
+- Ambiente: instrumento visual de galpao/casa com temperatura e umidade.
+- Agua/reservatorio: tanque/nivel de agua e metricas de qualidade.
+- Cameras: toolbar colapsavel com `AnimatedCrossFade`, grade responsiva e tiles de video.
+- Terminal ESP: linhas em janela visual com ultimas mensagens, truncando para cerca de 12 linhas.
+
+Nao use paginas explicativas no lugar da ferramenta. A primeira tela de cada modulo deve permitir operar, ler, salvar ou testar.
+
+## 14. Firmware ESP32 atual
+
+O firmware atual e o arquivo:
+
+```text
+docs/hardware/firmware/esp32-granja-seleto/granja_seleto_wifi_bluetooth.ino
+```
+
+Constantes principais:
+
+```text
+deviceId = GRANJA-SELETO-RELE-01
+bluetoothName = GRANJA_SELETO_RELE
+setupApSsid = GRANJA-SELETO-SETUP
+setupApPassword = seleto1234
+gmtOffsetSeconds = -3 * 60 * 60
+relayActiveLow = true
+remoteSyncIntervalMs = 180000
+manualOverrideMs = 300000
+```
+
+Pinos:
+
+```text
+Reles: 23, 22, 21, 19, 18, 5, 17, 16, 4, 25, 2, 15
+DHT: GPIO27
+Agua nivel: GPIO34
+Agua temperatura: GPIO35
+Agua pH: GPIO36
+Agua TDS: GPIO39
+```
+
+Comportamentos:
+
+- AP de setup fica em `192.168.4.1`.
+- O firmware serve uma pagina HTML simples de recuperacao para configurar Wi-Fi.
+- Agenda e configuracoes ficam em cache local via `Preferences`.
+- Manual override de rele segura alteracao por 5 minutos.
+- Agenda e reles usam ate 12 canais.
+- Canais 1 a 4 sao iluminacao.
+- Canais 5 a 12 sao ventilacao.
+- Sensores de agua usam leitura analogica.
+- Sincronizacao remota pode receber comandos de rele no retorno HTTP.
+
+## 15. Checklist de aceite
+
+Considere a implementacao pronta quando:
+
+1. `/integrations` encontra o ESP no AP `192.168.4.1` ou na sub-rede local.
+2. O app mostra logs de descoberta e handshake.
+3. Configuracao Wi-Fi salva SSID/senha e tenta reconectar ao IP final.
+4. Canal de iluminacao liga/desliga e persiste `last_test_state`.
+5. Agenda individual envia `/api/time` e `/api/channel_schedule`.
+6. Agenda geral envia `/api/time` e `/api/group_schedule`.
+7. Tela de ventilacao usa canais ESP 5 a 12 e valida GPIOs reservados.
+8. Ambiente le `/api/environment` e salva ultima temperatura/umidade.
+9. Agua le `/api/water` e salva nivel, temperatura, pH, TDS e ORP quando houver.
+10. Remote sync le e salva `/api/remote`.
+11. Cameras sao persistidas em `hardware_onvif_cameras`.
+12. Snapshot ONVIF e URL manual funcionam.
+13. RTSP abre com media_kit, grade, popup e audio exclusivo por camera.
+14. Web usa stub para ESP local; nativo usa cliente real.
+15. Android usa MethodChannel para IP Wi-Fi e binding em chamadas locais.
+16. Todas as configuracoes ficam em `app_settings`.
+17. A UI tem estados claros de loading, erro, ativo, inativo e ultima leitura.
+
+## 16. Resumo de prompt para outro desenvolvedor
+
+Implemente as integracoes atuais do GRANJA SELETO em Flutter. Use Riverpod, GoRouter, Drift/SQLite, Material 3, http/xml/crypto/uuid para ONVIF e media_kit para RTSP. Persista configuracoes em `app_settings`.
+
+Crie um cliente ESP32 por HTTP local com descoberta automatica, normalizacao de endpoint, logs visuais, configuracao Wi-Fi, controle de reles, agenda de iluminacao, sensores de ambiente/agua e configuracao de sincronizacao remota. Em Android, use MethodChannel para descobrir IP Wi-Fi e prender chamadas locais ao Wi-Fi.
+
+Use o firmware ESP32 atual como contrato: 12 reles, canais 1-4 para iluminacao, canais 5-12 para ventilacao, DHT em GPIO27, agua em GPIO34/35/36/39, AP `GRANJA-SELETO-SETUP` com senha `seleto1234`, Bluetooth Serial `GRANJA_SELETO_RELE` apenas documentado/visual no app atual.
+
+Implemente cameras com cadastro ONVIF/RTSP persistido em `hardware_onvif_cameras`, resolucao de snapshot por SOAP e liveview com media_kit. Replique a experiencia visual com instrumentos animados/pintados, toolbar colapsavel, terminal ESP e estados operacionais claros.
