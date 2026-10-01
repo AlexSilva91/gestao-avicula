@@ -810,3 +810,653 @@ Crie um cliente ESP32 por HTTP local com descoberta automatica, normalizacao de 
 Use o firmware ESP32 atual como contrato: 12 reles, canais 1-4 para iluminacao, canais 5-12 para ventilacao, DHT em GPIO27, agua em GPIO34/35/36/39, AP `GRANJA-SELETO-SETUP` com senha `seleto1234`, Bluetooth Serial `GRANJA_SELETO_RELE` apenas documentado/visual no app atual.
 
 Implemente cameras com cadastro ONVIF/RTSP persistido em `hardware_onvif_cameras`, resolucao de snapshot por SOAP e liveview com media_kit. Replique a experiencia visual com instrumentos animados/pintados, toolbar colapsavel, terminal ESP e estados operacionais claros.
+
+## 17. Adendo atual: desenho exato das interfaces ESP32 em rede local
+
+Este adendo descreve o desenho atual da interface de integracao com ESP32 para ser replicado em outro sistema. Ele preserva as secoes anteriores como historico tecnico, mas prevalece sobre qualquer trecho antigo que mencione Bluetooth ou sincronizacao remota como parte da tela principal. A interface atual e local-first: o app fala com o ESP32 por HTTP no IP da rede local ou pelo AP de recuperacao `GRANJA-SELETO-SETUP`.
+
+### 17.1. Principio visual
+
+Use uma tela operacional, nao uma tela explicativa. A primeira dobra ja deve permitir:
+
+- detectar o ESP;
+- testar endpoint;
+- conectar o ESP ao Wi-Fi;
+- desconectar o ESP do Wi-Fi;
+- ver logs tecnicos;
+- operar iluminacao e agenda.
+
+O desenho usa Material 3, cantos de `8px` ou menos, paineis compactos, icones funcionais e informacao densa. Evite hero, cards promocionais, gradientes decorativos e textos longos de marketing.
+
+### 17.2. Ordem vertical da tela `/integrations`
+
+Renderize a tela dentro de `AppShell` com titulo:
+
+```text
+Iluminação
+```
+
+A ordem dos blocos deve ser exatamente:
+
+1. `_IntegrationHeader`
+2. `_EspTerminalPanel`
+3. `_EspWifiProvisionPanel`
+4. `_IntegrationPanel` de iluminacao
+
+Use espacamento vertical:
+
+```text
+Header -> Terminal: 16
+Terminal -> Wi-Fi ESP: 12
+Wi-Fi ESP -> Iluminacao: 16
+Paineis internos: 12
+```
+
+### 17.3. Header da integracao
+
+Componente: `_IntegrationHeader`.
+
+Objetivo: dar contexto rapido de que a tela controla a iluminacao por ESP32.
+
+Estados:
+
+- pronto: quando `lightingEnabled == true` e `lightingEndpoint` nao esta vazio;
+- pendente: qualquer outro caso.
+
+Use um layout horizontal com icone de modulo/automacao, titulo curto e status visual. Nao use texto instrucional grande.
+
+### 17.4. Terminal ESP
+
+Componente: `_EspTerminalPanel`.
+
+Este painel deve ser visualmente parecido com um terminal tecnico.
+
+Container externo:
+
+```text
+background: #07130D
+borderRadius: 8
+border: #39FF88 com alpha 0.42
+boxShadow: #39FF88 com alpha 0.10, blur 18, offset y 8
+padding: 12
+```
+
+Cores fixas:
+
+```text
+terminalGreen = #39FF88
+terminalAmber = #FFD166
+```
+
+Cabecalho:
+
+- icone `Icons.terminal_outlined` quando parado;
+- icone `Icons.radar_outlined` quando escaneando;
+- cor verde quando parado;
+- cor amber quando escaneando;
+- titulo em `titleMedium`, fonte monospace, peso `w800`, cor `terminalGreen`;
+- `CircularProgressIndicator` de `18x18`, `strokeWidth: 2`, somente durante scan.
+
+Area de log:
+
+```text
+minHeight: 132
+maxHeight: 220
+background: preto com alpha 0.72
+borderRadius: 6
+border: terminalGreen com alpha 0.18
+padding interno: 10
+scroll reverse: true
+texto selecionavel
+fontFamily: monospace
+fontSize: 12
+height: 1.32
+color: terminalGreen
+```
+
+O log deve manter aproximadamente as ultimas 12 linhas. Payload JSON pode ser exibido com prefixo `JSON>` e indentacao de 2 espacos, limitado a cerca de 8 linhas por payload.
+
+Prefixos de log esperados:
+
+```text
+SYS>
+SCAN>
+ESP>
+APP>
+JSON>
+WARN>
+ERR>
+AP>
+```
+
+Linhas iniciais recomendadas:
+
+```text
+SYS> aguardando handshake com ESP32
+SYS> modo Wi-Fi procura /api/status automaticamente
+SYS> fallback AP: GRANJA-SELETO-SETUP / seleto1234
+```
+
+Botoes do terminal:
+
+- `FilledButton.tonalIcon`
+  - icone: `Icons.radar_outlined`
+  - texto: `Detectar ESP`
+  - acao: descoberta automatica;
+- `OutlinedButton.icon`
+  - icone: `Icons.lan_outlined`
+  - texto: `Testar endpoint`
+  - acao: ping no endpoint salvo.
+
+Ambos ficam em `Wrap(spacing: 8, runSpacing: 8)` e desabilitam durante scan.
+
+### 17.5. Painel Wi-Fi do ESP
+
+Componente: `_EspWifiProvisionPanel`.
+
+Container:
+
+```text
+background: colorScheme.surfaceContainerHighest com alpha 0.42
+borderRadius: 8
+border: colorScheme.primary com alpha 0.20
+padding: 12
+```
+
+Cabecalho:
+
+- quadrado de icone `34x34`;
+- cor de fundo: `colorScheme.primaryContainer`;
+- raio: `8`;
+- icone: `Icons.wifi_tethering_outlined`;
+- cor do icone: `colorScheme.onPrimaryContainer`;
+- titulo: `Wi-Fi do ESP`, `titleMedium`, peso `w800`;
+- subtitulo:
+  - conectado: `Controlador conectado na rede local`;
+  - desconectado: `Conecta o controlador na rede local`;
+- subtitulo em `bodySmall`, cor `onSurfaceVariant`.
+
+Campos:
+
+1. Campo endpoint do AP:
+   - label: `Endpoint do AP do ESP`;
+   - hint: `192.168.4.1`;
+   - `keyboardType: TextInputType.url`;
+   - prefixIcon: `Icons.router_outlined`.
+
+2. Campo SSID:
+   - label: `Rede Wi-Fi`;
+   - prefixIcon: `Icons.wifi_outlined`.
+
+3. Campo senha:
+   - label: `Senha`;
+   - prefixIcon: `Icons.lock_outline`;
+   - `obscureText` alternavel;
+   - botao suffix com:
+     - `Icons.visibility_outlined` para mostrar;
+     - `Icons.visibility_off_outlined` para ocultar;
+     - tooltip `Mostrar senha` ou `Ocultar senha`.
+
+Responsividade:
+
+- se largura `< 520`, SSID e senha ficam em coluna;
+- se largura `>= 520`, SSID e senha ficam em linha com dois `Expanded` e `SizedBox(width: 10)`.
+
+Faixa informativa:
+
+- componente `_InfoStrip`;
+- icone: `Icons.security_outlined`;
+- texto:
+
+```text
+Use o AP GRANJA-SELETO-SETUP apenas para configurar. Depois disso o app fala com o ESP pelo IP recebido na rede local.
+```
+
+Botoes:
+
+```text
+Wrap(spacing: 8, runSpacing: 8)
+```
+
+- `FilledButton.icon`
+  - icone: `Icons.send_to_mobile_outlined`
+  - texto: `Conectar Wi-Fi`
+  - envia `POST /api/wifi`;
+- `OutlinedButton.icon`
+  - icone: `Icons.wifi_off_outlined`
+  - texto: `Desconectar`
+  - envia `POST /api/wifi/disconnect`;
+- `OutlinedButton.icon`
+  - icone: `Icons.help_outline`
+  - texto: `Como conectar`
+  - abre dialog simples.
+
+Dialog de ajuda:
+
+```text
+Titulo: Conectar o ESP no Wi-Fi
+Texto: Conecte o celular na rede GRANJA-SELETO-SETUP, senha seleto1234. Depois informe o Wi-Fi da propriedade aqui no app e toque em Enviar. A tela web do ESP continua disponivel apenas como backup.
+Botao: Entendi
+```
+
+### 17.6. Painel geral de iluminacao
+
+Componente: `_IntegrationPanel`.
+
+Use para agrupar a experiencia de iluminacao. Nao coloque cards dentro de cards sem necessidade. O painel deve ter:
+
+- icone: `Icons.lightbulb_outline`;
+- titulo: `Iluminação`;
+- status em `_InfoStrip`;
+- filhos na ordem:
+  1. `_LightingControlInstrument`;
+  2. `_LightingConnectionPanel`;
+  3. `_LightingChannelBoard`;
+  4. `_GeneralLightingSchedulePanel`;
+  5. `_InfoStrip` de agenda;
+  6. barra de botoes.
+
+Texto da faixa de agenda:
+
+```text
+Cada canal pode ser testado separadamente. A agenda enviada fica salva no ESP e roda pelo relógio NTP ou pela hora sincronizada pelo app.
+```
+
+Botoes finais:
+
+- `FilledButton.icon`
+  - icone: `Icons.save_outlined`
+  - texto: `Salvar`;
+- `FilledButton.tonalIcon`
+  - icone: `Icons.wifi`
+  - texto: `Testar Wi-Fi`;
+- `FilledButton.tonalIcon`
+  - icone: `Icons.event_repeat_outlined`
+  - texto: `Sincronizar agenda`.
+
+Nao renderize opcao Bluetooth nesta tela.
+
+### 17.7. Instrumento visual de iluminacao
+
+Componente: `_LightingControlInstrument`.
+
+Container:
+
+```text
+background: surfaceContainerHighest alpha 0.30
+borderRadius: 8
+border: outlineVariant
+padding: 10
+```
+
+Cabecalho:
+
+- bloco de icone `38x38`;
+- fundo: primary alpha 0.10;
+- borda: primary alpha 0.22;
+- raio: 8;
+- icone ligado: `Icons.light_mode`;
+- icone desligado: `Icons.light_mode_outlined`;
+- cor: primary;
+- titulo: `Painel de luz do galpão`, `titleMedium`, peso `w900`, uma linha com ellipsis;
+- subtitulo: `Relés ESP32, horários e acionamento manual`, `labelSmall`, `onSurfaceVariant`, uma linha com ellipsis;
+- pill de status:
+  - icone atual: `Icons.wifi`;
+  - label: `sincronizado` quando conexao OK; caso contrario `WIFI`;
+  - positivo quando `connectionOk == true`.
+
+Area grafica:
+
+```text
+height: 188
+CustomPaint com _LightingInstrumentPainter
+padding interno: left 12, top 12, right 12, bottom 10
+```
+
+Painter:
+
+- desenha uma placa central arredondada em `20%` a `80%` da largura, altura `58`, raio `12`;
+- placa preenchida com primary alpha `0.14` se automacao ativa, `0.06` se inativa;
+- borda `outlineVariant`, stroke `1.3`;
+- linha horizontal de barramento em `58%` da altura;
+- quatro lampadas igualmente distribuidas;
+- cada lampada tem feixe trapezoidal;
+- cor da lampada ligada: `#FFB020`;
+- lampada ligada usa alpha `0.70` no circulo e `0.18` no feixe;
+- lampada ativa/desligada usa primary com alpha `0.28`;
+- lampada inativa usa primary com alpha `0.12`.
+
+HUD superior dentro do painter:
+
+- `_LightingHudChip` para modo:
+  - icone `Icons.power_settings_new`;
+  - texto `Automação ativa` ou `Desativada`;
+- `_LightingHudChip` para ligados:
+  - icone `Icons.tungsten_outlined`;
+  - texto `<n> ligados`.
+
+Cada `_LightingHudChip`:
+
+```text
+padding horizontal 9 vertical 6
+background: surface alpha 0.86
+borderRadius: 8
+border: cor do estado alpha 0.20
+icone size 15
+labelSmall, peso w900
+```
+
+Nos quatro nos de lampada (`_LightingLampNode`):
+
+```text
+padding horizontal 6 vertical 6
+background: surface alpha 0.92 se ligado, 0.74 se desligado
+borderRadius: 8
+border: primary alpha 0.42 se ligado, outlineVariant se nao
+icone lightbulb/lightbulb_outline size 22
+label maxLines 1 ellipsis, labelSmall w900
+pin: "G<pin>", labelSmall w800, onSurfaceVariant
+icones de periodo: wb_twilight_outlined e nights_stay_outlined, size 12
+```
+
+### 17.8. Trilho de metricas da iluminacao
+
+Componente: `_LightingMetricRail`.
+
+Use `GridView.builder`, `shrinkWrap: true`, sem scroll proprio.
+
+Layout:
+
+- largura `> 620`: 4 colunas, `childAspectRatio: 2.7`;
+- largura `<= 620`: 2 colunas, `childAspectRatio: 2.35`;
+- `crossAxisSpacing: 8`;
+- `mainAxisSpacing: 8`.
+
+Itens:
+
+```text
+Modo     -> Icons.power_settings_new -> Ativo/Off
+Canais   -> Icons.tungsten_outlined  -> <ativos>/4
+Ligados  -> Icons.light_mode_outlined -> <ligados>/4
+Conexão  -> Icons.wifi               -> OK/WIFI
+```
+
+Tile:
+
+```text
+background: surface alpha 0.78
+borderRadius: 8
+border: primary alpha 0.28 se positivo, outlineVariant se nao
+padding horizontal 8 vertical 6
+icone size 18
+label: labelSmall, onSurfaceVariant, w800
+valor: labelLarge, w900
+```
+
+### 17.9. Painel de conexao do controlador
+
+Componente: `_LightingConnectionPanel`.
+
+Container:
+
+```text
+Material
+background: surfaceContainerHighest alpha 0.40
+shape: RoundedRectangleBorder
+border: outlineVariant
+borderRadius: 8
+padding: 12
+```
+
+Cabecalho:
+
+- icone ligado: `Icons.power_settings_new`, cor primary;
+- icone desligado: `Icons.power_off_outlined`, cor onSurfaceVariant;
+- titulo: `Controlador ESP32`;
+- switch no fim da linha para ativar/desativar integracao.
+
+Pills:
+
+- `Conectado` ou `Pendente`, icone `Icons.cable_outlined`;
+- `<ativos>/4 ativos`, icone `Icons.tungsten_outlined`;
+- `<ligados>/4 ligados`, icone `Icons.light_mode_outlined`.
+
+Controle de conexao:
+
+- `SegmentedButton<String>` com somente um segmento:
+  - value: `WIFI`;
+  - icon: `Icons.wifi`;
+  - label: `Wi-Fi`.
+
+Campos:
+
+- endpoint:
+  - label: `Endpoint/IP local`;
+  - prefixIcon: `Icons.router_outlined`;
+- GPIO padrao:
+  - label: `GPIO padrão`;
+  - prefixIcon: `Icons.electrical_services`;
+  - largura fixa `150` em layouts largos e compactos.
+
+Responsividade:
+
+- se largura `> 760`, use uma linha:
+  - SegmentedButton;
+  - endpoint expandido;
+  - GPIO com `SizedBox(width: 150)`;
+  - espacos de `10`;
+- se largura `<= 760`, use coluna:
+  - SegmentedButton alinhado a esquerda;
+  - endpoint;
+  - GPIO com largura 150 alinhado a esquerda.
+
+### 17.10. Board de canais e modal de canal
+
+Componente: `_LightingChannelBoard`.
+
+Mostre os quatro canais como grade fixa:
+
+- `GridView.builder`;
+- `itemCount: 4`;
+- sem scroll proprio;
+- `crossAxisCount: 2`;
+- `crossAxisSpacing: 8`;
+- `mainAxisSpacing: 8`;
+- `childAspectRatio`:
+  - `< 520`: `1.62`;
+  - `< 760`: `1.95`;
+  - demais: valor mais aberto conforme a tela.
+
+Cada canal deve abrir um `showModalBottomSheet` com:
+
+- alca superior central `42x4`, raio circular, cor `outlineVariant`;
+- linha de titulo com icone `lightbulb/lightbulb_outline`, nome do canal e `Switch`;
+- `_InfoStrip` com status do canal;
+- campos `Nome do canal` e `GPIO`;
+- dois blocos `_ScheduleWindowFields`:
+  - `Manhã`, icone `Icons.wb_twilight_outlined`;
+  - `Tarde/noite`, icone `Icons.nights_stay_outlined`;
+- botoes:
+  - `Ligar`, `FilledButton.tonalIcon`, `Icons.light_mode_outlined`;
+  - `Desligar`, `OutlinedButton.icon`, `Icons.dark_mode_outlined`;
+  - `Pulso`, `OutlinedButton.icon`, `Icons.bolt_outlined`;
+  - `Salvar`, `FilledButton.icon`, `Icons.save_outlined`.
+
+Em telas `> 520`, campos nome/GPIO ficam em linha; caso contrario, em coluna.
+
+### 17.11. Agenda geral
+
+Componente: `_GeneralLightingSchedulePanel` e modal `_openGeneralLightingScheduleSheet`.
+
+Na tela principal, mostre um painel compacto com canais selecionados, estado manha/noite e botao para abrir agenda.
+
+No modal:
+
+- alca superior `42x4`;
+- titulo `Agenda geral`, icone `Icons.tune_outlined`;
+- contador `<selecionados>/4` no canto direito;
+- botoes:
+  - `Todos`, `OutlinedButton.icon`, `Icons.done_all_outlined`;
+  - `Nenhum`, `OutlinedButton.icon`, `Icons.remove_done_outlined`;
+- chips por canal com:
+  - `Icons.check_circle_outline` quando selecionado;
+  - `Icons.circle_outlined` quando nao selecionado;
+- dois `_ScheduleWindowFields`:
+  - `Manhã geral`;
+  - `Tarde/noite geral`;
+- botoes:
+  - `Aplicar`, `FilledButton.tonalIcon`, `Icons.playlist_add_check_outlined`;
+  - `Aplicar e sincronizar`, `FilledButton.icon`, `Icons.sync_outlined`.
+
+### 17.12. InfoStrip
+
+Componente: `_InfoStrip`.
+
+Use para mensagens operacionais curtas. Estrutura:
+
+- icone funcional a esquerda;
+- texto curto;
+- fundo sutil baseado no tema;
+- raio `8`;
+- sem bloco de explicacao longa.
+
+### 17.13. SmallStatusPill
+
+Componente: `_SmallStatusPill`.
+
+Visual:
+
+```text
+background: cor do estado alpha 0.10
+borderRadius: 999
+border: cor do estado alpha 0.18
+padding horizontal 10 vertical 6
+icone size 18
+label labelMedium, w700
+```
+
+Cor:
+
+- positivo: `colorScheme.primary`;
+- negativo/neutro: `colorScheme.onSurfaceVariant`.
+
+### 17.14. Fluxo operacional atual
+
+Estados e titulos do terminal:
+
+```text
+AUTO SCAN
+MANUAL SCAN
+ESP NAO ENCONTRADO
+ESP HANDSHAKE
+ESP CONECTADO
+CONFIG WIFI ESP
+WIFI CONFIGURADO
+WIFI SALVO NO ESP
+DESCONECTAR WIFI ESP
+WIFI DESCONECTADO
+SYNC AGENDA
+SYNC AGENDA GERAL
+FALHA WIFI ESP
+FALHA DESCONECTAR WIFI
+FALHA CONFIG REMOTE
+```
+
+Fluxo de detectar:
+
+1. limpar log para `SYS> varredura automatica iniciada` ou `SYS> varredura manual iniciada`;
+2. tentar `192.168.4.1`;
+3. varrer a sub-rede local;
+4. quando encontrado, aplicar `endpoint` retornado por `ip` se houver;
+5. atualizar estados reais dos reles;
+6. salvar endpoint em `hardware_lighting_endpoint`.
+
+Fluxo de conectar Wi-Fi:
+
+1. usuario informa endpoint do AP, SSID e senha;
+2. app chama `POST /api/wifi`;
+3. app aguarda DHCP/ping por ate 12 tentativas com pausa de 2500 ms;
+4. se `wifiConnected == true` e `ip` vier preenchido, salvar endpoint `http://<ip>`;
+5. forcar:
+
+```text
+hardware_lighting_connection=WIFI
+hardware_lighting_enabled=true
+hardware_esp_remote_sync_enabled=false
+```
+
+Fluxo de desconectar:
+
+1. app escolhe endpoint atual ou `192.168.4.1`;
+2. chama `POST /api/wifi/disconnect` com `clear=1`;
+3. limpa no app:
+
+```text
+hardware_lighting_endpoint=
+hardware_esp_wifi_ssid=
+hardware_esp_wifi_password=
+```
+
+4. desativa `lightingEnabled`;
+5. terminal informa que o ESP saiu da rede e deve ser reconectado pelo AP.
+
+### 17.15. Contrato firmware atualizado para a interface
+
+O firmware local-first deve:
+
+- iniciar sempre em `WIFI_AP_STA`;
+- manter `WiFi.persistent(false)`;
+- manter `WiFi.setSleep(false)`;
+- manter hostname `GRANJA-SELETO-RELE-01`;
+- subir o AP `GRANJA-SELETO-SETUP` com senha `seleto1234`;
+- fixar AP em `192.168.4.1`;
+- usar canal `6`;
+- aceitar ate `4` clientes;
+- manter watchdog para religar AP caso `softAPIP == 0.0.0.0`;
+- nao depender de Bluetooth;
+- nao depender de servidor remoto.
+
+`GET /api/status` deve retornar tambem:
+
+```json
+{
+  "wifiMode": 3,
+  "setupApActive": true,
+  "setupApSsid": "GRANJA-SELETO-SETUP",
+  "setupApIp": "192.168.4.1"
+}
+```
+
+`ip` deve representar o IP da interface station na rede local. Se o ESP nao estiver conectado na rede Wi-Fi da propriedade, `ip` deve ser string vazia e `setupApIp` deve continuar `192.168.4.1`.
+
+`POST /api/wifi/disconnect` deve:
+
+- remover credenciais se `clear=1`;
+- chamar desconexao sem apagar/destruir o AP;
+- garantir modo `WIFI_AP_STA`;
+- manter o AP ativo;
+- retornar:
+
+```json
+{
+  "ok": true,
+  "wifiConnected": false,
+  "ip": "",
+  "setupApIp": "192.168.4.1",
+  "credentialsCleared": true
+}
+```
+
+### 17.16. Coisas que nao devem existir na replica atual
+
+Nao replique na tela principal atual:
+
+- botao `Testar Bluetooth`;
+- segmento `Bluetooth`;
+- identificador Bluetooth;
+- painel de sincronizacao remota;
+- URL/token de servidor remoto;
+- escolha `local/remoto`;
+- dependencia visual de internet.
+
+Pode manter endpoints `/api/remote` apenas como compatibilidade, retornando desativado, mas eles nao devem aparecer na UI.
