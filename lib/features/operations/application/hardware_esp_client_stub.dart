@@ -138,24 +138,6 @@ class HardwareEspClient {
     );
   }
 
-  Future<Map<String, Object?>> readRemoteSync(String endpoint) async {
-    throw UnsupportedError(
-      'Configuracao remota do ESP indisponivel nesta plataforma.',
-    );
-  }
-
-  Future<Map<String, Object?>> configureRemoteSync({
-    required String endpoint,
-    required bool enabled,
-    required String url,
-    required String token,
-    required String priority,
-  }) async {
-    throw UnsupportedError(
-      'Configuracao remota do ESP indisponivel nesta plataforma.',
-    );
-  }
-
   Future<Map<String, Object?>> configureWifi({
     required String endpoint,
     required String ssid,

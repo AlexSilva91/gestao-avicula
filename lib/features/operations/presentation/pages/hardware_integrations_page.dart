@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -334,7 +335,6 @@ class _HardwareIntegrationsPageState
           channelOn: lightingChannelOn,
           morningEnabled: lightingChannelMorningEnabled,
           eveningEnabled: lightingChannelEveningEnabled,
-          connection: lightingConnection,
           connectionOk: lightingConnectionResult?.contains('OK') == true,
           enabledCount: enabledCount,
           onCount: onCount,
@@ -1598,8 +1598,8 @@ class _HardwareIntegrationsPageState
     if (!mounted) return;
     setState(() {
       final nextLines = [...espTerminalLines, message];
-      espTerminalLines = nextLines.length > 12
-          ? nextLines.sublist(nextLines.length - 12)
+      espTerminalLines = nextLines.length > 160
+          ? nextLines.sublist(nextLines.length - 160)
           : nextLines;
     });
   }
@@ -1607,7 +1607,7 @@ class _HardwareIntegrationsPageState
   void _appendEspPayload(Map<String, Object?> payload) {
     const encoder = JsonEncoder.withIndent('  ');
     final lines = encoder.convert(payload).split('\n');
-    for (final line in lines.take(8)) {
+    for (final line in lines) {
       _appendEspLog('JSON> $line');
     }
   }
@@ -1632,9 +1632,14 @@ class _EspTerminalPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     const terminalGreen = Color(0xFF39FF88);
     const terminalAmber = Color(0xFFFFD166);
+    final terminalText = lines.join('\n');
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFF07130D),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF07130D), Color(0xFF0B261E), Color(0xFF06110F)],
+        ),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: terminalGreen.withValues(alpha: .42)),
         boxShadow: [
@@ -1677,7 +1682,7 @@ class _EspTerminalPanel extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 132, maxHeight: 220),
+              constraints: const BoxConstraints(minHeight: 220, maxHeight: 420),
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: .72),
@@ -1688,14 +1693,20 @@ class _EspTerminalPanel extends StatelessWidget {
                 ),
                 child: SingleChildScrollView(
                   reverse: true,
-                  padding: const EdgeInsets.all(10),
-                  child: SelectableText(
-                    lines.join('\n'),
-                    style: const TextStyle(
-                      color: terminalGreen,
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                      height: 1.32,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.all(10),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 720),
+                      child: SelectableText(
+                        terminalText,
+                        style: const TextStyle(
+                          color: terminalGreen,
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                          height: 1.36,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -1798,6 +1809,28 @@ class _EspWifiProvisionPanel extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                const _SmallStatusPill(
+                  icon: Icons.router_outlined,
+                  label: 'AP 192.168.4.1',
+                  positive: true,
+                ),
+                _SmallStatusPill(
+                  icon: Icons.lan_outlined,
+                  label: connected ? 'Rede local OK' : 'Rede local pendente',
+                  positive: connected,
+                ),
+                const _SmallStatusPill(
+                  icon: Icons.language_outlined,
+                  label: 'HTTP local',
+                  positive: true,
                 ),
               ],
             ),
@@ -1906,7 +1939,6 @@ class _LightingControlInstrument extends StatelessWidget {
     required this.channelOn,
     required this.morningEnabled,
     required this.eveningEnabled,
-    required this.connection,
     required this.connectionOk,
     required this.enabledCount,
     required this.onCount,
@@ -1919,7 +1951,6 @@ class _LightingControlInstrument extends StatelessWidget {
   final List<bool> channelOn;
   final List<bool> morningEnabled;
   final List<bool> eveningEnabled;
-  final String connection;
   final bool connectionOk;
   final int enabledCount;
   final int onCount;
@@ -1981,8 +2012,8 @@ class _LightingControlInstrument extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 _SmallStatusPill(
-                  icon: connection == 'WIFI' ? Icons.wifi : Icons.bluetooth,
-                  label: connectionOk ? 'sincronizado' : connection,
+                  icon: Icons.wifi,
+                  label: connectionOk ? 'sincronizado' : 'WIFI',
                   positive: connectionOk,
                 ),
               ],
@@ -2052,7 +2083,6 @@ class _LightingControlInstrument extends StatelessWidget {
             _LightingMetricRail(
               enabledCount: enabledCount,
               onCount: onCount,
-              connection: connection,
               connectionOk: connectionOk,
               enabled: enabled,
             ),
@@ -2128,24 +2158,47 @@ class _LightingLampNode extends StatelessWidget {
         : enabled
         ? colors.onSurface
         : colors.onSurfaceVariant;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+    final lampColor = on ? const Color(0xFFFFD166) : color;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
       decoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: on ? .92 : .74),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            on
+                ? lampColor.withValues(alpha: .24)
+                : colors.surface.withValues(alpha: .86),
+            colors.surface.withValues(alpha: on ? .94 : .72),
+          ],
+        ),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: on
-              ? colors.primary.withValues(alpha: .42)
-              : colors.outlineVariant,
+          color: on ? lampColor.withValues(alpha: .64) : colors.outlineVariant,
         ),
+        boxShadow: [
+          if (on)
+            BoxShadow(
+              color: lampColor.withValues(alpha: .36),
+              blurRadius: 24,
+              spreadRadius: 1,
+            ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            on ? Icons.lightbulb : Icons.lightbulb_outline,
-            size: 22,
-            color: color,
+          SizedBox(
+            height: 42,
+            child: CustomPaint(
+              painter: _LampBulbPainter(
+                color: lampColor,
+                active: enabled && on,
+              ),
+              child: const SizedBox.expand(),
+            ),
           ),
           const SizedBox(height: 4),
           Text(
@@ -2189,18 +2242,84 @@ class _LightingLampNode extends StatelessWidget {
   }
 }
 
+class _LampBulbPainter extends CustomPainter {
+  const _LampBulbPainter({required this.color, required this.active});
+
+  final Color color;
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height * .44);
+    final radius = math.min(size.width, size.height) * .24;
+    if (active) {
+      canvas.drawCircle(
+        center,
+        radius * 1.75,
+        Paint()
+          ..color = color.withValues(alpha: .22)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14),
+      );
+      canvas.drawCircle(
+        center,
+        radius * 1.08,
+        Paint()
+          ..color = color.withValues(alpha: .38)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+      );
+    }
+    canvas.drawLine(
+      Offset(center.dx, 0),
+      Offset(center.dx, center.dy - radius),
+      Paint()
+        ..color = color.withValues(alpha: .36)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+    final bulbShader = RadialGradient(
+      colors: [
+        color.withValues(alpha: active ? .95 : .30),
+        color.withValues(alpha: active ? .42 : .10),
+      ],
+    ).createShader(Rect.fromCircle(center: center, radius: radius * 1.2));
+    canvas.drawCircle(center, radius, Paint()..shader = bulbShader);
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = color.withValues(alpha: active ? .78 : .42)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+    final base = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(center.dx, center.dy + radius + 6),
+        width: radius * 1.18,
+        height: 10,
+      ),
+      const Radius.circular(3),
+    );
+    canvas.drawRRect(
+      base,
+      Paint()..color = color.withValues(alpha: active ? .68 : .32),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _LampBulbPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.active != active;
+}
+
 class _LightingMetricRail extends StatelessWidget {
   const _LightingMetricRail({
     required this.enabledCount,
     required this.onCount,
-    required this.connection,
     required this.connectionOk,
     required this.enabled,
   });
 
   final int enabledCount;
   final int onCount;
-  final String connection;
   final bool connectionOk;
   final bool enabled;
 
@@ -2229,9 +2348,9 @@ class _LightingMetricRail extends StatelessWidget {
             onCount > 0,
           ),
           _LightingMetricData(
-            connection == 'WIFI' ? Icons.wifi : Icons.bluetooth,
+            Icons.wifi,
             'Conexão',
-            connectionOk ? 'OK' : connection,
+            connectionOk ? 'OK' : 'WIFI',
             connectionOk,
           ),
         ];
@@ -2337,6 +2456,16 @@ class _LightingInstrumentPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = outline.withValues(alpha: .16)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .7;
+    for (var x = 0.0; x < size.width; x += 28) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+    }
+    for (var y = 0.0; y < size.height; y += 28) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
     final line = Paint()
       ..color = outline
       ..style = PaintingStyle.stroke

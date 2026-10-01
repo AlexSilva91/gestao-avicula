@@ -82,7 +82,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/hardware-water-quality',
-        builder: (_, _) => const WaterReservoirSensorPage(),
+        builder: (_, _) => const WaterQualitySensorPage(),
       ),
       GoRoute(path: '/cameras', builder: (_, _) => const CameraMonitorPage()),
       GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),

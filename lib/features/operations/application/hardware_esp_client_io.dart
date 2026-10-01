@@ -236,27 +236,6 @@ class HardwareEspClient {
     return _getJson('$normalized/api/sensors');
   }
 
-  Future<Map<String, Object?>> readRemoteSync(String endpoint) {
-    final normalized = _normalizeEndpoint(endpoint);
-    return _getJson('$normalized/api/remote');
-  }
-
-  Future<Map<String, Object?>> configureRemoteSync({
-    required String endpoint,
-    required bool enabled,
-    required String url,
-    required String token,
-    required String priority,
-  }) {
-    final normalized = _normalizeEndpoint(endpoint);
-    return _postForm('$normalized/api/remote', {
-      'enabled': enabled ? '1' : '0',
-      'url': url,
-      'token': token,
-      'priority': priority,
-    });
-  }
-
   Future<Map<String, Object?>> configureWifi({
     required String endpoint,
     required String ssid,

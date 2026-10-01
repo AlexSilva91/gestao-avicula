@@ -471,46 +471,58 @@ class _WaterQualitySensorPageState
           error: (_, _) => const SeletoAsyncError(),
           data: (settings) {
             _hydrate(settings);
-            return _SensorPanel(
+            return _SensorExperience(
               icon: Icons.science_outlined,
               title: 'Parâmetros da água',
+              subtitle: 'pH, TDS e cloro/ORP em tempo real',
               status: status,
-              children: [
-                _ReadingGrid(
-                  tiles: [
-                    _ReadingTile(
-                      icon: Icons.science_outlined,
-                      label: 'pH',
-                      value: ph == null ? 'Sem leitura' : decimal.format(ph!),
-                      active: ph != null,
-                    ),
-                    _ReadingTile(
-                      icon: Icons.blur_on_outlined,
-                      label: 'TDS',
-                      value: tdsPpm == null
-                          ? 'Sem leitura'
-                          : '${decimal.format(tdsPpm!)} ppm',
-                      active: tdsPpm != null,
-                    ),
-                    _ReadingTile(
-                      icon: Icons.biotech_outlined,
-                      label: 'Cloro/ORP',
-                      value: chlorineOrpMv == null
-                          ? 'Sem leitura'
-                          : '${decimal.format(chlorineOrpMv!)} mV',
-                      active: chlorineOrpMv != null,
-                    ),
-                  ],
+              visual: _WaterQualityInstrument(
+                ph: ph,
+                tdsPpm: tdsPpm,
+                chlorineOrpMv: chlorineOrpMv,
+                working: working,
+              ),
+              metrics: [
+                _SensorMetric(
+                  icon: Icons.science_outlined,
+                  label: 'pH',
+                  value: ph == null ? 'Sem leitura' : decimal.format(ph!),
+                  active: ph != null,
                 ),
-                const SizedBox(height: 10),
-                _SensorActions(
-                  working: working,
-                  onRead: _read,
-                  onSave: () => _save('hardware_water_quality_endpoint'),
+                _SensorMetric(
+                  icon: Icons.blur_on_outlined,
+                  label: 'TDS',
+                  value: tdsPpm == null
+                      ? 'Sem leitura'
+                      : '${decimal.format(tdsPpm!)} ppm',
+                  active: tdsPpm != null,
                 ),
-                const SizedBox(height: 10),
-                const _SensorPortMap(ports: _waterQualitySensorPorts),
-                const SizedBox(height: 10),
+                _SensorMetric(
+                  icon: Icons.biotech_outlined,
+                  label: 'Cloro/ORP',
+                  value: chlorineOrpMv == null
+                      ? 'Sem leitura'
+                      : '${decimal.format(chlorineOrpMv!)} mV',
+                  active: chlorineOrpMv != null,
+                ),
+              ],
+              actions: [
+                FilledButton.icon(
+                  onPressed: working ? null : _read,
+                  icon: const Icon(Icons.sensors_outlined),
+                  label: const Text('Ler'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: working
+                      ? null
+                      : () => _save('hardware_water_quality_endpoint'),
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Salvar'),
+                ),
+              ],
+              ports: _waterQualitySensorPorts,
+              payload: lastPayload,
+              config: [
                 _SensorConfigCard(
                   title: 'Conexão',
                   icon: Icons.router_outlined,
@@ -518,8 +530,6 @@ class _WaterQualitySensorPageState
                     _EndpointField(controller: endpoint, working: working),
                   ],
                 ),
-                const SizedBox(height: 10),
-                _PayloadPanel(payload: lastPayload),
               ],
             );
           },
@@ -1549,85 +1559,105 @@ class _SensorExperience extends StatelessWidget {
     final failed = status.toLowerCase().contains('falha');
     final active = !failed && status != 'Aguardando leitura';
     return Material(
-      color: colors.surface.withValues(alpha: .96),
+      color: Colors.transparent,
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: colors.outlineVariant),
+        side: BorderSide(color: colors.primary.withValues(alpha: .20)),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                _TechIcon(icon: icon),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w900),
-                      ),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _SensorStatusPill(
-                  label: failed
-                      ? 'Falha'
-                      : active
-                      ? 'Online'
-                      : 'Pronto',
-                  icon: failed
-                      ? Icons.error_outline
-                      : active
-                      ? Icons.check_circle_outline
-                      : Icons.sensors_outlined,
-                  positive: active && !failed,
-                  warning: failed,
-                ),
-              ],
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              colors.surface.withValues(alpha: .98),
+              colors.surfaceContainerHighest.withValues(alpha: .54),
+              colors.primaryContainer.withValues(alpha: .18),
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: colors.primary.withValues(alpha: .08),
+              blurRadius: 22,
+              offset: const Offset(0, 12),
             ),
-            const SizedBox(height: 8),
-            _SensorStatusStrip(status: status, failed: failed),
-            const SizedBox(height: 10),
-            visual,
-            const SizedBox(height: 10),
-            _MetricRail(metrics: metrics),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.end,
-              children: [
-                for (final action in actions)
-                  IconTheme.merge(
-                    data: const IconThemeData(size: 18),
-                    child: action,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _SensorPortMap(ports: ports),
-            const SizedBox(height: 10),
-            ...config,
-            const SizedBox(height: 10),
-            _PayloadPanel(payload: payload),
           ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  _TechIcon(icon: icon),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(color: colors.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _SensorStatusPill(
+                    label: failed
+                        ? 'Falha'
+                        : active
+                        ? 'Online'
+                        : 'Pronto',
+                    icon: failed
+                        ? Icons.error_outline
+                        : active
+                        ? Icons.check_circle_outline
+                        : Icons.sensors_outlined,
+                    positive: active && !failed,
+                    warning: failed,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              _SensorStatusStrip(status: status, failed: failed),
+              const SizedBox(height: 10),
+              visual,
+              const SizedBox(height: 10),
+              _MetricRail(metrics: metrics),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.end,
+                children: [
+                  for (final action in actions)
+                    IconTheme.merge(
+                      data: const IconThemeData(size: 18),
+                      child: action,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _SensorPortMap(ports: ports),
+              const SizedBox(height: 10),
+              ...config,
+              const SizedBox(height: 10),
+              _PayloadPanel(payload: payload),
+            ],
+          ),
         ),
       ),
     );
@@ -1643,14 +1673,25 @@ class _TechIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Container(
-      width: 38,
-      height: 38,
+      width: 42,
+      height: 42,
       decoration: BoxDecoration(
-        color: colors.primary.withValues(alpha: .10),
+        gradient: LinearGradient(
+          colors: [
+            colors.primary.withValues(alpha: .24),
+            colors.tertiary.withValues(alpha: .12),
+          ],
+        ),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.primary.withValues(alpha: .22)),
+        border: Border.all(color: colors.primary.withValues(alpha: .26)),
+        boxShadow: [
+          BoxShadow(
+            color: colors.primary.withValues(alpha: .14),
+            blurRadius: 14,
+          ),
+        ],
       ),
-      child: Icon(icon, color: colors.primary, size: 21),
+      child: Icon(icon, color: colors.primary, size: 22),
     );
   }
 }
@@ -1691,13 +1732,20 @@ class _MetricTile extends StatelessWidget {
     final color = metric.active ? colors.primary : colors.onSurfaceVariant;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: .32),
+        color: colors.surface.withValues(alpha: .72),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: metric.active
               ? colors.primary.withValues(alpha: .36)
               : colors.outlineVariant,
         ),
+        boxShadow: [
+          if (metric.active)
+            BoxShadow(
+              color: colors.primary.withValues(alpha: .08),
+              blurRadius: 12,
+            ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1895,6 +1943,81 @@ class _WaterReservoirInstrument extends StatelessWidget {
   }
 }
 
+class _WaterQualityInstrument extends StatelessWidget {
+  const _WaterQualityInstrument({
+    required this.ph,
+    required this.tdsPpm,
+    required this.chlorineOrpMv,
+    required this.working,
+  });
+
+  final double? ph;
+  final double? tdsPpm;
+  final double? chlorineOrpMv;
+  final bool working;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final phScore = ph == null ? .5 : ((ph! - 4) / 6).clamp(0.0, 1.0);
+    final active =
+        ph != null || tdsPpm != null || chlorineOrpMv != null || working;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: active ? 1 : 0),
+      duration: const Duration(milliseconds: 720),
+      curve: Curves.easeOutCubic,
+      builder: (context, pulse, _) => Container(
+        height: 218,
+        decoration: _instrumentDecoration(colors),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _WaterQualityPainter(
+                  color: colors.primary,
+                  outline: colors.outlineVariant,
+                  phScore: phScore,
+                  active: active,
+                  pulse: pulse,
+                ),
+              ),
+            ),
+            Positioned(
+              left: 14,
+              top: 14,
+              child: _SceneBadge(
+                icon: Icons.science_outlined,
+                label: ph == null ? 'pH --' : 'pH ${decimal.format(ph!)}',
+              ),
+            ),
+            Positioned(
+              right: 14,
+              top: 14,
+              child: _SceneBadge(
+                icon: Icons.blur_on_outlined,
+                label: tdsPpm == null
+                    ? 'TDS --'
+                    : '${decimal.format(tdsPpm!)} ppm',
+              ),
+            ),
+            Positioned(
+              left: 14,
+              right: 14,
+              bottom: 12,
+              child: _SceneBadge(
+                icon: Icons.biotech_outlined,
+                label: chlorineOrpMv == null
+                    ? 'ORP sem leitura'
+                    : 'ORP ${decimal.format(chlorineOrpMv!)} mV',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SceneBadge extends StatelessWidget {
   const _SceneBadge({required this.icon, required this.label});
 
@@ -1934,9 +2057,24 @@ class _SceneBadge extends StatelessWidget {
 }
 
 BoxDecoration _instrumentDecoration(ColorScheme colors) => BoxDecoration(
-  color: colors.surfaceContainerHighest.withValues(alpha: .28),
+  gradient: LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      colors.surfaceContainerHighest.withValues(alpha: .32),
+      colors.primaryContainer.withValues(alpha: .12),
+      colors.surface.withValues(alpha: .68),
+    ],
+  ),
   borderRadius: BorderRadius.circular(8),
-  border: Border.all(color: colors.outlineVariant),
+  border: Border.all(color: colors.primary.withValues(alpha: .18)),
+  boxShadow: [
+    BoxShadow(
+      color: colors.primary.withValues(alpha: .07),
+      blurRadius: 18,
+      offset: const Offset(0, 8),
+    ),
+  ],
 );
 
 class _HouseClimatePainter extends CustomPainter {
@@ -2097,75 +2235,123 @@ class _ReservoirPainter extends CustomPainter {
       oldDelegate.outline != outline;
 }
 
-class _SensorPanel extends StatelessWidget {
-  const _SensorPanel({
-    required this.icon,
-    required this.title,
-    required this.status,
-    required this.children,
+class _WaterQualityPainter extends CustomPainter {
+  const _WaterQualityPainter({
+    required this.color,
+    required this.outline,
+    required this.phScore,
+    required this.active,
+    required this.pulse,
   });
 
-  final IconData icon;
-  final String title;
-  final String status;
-  final List<Widget> children;
+  final Color color;
+  final Color outline;
+  final double phScore;
+  final bool active;
+  final double pulse;
 
   @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final failed = status.toLowerCase().contains('falha');
-    final active = !failed && status != 'Aguardando leitura';
-    return Material(
-      color: colors.surface.withValues(alpha: .95),
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: colors.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 22, color: colors.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _SensorStatusPill(
-                  label: failed
-                      ? 'Falha'
-                      : active
-                      ? 'Lido'
-                      : 'Pronto',
-                  icon: failed
-                      ? Icons.error_outline
-                      : active
-                      ? Icons.check_circle_outline
-                      : Icons.sensors_outlined,
-                  positive: active && !failed,
-                  warning: failed,
-                ),
-              ],
-            ),
-            const SizedBox(height: 7),
-            _SensorStatusStrip(status: status, failed: failed),
-            const SizedBox(height: 10),
-            ...children,
+  void paint(Canvas canvas, Size size) {
+    final grid = Paint()
+      ..color = outline.withValues(alpha: .16)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = .7;
+    for (var x = 0.0; x < size.width; x += 28) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
+    }
+    for (var y = 0.0; y < size.height; y += 28) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+    }
+
+    final liquidColor = Color.lerp(
+      const Color(0xFF2DD4BF),
+      const Color(0xFF84CC16),
+      phScore,
+    )!;
+    final vialRect = Rect.fromLTWH(
+      size.width * .30,
+      size.height * .20,
+      size.width * .40,
+      size.height * .58,
+    );
+    final vial = RRect.fromRectAndRadius(vialRect, const Radius.circular(20));
+    canvas.drawRRect(
+      vial,
+      Paint()
+        ..color = color.withValues(alpha: active ? .10 : .05)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawRRect(
+      vial,
+      Paint()
+        ..color = outline
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8,
+    );
+    final liquidRect = Rect.fromLTWH(
+      vialRect.left + 6,
+      vialRect.top + vialRect.height * .36,
+      vialRect.width - 12,
+      vialRect.height * .50,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(liquidRect, const Radius.circular(15)),
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            liquidColor.withValues(alpha: active ? .82 : .32),
+            color.withValues(alpha: active ? .48 : .18),
           ],
-        ),
+        ).createShader(liquidRect),
+    );
+    final bubble = Paint()
+      ..color = Colors.white.withValues(alpha: active ? .34 : .10)
+      ..style = PaintingStyle.fill;
+    for (var i = 0; i < 7; i++) {
+      final dx = liquidRect.left + 14 + (i % 4) * liquidRect.width / 5;
+      final dy =
+          liquidRect.bottom - 12 - ((i * 17 + pulse * 24) % liquidRect.height);
+      canvas.drawCircle(Offset(dx, dy), 2.5 + (i % 3), bubble);
+    }
+    final probe = Paint()
+      ..color = outline
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    canvas.drawLine(
+      Offset(size.width * .50, size.height * .08),
+      Offset(size.width * .50, liquidRect.top + 10),
+      probe,
+    );
+    canvas.drawCircle(
+      Offset(size.width * .50, liquidRect.top + 14),
+      5,
+      Paint()..color = color.withValues(alpha: active ? .78 : .34),
+    );
+    final scan = Paint()
+      ..color = color.withValues(alpha: active ? .30 : .08)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6;
+    canvas.drawArc(
+      Rect.fromCircle(
+        center: Offset(size.width * .50, size.height * .50),
+        radius: 58 + pulse * 8,
       ),
+      math.pi * 1.05,
+      math.pi * .90,
+      false,
+      scan,
     );
   }
+
+  @override
+  bool shouldRepaint(covariant _WaterQualityPainter oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.outline != outline ||
+      oldDelegate.phScore != phScore ||
+      oldDelegate.active != active ||
+      oldDelegate.pulse != pulse;
 }
 
 class _EndpointField extends StatelessWidget {
@@ -2416,124 +2602,6 @@ class _SensorPortChip extends StatelessWidget {
   }
 }
 
-class _SensorActions extends StatelessWidget {
-  const _SensorActions({
-    required this.working,
-    required this.onRead,
-    required this.onSave,
-  });
-
-  final bool working;
-  final VoidCallback onRead;
-  final VoidCallback onSave;
-
-  @override
-  Widget build(BuildContext context) => Wrap(
-    spacing: 8,
-    runSpacing: 8,
-    alignment: WrapAlignment.end,
-    children: [
-      FilledButton.icon(
-        onPressed: working ? null : onRead,
-        icon: const Icon(Icons.sensors_outlined),
-        label: const Text('Ler'),
-        style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
-      ),
-      OutlinedButton.icon(
-        onPressed: working ? null : onSave,
-        icon: const Icon(Icons.save_outlined),
-        label: const Text('Salvar'),
-        style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
-      ),
-    ],
-  );
-}
-
-class _ReadingGrid extends StatelessWidget {
-  const _ReadingGrid({required this.tiles});
-
-  final List<_ReadingTile> tiles;
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) => GridView.count(
-      crossAxisCount: box.maxWidth > 680 ? 4 : 2,
-      childAspectRatio: box.maxWidth > 420 ? 2.45 : 2.02,
-      crossAxisSpacing: 8,
-      mainAxisSpacing: 8,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: tiles,
-    ),
-  );
-}
-
-class _ReadingTile extends StatelessWidget {
-  const _ReadingTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.active,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final color = active ? colors.primary : colors.onSurfaceVariant;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: .46),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: active
-              ? colors.primary.withValues(alpha: .42)
-              : colors.outlineVariant,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Row(
-          children: [
-            Icon(icon, size: 21, color: color),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: colors.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _PayloadPanel extends StatelessWidget {
   const _PayloadPanel({required this.payload});
 
@@ -2544,10 +2612,11 @@ class _PayloadPanel extends StatelessWidget {
     if (payload == null) return const SizedBox.shrink();
     final colors = Theme.of(context).colorScheme;
     const encoder = JsonEncoder.withIndent('  ');
+    final text = encoder.convert(payload);
     return Material(
       color: colors.surfaceContainerHighest.withValues(alpha: .24),
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: colors.outlineVariant),
+        side: BorderSide(color: colors.primary.withValues(alpha: .18)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: ExpansionTile(
@@ -2566,11 +2635,34 @@ class _PayloadPanel extends StatelessWidget {
           ),
         ),
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SelectableText(
-              encoder.convert(payload),
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 320),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: .72),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: colors.primary.withValues(alpha: .18),
+                ),
+              ),
+              child: SingleChildScrollView(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.all(10),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: 680),
+                    child: SelectableText(
+                      text,
+                      style: const TextStyle(
+                        color: Color(0xFF8EFAC5),
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ],
