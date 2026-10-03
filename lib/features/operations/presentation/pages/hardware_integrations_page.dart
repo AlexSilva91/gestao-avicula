@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/database/operations_repository.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
 import '../../application/hardware_esp_client.dart';
+import '../../application/hardware_mqtt_client.dart';
 import '../../application/operations_controller.dart';
 
 class HardwareIntegrationSettings {
@@ -83,11 +85,19 @@ class HardwareIntegrationsPage extends ConsumerStatefulWidget {
 class _HardwareIntegrationsPageState
     extends ConsumerState<HardwareIntegrationsPage> {
   final espClient = const HardwareEspClient();
+  final mqttClient = const HardwareMqttClient();
+  final mqttRuntime = HardwareMqttRuntime();
   final lightingEndpoint = TextEditingController();
   final lightingRelayPin = TextEditingController(text: '23');
   final wifiProvisionEndpoint = TextEditingController(text: '192.168.4.1');
   final wifiProvisionSsid = TextEditingController();
   final wifiProvisionPassword = TextEditingController();
+  final mqttHost = TextEditingController();
+  final mqttPort = TextEditingController(text: '1883');
+  final mqttBaseTopic = TextEditingController(text: 'granja/esp32');
+  final mqttDeviceId = TextEditingController(text: 'GRANJA-SELETO-RELE-01');
+  final mqttUsername = TextEditingController();
+  final mqttPassword = TextEditingController();
   final lightingChannelNames = List.generate(
     4,
     (index) => TextEditingController(text: 'Canal ${index + 1}'),
@@ -132,6 +142,11 @@ class _HardwareIntegrationsPageState
   bool saving = false;
   bool initialized = false;
   bool wifiProvisionPasswordHidden = true;
+  bool mqttPasswordHidden = true;
+  bool mqttEnabled = false;
+  bool mqttConnected = false;
+  bool mqttRuntimeStarted = false;
+  StreamSubscription<EspMqttUpdate>? mqttRuntimeSubscription;
   bool espWifiConnected = false;
   String lightingStatus = 'Aguardando teste';
   String? lightingConnectionResult;
@@ -146,11 +161,19 @@ class _HardwareIntegrationsPageState
 
   @override
   void dispose() {
+    mqttRuntimeSubscription?.cancel();
+    unawaited(mqttRuntime.dispose());
     lightingEndpoint.dispose();
     lightingRelayPin.dispose();
     wifiProvisionEndpoint.dispose();
     wifiProvisionSsid.dispose();
     wifiProvisionPassword.dispose();
+    mqttHost.dispose();
+    mqttPort.dispose();
+    mqttBaseTopic.dispose();
+    mqttDeviceId.dispose();
+    mqttUsername.dispose();
+    mqttPassword.dispose();
     for (final controller in lightingChannelNames) {
       controller.dispose();
     }
@@ -190,6 +213,16 @@ class _HardwareIntegrationsPageState
     wifiProvisionSsid.text = values['hardware_esp_wifi_ssid']?.trim() ?? '';
     wifiProvisionPassword.text =
         values['hardware_esp_wifi_password']?.trim() ?? '';
+    mqttEnabled = values['hardware_esp_mqtt_enabled'] == 'true';
+    mqttHost.text = values['hardware_esp_mqtt_host']?.trim() ?? '';
+    mqttPort.text = values['hardware_esp_mqtt_port']?.trim() ?? '1883';
+    mqttBaseTopic.text =
+        values['hardware_esp_mqtt_base_topic']?.trim() ?? 'granja/esp32';
+    mqttDeviceId.text =
+        values['hardware_esp_mqtt_device_id']?.trim() ??
+        'GRANJA-SELETO-RELE-01';
+    mqttUsername.text = values['hardware_esp_mqtt_username']?.trim() ?? '';
+    mqttPassword.text = values['hardware_esp_mqtt_password'] ?? '';
     for (final channel in config.lightingChannels) {
       final index = channel.index - 1;
       if (index < 0 || index >= 4) continue;
@@ -264,6 +297,12 @@ class _HardwareIntegrationsPageState
                 if (mounted) _discoverEsp(auto: true);
               });
             }
+            if (!mqttRuntimeStarted && _mqttConfig().isUsable) {
+              mqttRuntimeStarted = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) unawaited(_startMqttRuntime());
+              });
+            }
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -295,6 +334,26 @@ class _HardwareIntegrationsPageState
                         !wifiProvisionPasswordHidden,
                   ),
                   onHelp: _showEspWifiHelp,
+                ),
+                const SizedBox(height: 12),
+                _EspMqttPanel(
+                  enabled: mqttEnabled,
+                  connected: mqttConnected,
+                  busy: saving || espScanning,
+                  hostController: mqttHost,
+                  portController: mqttPort,
+                  baseTopicController: mqttBaseTopic,
+                  deviceIdController: mqttDeviceId,
+                  usernameController: mqttUsername,
+                  passwordController: mqttPassword,
+                  passwordHidden: mqttPasswordHidden,
+                  onEnabledChanged: (value) =>
+                      setState(() => mqttEnabled = value),
+                  onTogglePassword: () =>
+                      setState(() => mqttPasswordHidden = !mqttPasswordHidden),
+                  onSave: _saveMqttSettings,
+                  onTest: _testMqttConnection,
+                  onPushToEsp: _configureEspMqtt,
                 ),
                 const SizedBox(height: 16),
                 _lightingPanel(context),
@@ -822,6 +881,13 @@ class _HardwareIntegrationsPageState
         'hardware_lighting_connection': lightingConnection,
         'hardware_lighting_endpoint': lightingEndpoint.text.trim(),
         'hardware_lighting_relay_pin': lightingRelayPin.text.trim(),
+        'hardware_esp_mqtt_enabled': mqttEnabled.toString(),
+        'hardware_esp_mqtt_host': mqttHost.text.trim(),
+        'hardware_esp_mqtt_port': mqttPort.text.trim(),
+        'hardware_esp_mqtt_base_topic': mqttBaseTopic.text.trim(),
+        'hardware_esp_mqtt_device_id': mqttDeviceId.text.trim(),
+        'hardware_esp_mqtt_username': mqttUsername.text.trim(),
+        'hardware_esp_mqtt_password': mqttPassword.text,
         'hardware_lighting_general_morning_enabled': generalMorningEnabled
             .toString(),
         'hardware_lighting_general_morning_on_time': generalMorningOnTime.text
@@ -878,6 +944,354 @@ class _HardwareIntegrationsPageState
     } finally {
       if (mounted) setState(() => saving = false);
     }
+  }
+
+  EspMqttConfig _mqttConfig() => EspMqttConfig(
+    enabled: mqttEnabled,
+    host: mqttHost.text.trim(),
+    port: int.tryParse(mqttPort.text.trim()) ?? 1883,
+    baseTopic: mqttBaseTopic.text.trim().isEmpty
+        ? 'granja/esp32'
+        : mqttBaseTopic.text.trim(),
+    deviceId: mqttDeviceId.text.trim().isEmpty
+        ? 'GRANJA-SELETO-RELE-01'
+        : mqttDeviceId.text.trim(),
+    username: mqttUsername.text.trim(),
+    password: mqttPassword.text,
+  );
+
+  Future<void> _saveMqttSettings() async {
+    setState(() => saving = true);
+    try {
+      final controller = ref.read(operationsControllerProvider);
+      final updates = {
+        'hardware_esp_mqtt_enabled': mqttEnabled.toString(),
+        'hardware_esp_mqtt_host': mqttHost.text.trim(),
+        'hardware_esp_mqtt_port': mqttPort.text.trim(),
+        'hardware_esp_mqtt_base_topic': mqttBaseTopic.text.trim(),
+        'hardware_esp_mqtt_device_id': mqttDeviceId.text.trim(),
+        'hardware_esp_mqtt_username': mqttUsername.text.trim(),
+        'hardware_esp_mqtt_password': mqttPassword.text,
+      };
+      for (final entry in updates.entries) {
+        await controller.saveSetting(entry.key, entry.value);
+      }
+      if (!mounted) return;
+      setState(() {
+        lightingStatus = 'Configuração MQTT salva.';
+        espTerminalTitle = 'MQTT SALVO';
+      });
+      _appendEspLog('APP> MQTT salvo em ${mqttHost.text.trim()}');
+      _snack('MQTT salvo.');
+      if (mqttEnabled) {
+        unawaited(_startMqttRuntime());
+      } else {
+        await mqttRuntime.disconnect();
+        if (mounted) setState(() => mqttConnected = false);
+      }
+    } catch (error) {
+      if (mounted) await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _testMqttConnection() async {
+    final config = _mqttConfig();
+    if (!config.isUsable) {
+      setState(() {
+        lightingStatus = 'Informe broker, porta e tópico MQTT.';
+        lightingConnectionResult = 'FALHA MQTT: configuração incompleta.';
+      });
+      return;
+    }
+    setState(() {
+      saving = true;
+      espTerminalTitle = 'MQTT HANDSHAKE';
+    });
+    try {
+      final probe = await mqttClient.test(config);
+      if (!mounted) return;
+      await _saveMqttSettings();
+      if (!mounted) return;
+      setState(() {
+        mqttConnected = probe.connected;
+        lightingConnectionResult = probe.connected
+            ? 'OK MQTT: broker conectado.'
+            : 'MQTT configurado.';
+        lightingStatus = probe.connected
+            ? 'MQTT operacional para comandos rápidos.'
+            : 'MQTT conectado ao broker; ESP ainda sem status.';
+        espTerminalTitle = probe.connected ? 'MQTT CONECTADO' : 'MQTT PENDENTE';
+      });
+      _appendEspLog('MQTT> ${probe.message}');
+      await _startMqttRuntime();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        mqttConnected = false;
+        lightingConnectionResult = 'FALHA MQTT: broker não respondeu.';
+        lightingStatus = 'Falha ao testar MQTT.';
+      });
+      _appendEspLog('ERR> MQTT falhou: $error');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _configureEspMqtt() async {
+    final endpoint = _currentWifiEndpoint();
+    final config = _mqttConfig();
+    if (endpoint.isEmpty) {
+      setState(() {
+        lightingStatus = 'Informe o endpoint Wi-Fi do ESP antes do MQTT.';
+        lightingConnectionResult = 'FALHA MQTT: endpoint do ESP ausente.';
+      });
+      return;
+    }
+    if (!config.isUsable) {
+      setState(() {
+        lightingStatus = 'Informe broker, porta e tópico MQTT.';
+        lightingConnectionResult = 'FALHA MQTT: configuração incompleta.';
+      });
+      return;
+    }
+    setState(() {
+      saving = true;
+      espTerminalTitle = 'CONFIG MQTT ESP';
+    });
+    try {
+      await _saveMqttSettings();
+      final payload = await espClient.configureMqtt(
+        endpoint: endpoint,
+        enabled: config.enabled,
+        host: config.host,
+        port: config.port,
+        baseTopic: config.baseTopic,
+        deviceId: config.deviceId,
+        username: config.username,
+        password: config.password,
+      );
+      if (!mounted) return;
+      _appendEspLog('ESP> configuração MQTT enviada');
+      _appendEspPayload(payload);
+      setState(() {
+        lightingStatus = 'MQTT enviado para o ESP.';
+        lightingConnectionResult = 'OK MQTT: configuração salva no ESP.';
+      });
+      _snack('MQTT enviado para o ESP.');
+      unawaited(_startMqttRuntime());
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        lightingStatus = 'Falha ao enviar MQTT para o ESP.';
+        lightingConnectionResult = 'FALHA MQTT: ESP não confirmou.';
+      });
+      _appendEspLog('ERR> configurar MQTT falhou: $error');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<bool> _tryMqttRelayCommand(int channel, String state) async {
+    final config = _mqttConfig();
+    if (!config.isUsable) return false;
+    try {
+      if (!mqttRuntime.connected) await _startMqttRuntime();
+      if (mqttRuntime.connected) {
+        mqttRuntime.publishRelayCommand(channel: channel, state: state);
+      } else {
+        await mqttClient.publishRelayCommand(
+          config: config,
+          channel: channel,
+          state: state,
+        );
+      }
+      if (!mounted) return true;
+      setState(() => mqttConnected = true);
+      _appendEspLog('MQTT> comando canal $channel enviado: $state');
+      return true;
+    } catch (error) {
+      if (!mounted) return false;
+      setState(() => mqttConnected = false);
+      _appendEspLog('WARN> MQTT falhou; usando HTTP: $error');
+      return false;
+    }
+  }
+
+  Future<void> _startMqttRuntime() async {
+    final config = _mqttConfig();
+    if (!config.isUsable) return;
+    mqttRuntimeSubscription ??= mqttRuntime.updates.listen(_handleMqttUpdate);
+    try {
+      await mqttRuntime.connect(config);
+      if (!mounted) return;
+      setState(() {
+        mqttConnected = true;
+        lightingConnectionResult = 'OK MQTT: tempo real ativo.';
+        lightingStatus = 'MQTT bidirecional ativo em tempo de execução.';
+        espTerminalTitle = 'MQTT TEMPO REAL';
+      });
+      _appendEspLog(
+        'MQTT> tempo real conectado em ${config.host}:${config.port}',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        mqttConnected = false;
+        lightingConnectionResult = 'FALHA MQTT: tempo real indisponível.';
+      });
+      await ref
+          .read(databaseProvider)
+          .recordAutomationEvent(
+            severity: 'WARN',
+            type: 'mqtt_runtime_failure',
+            title: 'MQTT em tempo real indisponível',
+            message: '$error',
+            source: 'MQTT',
+          );
+      _appendEspLog('WARN> tempo real MQTT indisponível: $error');
+    }
+  }
+
+  void _handleMqttUpdate(EspMqttUpdate update) {
+    if (!mounted) return;
+    final suffix = update.topic.split('/').isEmpty
+        ? update.topic
+        : update.topic.split('/').last;
+    if (update.topic == 'runtime/disconnected') {
+      setState(() {
+        mqttConnected = false;
+        lightingConnectionResult = 'MQTT desconectado.';
+      });
+      _appendEspLog('MQTT> desconectado');
+      return;
+    }
+    if (update.topic == 'runtime/connected') {
+      setState(() {
+        mqttConnected = true;
+        lightingConnectionResult = 'OK MQTT: tempo real ativo.';
+      });
+      _appendEspLog('MQTT> reconectado');
+      return;
+    }
+    setState(() => mqttConnected = true);
+    if (suffix == 'status') {
+      final ip = (update.payload['ip'] ?? '').toString();
+      unawaited(
+        ref
+            .read(databaseProvider)
+            .saveAppSetting(
+              'hardware_esp_last_seen_at',
+              update.receivedAt.toIso8601String(),
+              'system',
+            ),
+      );
+      setState(() {
+        espWifiConnected = update.payload['wifiConnected'] == true;
+        lightingConnectionResult = 'OK MQTT: status recebido.';
+        lightingStatus = ip.isEmpty
+            ? 'ESP32 online via MQTT.'
+            : 'ESP32 online via MQTT em $ip.';
+      });
+      _appendEspLog('MQTT> status recebido${ip.isEmpty ? '' : ' ($ip)'}');
+      return;
+    }
+    if (update.topic.endsWith('/relay/state')) {
+      final rawRelays = update.payload['relays'];
+      if (rawRelays is List) {
+        setState(() {
+          for (final relay in rawRelays) {
+            if (relay is! Map) continue;
+            final channel = int.tryParse((relay['channel'] ?? '').toString());
+            if (channel == null || channel < 1 || channel > 4) continue;
+            final index = channel - 1;
+            lightingChannelOn[index] = relay['on'] == true;
+            lightingChannelStatus[index] =
+                'MQTT tempo real: ${lightingChannelOn[index] ? 'ON' : 'OFF'}';
+            unawaited(
+              ref
+                  .read(databaseProvider)
+                  .recordRelayState(
+                    channel: channel,
+                    on: lightingChannelOn[index],
+                    transport: 'MQTT',
+                    payload: update.payload,
+                  ),
+            );
+          }
+          lightingStatus = 'Estados dos relés atualizados via MQTT.';
+        });
+      }
+      _appendEspLog('MQTT> estado dos relés recebido');
+      return;
+    }
+    if (suffix == 'sensors') {
+      unawaited(_recordMqttSensorPayload(update.payload));
+      _appendEspLog('MQTT> sensores recebidos em tempo real');
+    }
+  }
+
+  Future<void> _recordMqttSensorPayload(Map<String, Object?> payload) async {
+    final db = ref.read(databaseProvider);
+    final environment = payload['environment'];
+    if (environment is Map) {
+      final env = Map<String, Object?>.from(environment);
+      final temperature = _doublePayload(
+        env['airTemperatureC'] ?? env['temperatureC'],
+      );
+      final humidity = _doublePayload(
+        env['airHumidityPercent'] ?? env['humidityPercent'],
+      );
+      if (temperature != null) {
+        await db.recordSensorReading(
+          source: 'environment',
+          metric: 'air_temperature_c',
+          value: temperature,
+          unit: '°C',
+          transport: 'MQTT',
+          payload: payload,
+        );
+      }
+      if (humidity != null) {
+        await db.recordSensorReading(
+          source: 'environment',
+          metric: 'air_humidity_percent',
+          value: humidity,
+          unit: '%',
+          transport: 'MQTT',
+          payload: payload,
+        );
+      }
+    }
+    final water = payload['water'];
+    if (water is Map) {
+      final data = Map<String, Object?>.from(water);
+      final values = {
+        'water_level_percent': (data['levelPercent'], '%'),
+        'water_temperature_c': (data['temperatureC'], '°C'),
+        'water_ph': (data['ph'], 'pH'),
+        'water_tds_ppm': (data['tdsPpm'], 'ppm'),
+        'water_chlorine_orp_mv': (data['chlorineOrpMv'] ?? data['orpMv'], 'mV'),
+      };
+      for (final entry in values.entries) {
+        final value = _doublePayload(entry.value.$1);
+        if (value == null) continue;
+        await db.recordSensorReading(
+          source: 'water',
+          metric: entry.key,
+          value: value,
+          unit: entry.value.$2,
+          transport: 'MQTT',
+          payload: payload,
+        );
+      }
+    }
+  }
+
+  double? _doublePayload(Object? value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString().replaceAll(',', '.') ?? '');
   }
 
   Future<void> _applyGeneralLightingSchedule({required bool syncAfter}) async {
@@ -1015,6 +1429,13 @@ class _HardwareIntegrationsPageState
       }
 
       await _saveLighting();
+      await ref
+          .read(databaseProvider)
+          .saveAppSetting(
+            'hardware_lighting_schedule_last_synced_at',
+            DateTime.now().toIso8601String(),
+            'system',
+          );
       if (!mounted) return;
       setState(() {
         for (final index in selectedIndexes) {
@@ -1132,6 +1553,13 @@ class _HardwareIntegrationsPageState
       }
 
       await _saveLighting();
+      await ref
+          .read(databaseProvider)
+          .saveAppSetting(
+            'hardware_lighting_schedule_last_synced_at',
+            DateTime.now().toIso8601String(),
+            'system',
+          );
       if (!mounted) return;
       setState(() {
         lightingStatus = 'Agenda sincronizada e cacheada no ESP.';
@@ -1167,22 +1595,40 @@ class _HardwareIntegrationsPageState
     setState(() => saving = true);
     try {
       final channel = index + 1;
+      var usedMqtt = false;
       if (lightingConnection == 'WIFI') {
-        final result = await espClient.setRelay(
-          endpoint: lightingEndpoint.text.trim(),
-          channel: channel,
-          turnOn: turnOn,
+        final mqttSent = await _tryMqttRelayCommand(
+          channel,
+          turnOn ? 'on' : 'off',
         );
-        if (result.endpoint != lightingEndpoint.text.trim()) {
-          lightingEndpoint.text = result.endpoint;
-          await ref
-              .read(operationsControllerProvider)
-              .saveSetting('hardware_lighting_endpoint', result.endpoint);
-          _appendEspLog('ESP> endpoint atualizado para ${result.endpoint}');
+        usedMqtt = mqttSent;
+        if (!mqttSent) {
+          final result = await espClient.setRelay(
+            endpoint: lightingEndpoint.text.trim(),
+            channel: channel,
+            turnOn: turnOn,
+          );
+          if (result.endpoint != lightingEndpoint.text.trim()) {
+            lightingEndpoint.text = result.endpoint;
+            await ref
+                .read(operationsControllerProvider)
+                .saveSetting('hardware_lighting_endpoint', result.endpoint);
+            _appendEspLog('ESP> endpoint atualizado para ${result.endpoint}');
+          }
+          turnOn = result.on;
+          unawaited(
+            ref
+                .read(databaseProvider)
+                .recordRelayState(
+                  channel: channel,
+                  on: result.on,
+                  transport: 'HTTP',
+                  payload: result.payload,
+                ),
+          );
+          _appendEspLog('ESP> ${result.message}');
+          _appendEspPayload(result.payload);
         }
-        turnOn = result.on;
-        _appendEspLog('ESP> ${result.message}');
-        _appendEspPayload(result.payload);
       }
       await ref
           .read(operationsControllerProvider)
@@ -1193,10 +1639,14 @@ class _HardwareIntegrationsPageState
       if (mounted) {
         setState(() {
           lightingChannelOn[index] = turnOn;
-          lightingChannelStatus[index] = turnOn
+          lightingChannelStatus[index] = usedMqtt
+              ? 'OK: comando MQTT enviado ao canal $channel.'
+              : turnOn
               ? 'OK: canal $channel ligado no GPIO ${lightingChannelPins[index].text.trim()}.'
               : 'OK: canal $channel desligado no GPIO ${lightingChannelPins[index].text.trim()}.';
-          lightingStatus = 'Canal $channel testado com sucesso.';
+          lightingStatus = usedMqtt
+              ? 'Canal $channel enviado via MQTT.'
+              : 'Canal $channel testado com sucesso.';
         });
       }
     } catch (error) {
@@ -1222,10 +1672,14 @@ class _HardwareIntegrationsPageState
       setState(() => saving = true);
       try {
         final channel = index + 1;
-        final result = await espClient.pulseRelay(
-          endpoint: lightingEndpoint.text.trim(),
-          channel: channel,
-        );
+        final mqttSent = await _tryMqttRelayCommand(channel, 'pulse');
+        EspRelayResult? result;
+        if (!mqttSent) {
+          result = await espClient.pulseRelay(
+            endpoint: lightingEndpoint.text.trim(),
+            channel: channel,
+          );
+        }
         await ref
             .read(operationsControllerProvider)
             .saveSetting(
@@ -1234,13 +1688,28 @@ class _HardwareIntegrationsPageState
             );
         if (!mounted) return;
         setState(() {
-          lightingChannelOn[index] = result.on;
-          lightingChannelStatus[index] =
-              'OK: pulso do canal $channel confirmado pelo ESP.';
-          lightingStatus = 'Pulso do canal $channel concluído no ESP.';
+          lightingChannelOn[index] = result?.on ?? false;
+          lightingChannelStatus[index] = mqttSent
+              ? 'OK: pulso do canal $channel enviado via MQTT.'
+              : 'OK: pulso do canal $channel confirmado pelo ESP.';
+          lightingStatus = mqttSent
+              ? 'Pulso do canal $channel enviado via MQTT.'
+              : 'Pulso do canal $channel concluído no ESP.';
         });
-        _appendEspLog('ESP> ${result.message}');
-        _appendEspPayload(result.payload);
+        if (result != null) {
+          unawaited(
+            ref
+                .read(databaseProvider)
+                .recordRelayState(
+                  channel: channel,
+                  on: result.on,
+                  transport: 'HTTP',
+                  payload: result.payload,
+                ),
+          );
+          _appendEspLog('ESP> ${result.message}');
+          _appendEspPayload(result.payload);
+        }
       } catch (error) {
         if (!mounted) return;
         setState(() {
@@ -1504,6 +1973,15 @@ class _HardwareIntegrationsPageState
       setState(() {
         lightingConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
       });
+      await ref
+          .read(databaseProvider)
+          .recordAutomationEvent(
+            severity: 'WARN',
+            type: 'esp_connection_failure',
+            title: 'Falha de conexão com ESP32',
+            message: 'Endpoint salvo não respondeu: $error',
+            source: 'HTTP',
+          );
       _appendEspLog('ERR> endpoint sem resposta: $error');
       _appendEspLog('AP> tente conectar em GRANJA-SELETO-SETUP / seleto1234');
     } finally {
@@ -1528,6 +2006,15 @@ class _HardwareIntegrationsPageState
         lightingConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
         lightingStatus = 'Falha no handshake com o ESP.';
       });
+      await ref
+          .read(databaseProvider)
+          .recordAutomationEvent(
+            severity: 'WARN',
+            type: 'esp_handshake_failure',
+            title: 'Handshake do ESP32 falhou',
+            message: 'ESP32 não confirmou /api/status: $error',
+            source: 'HTTP',
+          );
       _appendEspLog('ERR> handshake falhou: $error');
       _appendEspLog('AP> conecte no Wi-Fi GRANJA-SELETO-SETUP e tente de novo');
     } finally {
@@ -1887,6 +2374,251 @@ class _EspWifiProvisionPanel extends StatelessWidget {
                   onPressed: busy ? null : onHelp,
                   icon: const Icon(Icons.help_outline),
                   label: const Text('Como conectar'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EspMqttPanel extends StatelessWidget {
+  const _EspMqttPanel({
+    required this.enabled,
+    required this.connected,
+    required this.busy,
+    required this.hostController,
+    required this.portController,
+    required this.baseTopicController,
+    required this.deviceIdController,
+    required this.usernameController,
+    required this.passwordController,
+    required this.passwordHidden,
+    required this.onEnabledChanged,
+    required this.onTogglePassword,
+    required this.onSave,
+    required this.onTest,
+    required this.onPushToEsp,
+  });
+
+  final bool enabled;
+  final bool connected;
+  final bool busy;
+  final TextEditingController hostController;
+  final TextEditingController portController;
+  final TextEditingController baseTopicController;
+  final TextEditingController deviceIdController;
+  final TextEditingController usernameController;
+  final TextEditingController passwordController;
+  final bool passwordHidden;
+  final ValueChanged<bool> onEnabledChanged;
+  final VoidCallback onTogglePassword;
+  final VoidCallback onSave;
+  final VoidCallback onTest;
+  final VoidCallback onPushToEsp;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .36),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: connected
+              ? colors.primary.withValues(alpha: .28)
+              : colors.outlineVariant,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: colors.secondaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.hub_outlined,
+                    color: colors.onSecondaryContainer,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'MQTT operacional',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        connected
+                            ? 'Broker conectado em tempo real'
+                            : 'Canal bidirecional para status, sensores e relés',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: enabled,
+                  onChanged: busy ? null : onEnabledChanged,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, box) {
+                final compact = box.maxWidth < 680;
+                final host = TextField(
+                  controller: hostController,
+                  enabled: enabled && !busy,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Broker MQTT',
+                    hintText: '192.168.0.10',
+                    prefixIcon: Icon(Icons.dns_outlined),
+                  ),
+                );
+                final port = TextField(
+                  controller: portController,
+                  enabled: enabled && !busy,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Porta',
+                    prefixIcon: Icon(Icons.tag_outlined),
+                  ),
+                );
+                final topic = TextField(
+                  controller: baseTopicController,
+                  enabled: enabled && !busy,
+                  decoration: const InputDecoration(
+                    labelText: 'Tópico base',
+                    prefixIcon: Icon(Icons.account_tree_outlined),
+                  ),
+                );
+                final device = TextField(
+                  controller: deviceIdController,
+                  enabled: enabled && !busy,
+                  decoration: const InputDecoration(
+                    labelText: 'Device ID',
+                    prefixIcon: Icon(Icons.memory_outlined),
+                  ),
+                );
+                if (compact) {
+                  return Column(
+                    children: [
+                      host,
+                      const SizedBox(height: 10),
+                      port,
+                      const SizedBox(height: 10),
+                      topic,
+                      const SizedBox(height: 10),
+                      device,
+                    ],
+                  );
+                }
+                return Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(flex: 3, child: host),
+                        const SizedBox(width: 10),
+                        SizedBox(width: 120, child: port),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(child: topic),
+                        const SizedBox(width: 10),
+                        Expanded(child: device),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, box) {
+                final compact = box.maxWidth < 560;
+                final user = TextField(
+                  controller: usernameController,
+                  enabled: enabled && !busy,
+                  decoration: const InputDecoration(
+                    labelText: 'Usuário',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                );
+                final pass = TextField(
+                  controller: passwordController,
+                  enabled: enabled && !busy,
+                  obscureText: passwordHidden,
+                  decoration: InputDecoration(
+                    labelText: 'Senha MQTT',
+                    prefixIcon: const Icon(Icons.key_outlined),
+                    suffixIcon: IconButton(
+                      onPressed: busy ? null : onTogglePassword,
+                      icon: Icon(
+                        passwordHidden
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                );
+                if (compact) {
+                  return Column(
+                    children: [user, const SizedBox(height: 10), pass],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: user),
+                    const SizedBox(width: 10),
+                    Expanded(child: pass),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            _InfoStrip(
+              icon: Icons.compare_arrows_outlined,
+              text:
+                  'HTTP continua ativo para configuração e agenda. MQTT fica conectado em tempo de execução para troca bidirecional praticamente em tempo real.',
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: busy ? null : onSave,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Salvar MQTT'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: enabled && !busy ? onTest : null,
+                  icon: const Icon(Icons.hub_outlined),
+                  label: const Text('Testar MQTT'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: enabled && !busy ? onPushToEsp : null,
+                  icon: const Icon(Icons.upload_outlined),
+                  label: const Text('Enviar ao ESP'),
                 ),
               ],
             ),

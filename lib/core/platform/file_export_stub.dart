@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -10,6 +11,16 @@ class FileExportService {
         : await getApplicationDocumentsDirectory();
     final file = File('${directory.path}/$filename');
     await file.writeAsString(content, flush: true);
+    return file.path;
+  }
+
+  Future<String> saveBytes(String filename, Uint8List bytes) async {
+    final directory = Platform.isAndroid
+        ? await getExternalStorageDirectory() ??
+              await getApplicationDocumentsDirectory()
+        : await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/$filename');
+    await file.writeAsBytes(bytes, flush: true);
     return file.path;
   }
 

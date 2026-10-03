@@ -9,6 +9,7 @@ import '../../features/lots/presentation/pages/lots_page.dart';
 import '../../features/users/presentation/pages/users_page.dart';
 import '../../features/operations/presentation/pages/audit_page.dart';
 import '../../features/operations/presentation/pages/alerts_page.dart';
+import '../../features/operations/presentation/pages/automation_center_page.dart';
 import '../../features/operations/presentation/pages/calendar_page.dart';
 import '../../features/operations/presentation/pages/camera_monitor_page.dart';
 import '../../features/operations/presentation/pages/commercial_page.dart';
@@ -20,6 +21,7 @@ import '../../features/operations/presentation/pages/hardware_sensor_pages.dart'
 import '../../features/operations/presentation/pages/movements_page.dart';
 import '../../features/operations/presentation/pages/reports_page.dart';
 import '../../features/operations/presentation/pages/settings_page.dart';
+import '../../features/operations/presentation/pages/vaccination_page.dart';
 import '../widgets/app_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -63,10 +65,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/commercial', builder: (_, _) => const CommercialPage()),
       GoRoute(path: '/finance', builder: (_, _) => const FinancePage()),
       GoRoute(path: '/calendar', builder: (_, _) => const CalendarPage()),
+      GoRoute(path: '/vaccination', builder: (_, _) => const VaccinationPage()),
       GoRoute(path: '/reports', builder: (_, _) => const ReportsPage()),
       GoRoute(
         path: '/integrations',
         builder: (_, _) => const HardwareIntegrationsPage(),
+      ),
+      GoRoute(
+        path: '/automation-center',
+        builder: (_, _) => const AutomationCenterPage(),
       ),
       GoRoute(
         path: '/hardware-environment',

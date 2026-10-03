@@ -4,10 +4,12 @@ Este manual usa o firmware:
 
 `docs/hardware/firmware/esp32-granja-seleto/granja_seleto_wifi_bluetooth.ino`
 
-O firmware permite controlar o ESP32 de duas formas:
+O firmware atual permite controlar o ESP32 principalmente por HTTP local via Wi-Fi e, opcionalmente, por MQTT para operacao rapida.
 
-- Wi-Fi: o app informa o IP/endpoint do ESP32.
-- Bluetooth: o app informa o identificador Bluetooth do ESP32.
+- Wi-Fi/HTTP: o app informa ou detecta o IP/endpoint do ESP32.
+- MQTT: o app configura broker, topico e credenciais; o ESP32 publica status/sensores e recebe comandos de rele.
+
+> Observacao: secoes antigas deste manual ainda citam Bluetooth. No firmware atual, Bluetooth nao esta ativo.
 
 > Observação importante: o firmware mantém a iluminação nos canais 1 a 4 e já reserva canais adicionais para ventilação. A tela de Integrações do app GRANJA SELETO procura o ESP32 automaticamente, testa `/api/status`, exibe a resposta em um terminal visual, permite testar cada canal separadamente e envia a agenda diária de iluminação para o ESP salvar em cache local.
 
@@ -16,6 +18,7 @@ O firmware permite controlar o ESP32 de duas formas:
 - ESP32 com Bluetooth Classic, de preferência ESP32 DevKit V1.
 - Cabo USB de dados.
 - IDE do Arduino.
+- Biblioteca `PubSubClient` instalada pela IDE do Arduino.
 - Celular Android com o app GRANJA SELETO instalado.
 - Rede Wi-Fi 2.4 GHz.
 - Módulo relé de 4 canais 5 V/3.3 V compatível para iluminação.

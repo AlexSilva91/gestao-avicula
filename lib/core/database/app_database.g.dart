@@ -21635,6 +21635,2284 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
   }
 }
 
+class $SensorReadingsTable extends SensorReadings
+    with TableInfo<$SensorReadingsTable, SensorReading> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SensorReadingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _metricMeta = const VerificationMeta('metric');
+  @override
+  late final GeneratedColumn<String> metric = GeneratedColumn<String>(
+    'metric',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<double> value = GeneratedColumn<double>(
+    'value',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _unitMeta = const VerificationMeta('unit');
+  @override
+  late final GeneratedColumn<String> unit = GeneratedColumn<String>(
+    'unit',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _zoneMeta = const VerificationMeta('zone');
+  @override
+  late final GeneratedColumn<String> zone = GeneratedColumn<String>(
+    'zone',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _capturedAtMeta = const VerificationMeta(
+    'capturedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> capturedAt = GeneratedColumn<DateTime>(
+    'captured_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _transportMeta = const VerificationMeta(
+    'transport',
+  );
+  @override
+  late final GeneratedColumn<String> transport = GeneratedColumn<String>(
+    'transport',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdByMeta = const VerificationMeta(
+    'createdBy',
+  );
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    source,
+    metric,
+    value,
+    unit,
+    zone,
+    capturedAt,
+    transport,
+    payloadJson,
+    createdBy,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sensor_readings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SensorReading> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    if (data.containsKey('metric')) {
+      context.handle(
+        _metricMeta,
+        metric.isAcceptableOrUnknown(data['metric']!, _metricMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_metricMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+        _valueMeta,
+        value.isAcceptableOrUnknown(data['value']!, _valueMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueMeta);
+    }
+    if (data.containsKey('unit')) {
+      context.handle(
+        _unitMeta,
+        unit.isAcceptableOrUnknown(data['unit']!, _unitMeta),
+      );
+    }
+    if (data.containsKey('zone')) {
+      context.handle(
+        _zoneMeta,
+        zone.isAcceptableOrUnknown(data['zone']!, _zoneMeta),
+      );
+    }
+    if (data.containsKey('captured_at')) {
+      context.handle(
+        _capturedAtMeta,
+        capturedAt.isAcceptableOrUnknown(data['captured_at']!, _capturedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_capturedAtMeta);
+    }
+    if (data.containsKey('transport')) {
+      context.handle(
+        _transportMeta,
+        transport.isAcceptableOrUnknown(data['transport']!, _transportMeta),
+      );
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(
+        _createdByMeta,
+        createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SensorReading map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SensorReading(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      metric: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}metric'],
+      )!,
+      value: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}value'],
+      )!,
+      unit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}unit'],
+      ),
+      zone: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}zone'],
+      ),
+      capturedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}captured_at'],
+      )!,
+      transport: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}transport'],
+      ),
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      ),
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SensorReadingsTable createAlias(String alias) {
+    return $SensorReadingsTable(attachedDatabase, alias);
+  }
+}
+
+class SensorReading extends DataClass implements Insertable<SensorReading> {
+  final String id;
+  final String source;
+  final String metric;
+  final double value;
+  final String? unit;
+  final String? zone;
+  final DateTime capturedAt;
+  final String? transport;
+  final String? payloadJson;
+  final String? createdBy;
+  final DateTime createdAt;
+  const SensorReading({
+    required this.id,
+    required this.source,
+    required this.metric,
+    required this.value,
+    this.unit,
+    this.zone,
+    required this.capturedAt,
+    this.transport,
+    this.payloadJson,
+    this.createdBy,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['source'] = Variable<String>(source);
+    map['metric'] = Variable<String>(metric);
+    map['value'] = Variable<double>(value);
+    if (!nullToAbsent || unit != null) {
+      map['unit'] = Variable<String>(unit);
+    }
+    if (!nullToAbsent || zone != null) {
+      map['zone'] = Variable<String>(zone);
+    }
+    map['captured_at'] = Variable<DateTime>(capturedAt);
+    if (!nullToAbsent || transport != null) {
+      map['transport'] = Variable<String>(transport);
+    }
+    if (!nullToAbsent || payloadJson != null) {
+      map['payload_json'] = Variable<String>(payloadJson);
+    }
+    if (!nullToAbsent || createdBy != null) {
+      map['created_by'] = Variable<String>(createdBy);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  SensorReadingsCompanion toCompanion(bool nullToAbsent) {
+    return SensorReadingsCompanion(
+      id: Value(id),
+      source: Value(source),
+      metric: Value(metric),
+      value: Value(value),
+      unit: unit == null && nullToAbsent ? const Value.absent() : Value(unit),
+      zone: zone == null && nullToAbsent ? const Value.absent() : Value(zone),
+      capturedAt: Value(capturedAt),
+      transport: transport == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transport),
+      payloadJson: payloadJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(payloadJson),
+      createdBy: createdBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdBy),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory SensorReading.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SensorReading(
+      id: serializer.fromJson<String>(json['id']),
+      source: serializer.fromJson<String>(json['source']),
+      metric: serializer.fromJson<String>(json['metric']),
+      value: serializer.fromJson<double>(json['value']),
+      unit: serializer.fromJson<String?>(json['unit']),
+      zone: serializer.fromJson<String?>(json['zone']),
+      capturedAt: serializer.fromJson<DateTime>(json['capturedAt']),
+      transport: serializer.fromJson<String?>(json['transport']),
+      payloadJson: serializer.fromJson<String?>(json['payloadJson']),
+      createdBy: serializer.fromJson<String?>(json['createdBy']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'source': serializer.toJson<String>(source),
+      'metric': serializer.toJson<String>(metric),
+      'value': serializer.toJson<double>(value),
+      'unit': serializer.toJson<String?>(unit),
+      'zone': serializer.toJson<String?>(zone),
+      'capturedAt': serializer.toJson<DateTime>(capturedAt),
+      'transport': serializer.toJson<String?>(transport),
+      'payloadJson': serializer.toJson<String?>(payloadJson),
+      'createdBy': serializer.toJson<String?>(createdBy),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  SensorReading copyWith({
+    String? id,
+    String? source,
+    String? metric,
+    double? value,
+    Value<String?> unit = const Value.absent(),
+    Value<String?> zone = const Value.absent(),
+    DateTime? capturedAt,
+    Value<String?> transport = const Value.absent(),
+    Value<String?> payloadJson = const Value.absent(),
+    Value<String?> createdBy = const Value.absent(),
+    DateTime? createdAt,
+  }) => SensorReading(
+    id: id ?? this.id,
+    source: source ?? this.source,
+    metric: metric ?? this.metric,
+    value: value ?? this.value,
+    unit: unit.present ? unit.value : this.unit,
+    zone: zone.present ? zone.value : this.zone,
+    capturedAt: capturedAt ?? this.capturedAt,
+    transport: transport.present ? transport.value : this.transport,
+    payloadJson: payloadJson.present ? payloadJson.value : this.payloadJson,
+    createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  SensorReading copyWithCompanion(SensorReadingsCompanion data) {
+    return SensorReading(
+      id: data.id.present ? data.id.value : this.id,
+      source: data.source.present ? data.source.value : this.source,
+      metric: data.metric.present ? data.metric.value : this.metric,
+      value: data.value.present ? data.value.value : this.value,
+      unit: data.unit.present ? data.unit.value : this.unit,
+      zone: data.zone.present ? data.zone.value : this.zone,
+      capturedAt: data.capturedAt.present
+          ? data.capturedAt.value
+          : this.capturedAt,
+      transport: data.transport.present ? data.transport.value : this.transport,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SensorReading(')
+          ..write('id: $id, ')
+          ..write('source: $source, ')
+          ..write('metric: $metric, ')
+          ..write('value: $value, ')
+          ..write('unit: $unit, ')
+          ..write('zone: $zone, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('transport: $transport, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    source,
+    metric,
+    value,
+    unit,
+    zone,
+    capturedAt,
+    transport,
+    payloadJson,
+    createdBy,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SensorReading &&
+          other.id == this.id &&
+          other.source == this.source &&
+          other.metric == this.metric &&
+          other.value == this.value &&
+          other.unit == this.unit &&
+          other.zone == this.zone &&
+          other.capturedAt == this.capturedAt &&
+          other.transport == this.transport &&
+          other.payloadJson == this.payloadJson &&
+          other.createdBy == this.createdBy &&
+          other.createdAt == this.createdAt);
+}
+
+class SensorReadingsCompanion extends UpdateCompanion<SensorReading> {
+  final Value<String> id;
+  final Value<String> source;
+  final Value<String> metric;
+  final Value<double> value;
+  final Value<String?> unit;
+  final Value<String?> zone;
+  final Value<DateTime> capturedAt;
+  final Value<String?> transport;
+  final Value<String?> payloadJson;
+  final Value<String?> createdBy;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const SensorReadingsCompanion({
+    this.id = const Value.absent(),
+    this.source = const Value.absent(),
+    this.metric = const Value.absent(),
+    this.value = const Value.absent(),
+    this.unit = const Value.absent(),
+    this.zone = const Value.absent(),
+    this.capturedAt = const Value.absent(),
+    this.transport = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SensorReadingsCompanion.insert({
+    required String id,
+    required String source,
+    required String metric,
+    required double value,
+    this.unit = const Value.absent(),
+    this.zone = const Value.absent(),
+    required DateTime capturedAt,
+    this.transport = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       source = Value(source),
+       metric = Value(metric),
+       value = Value(value),
+       capturedAt = Value(capturedAt),
+       createdAt = Value(createdAt);
+  static Insertable<SensorReading> custom({
+    Expression<String>? id,
+    Expression<String>? source,
+    Expression<String>? metric,
+    Expression<double>? value,
+    Expression<String>? unit,
+    Expression<String>? zone,
+    Expression<DateTime>? capturedAt,
+    Expression<String>? transport,
+    Expression<String>? payloadJson,
+    Expression<String>? createdBy,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (source != null) 'source': source,
+      if (metric != null) 'metric': metric,
+      if (value != null) 'value': value,
+      if (unit != null) 'unit': unit,
+      if (zone != null) 'zone': zone,
+      if (capturedAt != null) 'captured_at': capturedAt,
+      if (transport != null) 'transport': transport,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (createdBy != null) 'created_by': createdBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SensorReadingsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? source,
+    Value<String>? metric,
+    Value<double>? value,
+    Value<String?>? unit,
+    Value<String?>? zone,
+    Value<DateTime>? capturedAt,
+    Value<String?>? transport,
+    Value<String?>? payloadJson,
+    Value<String?>? createdBy,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return SensorReadingsCompanion(
+      id: id ?? this.id,
+      source: source ?? this.source,
+      metric: metric ?? this.metric,
+      value: value ?? this.value,
+      unit: unit ?? this.unit,
+      zone: zone ?? this.zone,
+      capturedAt: capturedAt ?? this.capturedAt,
+      transport: transport ?? this.transport,
+      payloadJson: payloadJson ?? this.payloadJson,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (metric.present) {
+      map['metric'] = Variable<String>(metric.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<double>(value.value);
+    }
+    if (unit.present) {
+      map['unit'] = Variable<String>(unit.value);
+    }
+    if (zone.present) {
+      map['zone'] = Variable<String>(zone.value);
+    }
+    if (capturedAt.present) {
+      map['captured_at'] = Variable<DateTime>(capturedAt.value);
+    }
+    if (transport.present) {
+      map['transport'] = Variable<String>(transport.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SensorReadingsCompanion(')
+          ..write('id: $id, ')
+          ..write('source: $source, ')
+          ..write('metric: $metric, ')
+          ..write('value: $value, ')
+          ..write('unit: $unit, ')
+          ..write('zone: $zone, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('transport: $transport, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $AutomationEventsTable extends AutomationEvents
+    with TableInfo<$AutomationEventsTable, AutomationEvent> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AutomationEventsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _severityMeta = const VerificationMeta(
+    'severity',
+  );
+  @override
+  late final GeneratedColumn<String> severity = GeneratedColumn<String>(
+    'severity',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _messageMeta = const VerificationMeta(
+    'message',
+  );
+  @override
+  late final GeneratedColumn<String> message = GeneratedColumn<String>(
+    'message',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('OPEN'),
+  );
+  static const VerificationMeta _occurredAtMeta = const VerificationMeta(
+    'occurredAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> occurredAt = GeneratedColumn<DateTime>(
+    'occurred_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _resolvedAtMeta = const VerificationMeta(
+    'resolvedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> resolvedAt = GeneratedColumn<DateTime>(
+    'resolved_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdByMeta = const VerificationMeta(
+    'createdBy',
+  );
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    severity,
+    type,
+    title,
+    message,
+    source,
+    status,
+    occurredAt,
+    resolvedAt,
+    payloadJson,
+    createdBy,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'automation_events';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AutomationEvent> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('severity')) {
+      context.handle(
+        _severityMeta,
+        severity.isAcceptableOrUnknown(data['severity']!, _severityMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_severityMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('message')) {
+      context.handle(
+        _messageMeta,
+        message.isAcceptableOrUnknown(data['message']!, _messageMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_messageMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('occurred_at')) {
+      context.handle(
+        _occurredAtMeta,
+        occurredAt.isAcceptableOrUnknown(data['occurred_at']!, _occurredAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_occurredAtMeta);
+    }
+    if (data.containsKey('resolved_at')) {
+      context.handle(
+        _resolvedAtMeta,
+        resolvedAt.isAcceptableOrUnknown(data['resolved_at']!, _resolvedAtMeta),
+      );
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(
+        _createdByMeta,
+        createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AutomationEvent map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AutomationEvent(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      severity: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}severity'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      message: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}message'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      occurredAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}occurred_at'],
+      )!,
+      resolvedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}resolved_at'],
+      ),
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      ),
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $AutomationEventsTable createAlias(String alias) {
+    return $AutomationEventsTable(attachedDatabase, alias);
+  }
+}
+
+class AutomationEvent extends DataClass implements Insertable<AutomationEvent> {
+  final String id;
+  final String severity;
+  final String type;
+  final String title;
+  final String message;
+  final String? source;
+  final String status;
+  final DateTime occurredAt;
+  final DateTime? resolvedAt;
+  final String? payloadJson;
+  final String? createdBy;
+  final DateTime createdAt;
+  const AutomationEvent({
+    required this.id,
+    required this.severity,
+    required this.type,
+    required this.title,
+    required this.message,
+    this.source,
+    required this.status,
+    required this.occurredAt,
+    this.resolvedAt,
+    this.payloadJson,
+    this.createdBy,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['severity'] = Variable<String>(severity);
+    map['type'] = Variable<String>(type);
+    map['title'] = Variable<String>(title);
+    map['message'] = Variable<String>(message);
+    if (!nullToAbsent || source != null) {
+      map['source'] = Variable<String>(source);
+    }
+    map['status'] = Variable<String>(status);
+    map['occurred_at'] = Variable<DateTime>(occurredAt);
+    if (!nullToAbsent || resolvedAt != null) {
+      map['resolved_at'] = Variable<DateTime>(resolvedAt);
+    }
+    if (!nullToAbsent || payloadJson != null) {
+      map['payload_json'] = Variable<String>(payloadJson);
+    }
+    if (!nullToAbsent || createdBy != null) {
+      map['created_by'] = Variable<String>(createdBy);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  AutomationEventsCompanion toCompanion(bool nullToAbsent) {
+    return AutomationEventsCompanion(
+      id: Value(id),
+      severity: Value(severity),
+      type: Value(type),
+      title: Value(title),
+      message: Value(message),
+      source: source == null && nullToAbsent
+          ? const Value.absent()
+          : Value(source),
+      status: Value(status),
+      occurredAt: Value(occurredAt),
+      resolvedAt: resolvedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(resolvedAt),
+      payloadJson: payloadJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(payloadJson),
+      createdBy: createdBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdBy),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory AutomationEvent.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AutomationEvent(
+      id: serializer.fromJson<String>(json['id']),
+      severity: serializer.fromJson<String>(json['severity']),
+      type: serializer.fromJson<String>(json['type']),
+      title: serializer.fromJson<String>(json['title']),
+      message: serializer.fromJson<String>(json['message']),
+      source: serializer.fromJson<String?>(json['source']),
+      status: serializer.fromJson<String>(json['status']),
+      occurredAt: serializer.fromJson<DateTime>(json['occurredAt']),
+      resolvedAt: serializer.fromJson<DateTime?>(json['resolvedAt']),
+      payloadJson: serializer.fromJson<String?>(json['payloadJson']),
+      createdBy: serializer.fromJson<String?>(json['createdBy']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'severity': serializer.toJson<String>(severity),
+      'type': serializer.toJson<String>(type),
+      'title': serializer.toJson<String>(title),
+      'message': serializer.toJson<String>(message),
+      'source': serializer.toJson<String?>(source),
+      'status': serializer.toJson<String>(status),
+      'occurredAt': serializer.toJson<DateTime>(occurredAt),
+      'resolvedAt': serializer.toJson<DateTime?>(resolvedAt),
+      'payloadJson': serializer.toJson<String?>(payloadJson),
+      'createdBy': serializer.toJson<String?>(createdBy),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  AutomationEvent copyWith({
+    String? id,
+    String? severity,
+    String? type,
+    String? title,
+    String? message,
+    Value<String?> source = const Value.absent(),
+    String? status,
+    DateTime? occurredAt,
+    Value<DateTime?> resolvedAt = const Value.absent(),
+    Value<String?> payloadJson = const Value.absent(),
+    Value<String?> createdBy = const Value.absent(),
+    DateTime? createdAt,
+  }) => AutomationEvent(
+    id: id ?? this.id,
+    severity: severity ?? this.severity,
+    type: type ?? this.type,
+    title: title ?? this.title,
+    message: message ?? this.message,
+    source: source.present ? source.value : this.source,
+    status: status ?? this.status,
+    occurredAt: occurredAt ?? this.occurredAt,
+    resolvedAt: resolvedAt.present ? resolvedAt.value : this.resolvedAt,
+    payloadJson: payloadJson.present ? payloadJson.value : this.payloadJson,
+    createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  AutomationEvent copyWithCompanion(AutomationEventsCompanion data) {
+    return AutomationEvent(
+      id: data.id.present ? data.id.value : this.id,
+      severity: data.severity.present ? data.severity.value : this.severity,
+      type: data.type.present ? data.type.value : this.type,
+      title: data.title.present ? data.title.value : this.title,
+      message: data.message.present ? data.message.value : this.message,
+      source: data.source.present ? data.source.value : this.source,
+      status: data.status.present ? data.status.value : this.status,
+      occurredAt: data.occurredAt.present
+          ? data.occurredAt.value
+          : this.occurredAt,
+      resolvedAt: data.resolvedAt.present
+          ? data.resolvedAt.value
+          : this.resolvedAt,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AutomationEvent(')
+          ..write('id: $id, ')
+          ..write('severity: $severity, ')
+          ..write('type: $type, ')
+          ..write('title: $title, ')
+          ..write('message: $message, ')
+          ..write('source: $source, ')
+          ..write('status: $status, ')
+          ..write('occurredAt: $occurredAt, ')
+          ..write('resolvedAt: $resolvedAt, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    severity,
+    type,
+    title,
+    message,
+    source,
+    status,
+    occurredAt,
+    resolvedAt,
+    payloadJson,
+    createdBy,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AutomationEvent &&
+          other.id == this.id &&
+          other.severity == this.severity &&
+          other.type == this.type &&
+          other.title == this.title &&
+          other.message == this.message &&
+          other.source == this.source &&
+          other.status == this.status &&
+          other.occurredAt == this.occurredAt &&
+          other.resolvedAt == this.resolvedAt &&
+          other.payloadJson == this.payloadJson &&
+          other.createdBy == this.createdBy &&
+          other.createdAt == this.createdAt);
+}
+
+class AutomationEventsCompanion extends UpdateCompanion<AutomationEvent> {
+  final Value<String> id;
+  final Value<String> severity;
+  final Value<String> type;
+  final Value<String> title;
+  final Value<String> message;
+  final Value<String?> source;
+  final Value<String> status;
+  final Value<DateTime> occurredAt;
+  final Value<DateTime?> resolvedAt;
+  final Value<String?> payloadJson;
+  final Value<String?> createdBy;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const AutomationEventsCompanion({
+    this.id = const Value.absent(),
+    this.severity = const Value.absent(),
+    this.type = const Value.absent(),
+    this.title = const Value.absent(),
+    this.message = const Value.absent(),
+    this.source = const Value.absent(),
+    this.status = const Value.absent(),
+    this.occurredAt = const Value.absent(),
+    this.resolvedAt = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  AutomationEventsCompanion.insert({
+    required String id,
+    required String severity,
+    required String type,
+    required String title,
+    required String message,
+    this.source = const Value.absent(),
+    this.status = const Value.absent(),
+    required DateTime occurredAt,
+    this.resolvedAt = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       severity = Value(severity),
+       type = Value(type),
+       title = Value(title),
+       message = Value(message),
+       occurredAt = Value(occurredAt),
+       createdAt = Value(createdAt);
+  static Insertable<AutomationEvent> custom({
+    Expression<String>? id,
+    Expression<String>? severity,
+    Expression<String>? type,
+    Expression<String>? title,
+    Expression<String>? message,
+    Expression<String>? source,
+    Expression<String>? status,
+    Expression<DateTime>? occurredAt,
+    Expression<DateTime>? resolvedAt,
+    Expression<String>? payloadJson,
+    Expression<String>? createdBy,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (severity != null) 'severity': severity,
+      if (type != null) 'type': type,
+      if (title != null) 'title': title,
+      if (message != null) 'message': message,
+      if (source != null) 'source': source,
+      if (status != null) 'status': status,
+      if (occurredAt != null) 'occurred_at': occurredAt,
+      if (resolvedAt != null) 'resolved_at': resolvedAt,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (createdBy != null) 'created_by': createdBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  AutomationEventsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? severity,
+    Value<String>? type,
+    Value<String>? title,
+    Value<String>? message,
+    Value<String?>? source,
+    Value<String>? status,
+    Value<DateTime>? occurredAt,
+    Value<DateTime?>? resolvedAt,
+    Value<String?>? payloadJson,
+    Value<String?>? createdBy,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return AutomationEventsCompanion(
+      id: id ?? this.id,
+      severity: severity ?? this.severity,
+      type: type ?? this.type,
+      title: title ?? this.title,
+      message: message ?? this.message,
+      source: source ?? this.source,
+      status: status ?? this.status,
+      occurredAt: occurredAt ?? this.occurredAt,
+      resolvedAt: resolvedAt ?? this.resolvedAt,
+      payloadJson: payloadJson ?? this.payloadJson,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (severity.present) {
+      map['severity'] = Variable<String>(severity.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (message.present) {
+      map['message'] = Variable<String>(message.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (occurredAt.present) {
+      map['occurred_at'] = Variable<DateTime>(occurredAt.value);
+    }
+    if (resolvedAt.present) {
+      map['resolved_at'] = Variable<DateTime>(resolvedAt.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AutomationEventsCompanion(')
+          ..write('id: $id, ')
+          ..write('severity: $severity, ')
+          ..write('type: $type, ')
+          ..write('title: $title, ')
+          ..write('message: $message, ')
+          ..write('source: $source, ')
+          ..write('status: $status, ')
+          ..write('occurredAt: $occurredAt, ')
+          ..write('resolvedAt: $resolvedAt, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $VaccinationRecordsTable extends VaccinationRecords
+    with TableInfo<$VaccinationRecordsTable, VaccinationRecord> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VaccinationRecordsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lotIdMeta = const VerificationMeta('lotId');
+  @override
+  late final GeneratedColumn<String> lotId = GeneratedColumn<String>(
+    'lot_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _vaccineNameMeta = const VerificationMeta(
+    'vaccineName',
+  );
+  @override
+  late final GeneratedColumn<String> vaccineName = GeneratedColumn<String>(
+    'vaccine_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _diseaseMeta = const VerificationMeta(
+    'disease',
+  );
+  @override
+  late final GeneratedColumn<String> disease = GeneratedColumn<String>(
+    'disease',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _scheduledAtMeta = const VerificationMeta(
+    'scheduledAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> scheduledAt = GeneratedColumn<DateTime>(
+    'scheduled_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _appliedAtMeta = const VerificationMeta(
+    'appliedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> appliedAt = GeneratedColumn<DateTime>(
+    'applied_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _doseMeta = const VerificationMeta('dose');
+  @override
+  late final GeneratedColumn<String> dose = GeneratedColumn<String>(
+    'dose',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _routeMeta = const VerificationMeta('route');
+  @override
+  late final GeneratedColumn<String> route = GeneratedColumn<String>(
+    'route',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _batchNumberMeta = const VerificationMeta(
+    'batchNumber',
+  );
+  @override
+  late final GeneratedColumn<String> batchNumber = GeneratedColumn<String>(
+    'batch_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _manufacturerMeta = const VerificationMeta(
+    'manufacturer',
+  );
+  @override
+  late final GeneratedColumn<String> manufacturer = GeneratedColumn<String>(
+    'manufacturer',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _responsibleMeta = const VerificationMeta(
+    'responsible',
+  );
+  @override
+  late final GeneratedColumn<String> responsible = GeneratedColumn<String>(
+    'responsible',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('SCHEDULED'),
+  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdByMeta = const VerificationMeta(
+    'createdBy',
+  );
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    lotId,
+    vaccineName,
+    disease,
+    scheduledAt,
+    appliedAt,
+    dose,
+    route,
+    batchNumber,
+    manufacturer,
+    responsible,
+    status,
+    notes,
+    createdBy,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'vaccination_records';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VaccinationRecord> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('lot_id')) {
+      context.handle(
+        _lotIdMeta,
+        lotId.isAcceptableOrUnknown(data['lot_id']!, _lotIdMeta),
+      );
+    }
+    if (data.containsKey('vaccine_name')) {
+      context.handle(
+        _vaccineNameMeta,
+        vaccineName.isAcceptableOrUnknown(
+          data['vaccine_name']!,
+          _vaccineNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_vaccineNameMeta);
+    }
+    if (data.containsKey('disease')) {
+      context.handle(
+        _diseaseMeta,
+        disease.isAcceptableOrUnknown(data['disease']!, _diseaseMeta),
+      );
+    }
+    if (data.containsKey('scheduled_at')) {
+      context.handle(
+        _scheduledAtMeta,
+        scheduledAt.isAcceptableOrUnknown(
+          data['scheduled_at']!,
+          _scheduledAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_scheduledAtMeta);
+    }
+    if (data.containsKey('applied_at')) {
+      context.handle(
+        _appliedAtMeta,
+        appliedAt.isAcceptableOrUnknown(data['applied_at']!, _appliedAtMeta),
+      );
+    }
+    if (data.containsKey('dose')) {
+      context.handle(
+        _doseMeta,
+        dose.isAcceptableOrUnknown(data['dose']!, _doseMeta),
+      );
+    }
+    if (data.containsKey('route')) {
+      context.handle(
+        _routeMeta,
+        route.isAcceptableOrUnknown(data['route']!, _routeMeta),
+      );
+    }
+    if (data.containsKey('batch_number')) {
+      context.handle(
+        _batchNumberMeta,
+        batchNumber.isAcceptableOrUnknown(
+          data['batch_number']!,
+          _batchNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('manufacturer')) {
+      context.handle(
+        _manufacturerMeta,
+        manufacturer.isAcceptableOrUnknown(
+          data['manufacturer']!,
+          _manufacturerMeta,
+        ),
+      );
+    }
+    if (data.containsKey('responsible')) {
+      context.handle(
+        _responsibleMeta,
+        responsible.isAcceptableOrUnknown(
+          data['responsible']!,
+          _responsibleMeta,
+        ),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(
+        _createdByMeta,
+        createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdByMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VaccinationRecord map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VaccinationRecord(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      lotId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}lot_id'],
+      ),
+      vaccineName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}vaccine_name'],
+      )!,
+      disease: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}disease'],
+      ),
+      scheduledAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}scheduled_at'],
+      )!,
+      appliedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}applied_at'],
+      ),
+      dose: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}dose'],
+      ),
+      route: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}route'],
+      ),
+      batchNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}batch_number'],
+      ),
+      manufacturer: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}manufacturer'],
+      ),
+      responsible: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}responsible'],
+      ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $VaccinationRecordsTable createAlias(String alias) {
+    return $VaccinationRecordsTable(attachedDatabase, alias);
+  }
+}
+
+class VaccinationRecord extends DataClass
+    implements Insertable<VaccinationRecord> {
+  final String id;
+  final String? lotId;
+  final String vaccineName;
+  final String? disease;
+  final DateTime scheduledAt;
+  final DateTime? appliedAt;
+  final String? dose;
+  final String? route;
+  final String? batchNumber;
+  final String? manufacturer;
+  final String? responsible;
+  final String status;
+  final String? notes;
+  final String createdBy;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const VaccinationRecord({
+    required this.id,
+    this.lotId,
+    required this.vaccineName,
+    this.disease,
+    required this.scheduledAt,
+    this.appliedAt,
+    this.dose,
+    this.route,
+    this.batchNumber,
+    this.manufacturer,
+    this.responsible,
+    required this.status,
+    this.notes,
+    required this.createdBy,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    if (!nullToAbsent || lotId != null) {
+      map['lot_id'] = Variable<String>(lotId);
+    }
+    map['vaccine_name'] = Variable<String>(vaccineName);
+    if (!nullToAbsent || disease != null) {
+      map['disease'] = Variable<String>(disease);
+    }
+    map['scheduled_at'] = Variable<DateTime>(scheduledAt);
+    if (!nullToAbsent || appliedAt != null) {
+      map['applied_at'] = Variable<DateTime>(appliedAt);
+    }
+    if (!nullToAbsent || dose != null) {
+      map['dose'] = Variable<String>(dose);
+    }
+    if (!nullToAbsent || route != null) {
+      map['route'] = Variable<String>(route);
+    }
+    if (!nullToAbsent || batchNumber != null) {
+      map['batch_number'] = Variable<String>(batchNumber);
+    }
+    if (!nullToAbsent || manufacturer != null) {
+      map['manufacturer'] = Variable<String>(manufacturer);
+    }
+    if (!nullToAbsent || responsible != null) {
+      map['responsible'] = Variable<String>(responsible);
+    }
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
+    }
+    map['created_by'] = Variable<String>(createdBy);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  VaccinationRecordsCompanion toCompanion(bool nullToAbsent) {
+    return VaccinationRecordsCompanion(
+      id: Value(id),
+      lotId: lotId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lotId),
+      vaccineName: Value(vaccineName),
+      disease: disease == null && nullToAbsent
+          ? const Value.absent()
+          : Value(disease),
+      scheduledAt: Value(scheduledAt),
+      appliedAt: appliedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(appliedAt),
+      dose: dose == null && nullToAbsent ? const Value.absent() : Value(dose),
+      route: route == null && nullToAbsent
+          ? const Value.absent()
+          : Value(route),
+      batchNumber: batchNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(batchNumber),
+      manufacturer: manufacturer == null && nullToAbsent
+          ? const Value.absent()
+          : Value(manufacturer),
+      responsible: responsible == null && nullToAbsent
+          ? const Value.absent()
+          : Value(responsible),
+      status: Value(status),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
+      createdBy: Value(createdBy),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory VaccinationRecord.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VaccinationRecord(
+      id: serializer.fromJson<String>(json['id']),
+      lotId: serializer.fromJson<String?>(json['lotId']),
+      vaccineName: serializer.fromJson<String>(json['vaccineName']),
+      disease: serializer.fromJson<String?>(json['disease']),
+      scheduledAt: serializer.fromJson<DateTime>(json['scheduledAt']),
+      appliedAt: serializer.fromJson<DateTime?>(json['appliedAt']),
+      dose: serializer.fromJson<String?>(json['dose']),
+      route: serializer.fromJson<String?>(json['route']),
+      batchNumber: serializer.fromJson<String?>(json['batchNumber']),
+      manufacturer: serializer.fromJson<String?>(json['manufacturer']),
+      responsible: serializer.fromJson<String?>(json['responsible']),
+      status: serializer.fromJson<String>(json['status']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      createdBy: serializer.fromJson<String>(json['createdBy']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'lotId': serializer.toJson<String?>(lotId),
+      'vaccineName': serializer.toJson<String>(vaccineName),
+      'disease': serializer.toJson<String?>(disease),
+      'scheduledAt': serializer.toJson<DateTime>(scheduledAt),
+      'appliedAt': serializer.toJson<DateTime?>(appliedAt),
+      'dose': serializer.toJson<String?>(dose),
+      'route': serializer.toJson<String?>(route),
+      'batchNumber': serializer.toJson<String?>(batchNumber),
+      'manufacturer': serializer.toJson<String?>(manufacturer),
+      'responsible': serializer.toJson<String?>(responsible),
+      'status': serializer.toJson<String>(status),
+      'notes': serializer.toJson<String?>(notes),
+      'createdBy': serializer.toJson<String>(createdBy),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  VaccinationRecord copyWith({
+    String? id,
+    Value<String?> lotId = const Value.absent(),
+    String? vaccineName,
+    Value<String?> disease = const Value.absent(),
+    DateTime? scheduledAt,
+    Value<DateTime?> appliedAt = const Value.absent(),
+    Value<String?> dose = const Value.absent(),
+    Value<String?> route = const Value.absent(),
+    Value<String?> batchNumber = const Value.absent(),
+    Value<String?> manufacturer = const Value.absent(),
+    Value<String?> responsible = const Value.absent(),
+    String? status,
+    Value<String?> notes = const Value.absent(),
+    String? createdBy,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => VaccinationRecord(
+    id: id ?? this.id,
+    lotId: lotId.present ? lotId.value : this.lotId,
+    vaccineName: vaccineName ?? this.vaccineName,
+    disease: disease.present ? disease.value : this.disease,
+    scheduledAt: scheduledAt ?? this.scheduledAt,
+    appliedAt: appliedAt.present ? appliedAt.value : this.appliedAt,
+    dose: dose.present ? dose.value : this.dose,
+    route: route.present ? route.value : this.route,
+    batchNumber: batchNumber.present ? batchNumber.value : this.batchNumber,
+    manufacturer: manufacturer.present ? manufacturer.value : this.manufacturer,
+    responsible: responsible.present ? responsible.value : this.responsible,
+    status: status ?? this.status,
+    notes: notes.present ? notes.value : this.notes,
+    createdBy: createdBy ?? this.createdBy,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  VaccinationRecord copyWithCompanion(VaccinationRecordsCompanion data) {
+    return VaccinationRecord(
+      id: data.id.present ? data.id.value : this.id,
+      lotId: data.lotId.present ? data.lotId.value : this.lotId,
+      vaccineName: data.vaccineName.present
+          ? data.vaccineName.value
+          : this.vaccineName,
+      disease: data.disease.present ? data.disease.value : this.disease,
+      scheduledAt: data.scheduledAt.present
+          ? data.scheduledAt.value
+          : this.scheduledAt,
+      appliedAt: data.appliedAt.present ? data.appliedAt.value : this.appliedAt,
+      dose: data.dose.present ? data.dose.value : this.dose,
+      route: data.route.present ? data.route.value : this.route,
+      batchNumber: data.batchNumber.present
+          ? data.batchNumber.value
+          : this.batchNumber,
+      manufacturer: data.manufacturer.present
+          ? data.manufacturer.value
+          : this.manufacturer,
+      responsible: data.responsible.present
+          ? data.responsible.value
+          : this.responsible,
+      status: data.status.present ? data.status.value : this.status,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VaccinationRecord(')
+          ..write('id: $id, ')
+          ..write('lotId: $lotId, ')
+          ..write('vaccineName: $vaccineName, ')
+          ..write('disease: $disease, ')
+          ..write('scheduledAt: $scheduledAt, ')
+          ..write('appliedAt: $appliedAt, ')
+          ..write('dose: $dose, ')
+          ..write('route: $route, ')
+          ..write('batchNumber: $batchNumber, ')
+          ..write('manufacturer: $manufacturer, ')
+          ..write('responsible: $responsible, ')
+          ..write('status: $status, ')
+          ..write('notes: $notes, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    lotId,
+    vaccineName,
+    disease,
+    scheduledAt,
+    appliedAt,
+    dose,
+    route,
+    batchNumber,
+    manufacturer,
+    responsible,
+    status,
+    notes,
+    createdBy,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VaccinationRecord &&
+          other.id == this.id &&
+          other.lotId == this.lotId &&
+          other.vaccineName == this.vaccineName &&
+          other.disease == this.disease &&
+          other.scheduledAt == this.scheduledAt &&
+          other.appliedAt == this.appliedAt &&
+          other.dose == this.dose &&
+          other.route == this.route &&
+          other.batchNumber == this.batchNumber &&
+          other.manufacturer == this.manufacturer &&
+          other.responsible == this.responsible &&
+          other.status == this.status &&
+          other.notes == this.notes &&
+          other.createdBy == this.createdBy &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class VaccinationRecordsCompanion extends UpdateCompanion<VaccinationRecord> {
+  final Value<String> id;
+  final Value<String?> lotId;
+  final Value<String> vaccineName;
+  final Value<String?> disease;
+  final Value<DateTime> scheduledAt;
+  final Value<DateTime?> appliedAt;
+  final Value<String?> dose;
+  final Value<String?> route;
+  final Value<String?> batchNumber;
+  final Value<String?> manufacturer;
+  final Value<String?> responsible;
+  final Value<String> status;
+  final Value<String?> notes;
+  final Value<String> createdBy;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const VaccinationRecordsCompanion({
+    this.id = const Value.absent(),
+    this.lotId = const Value.absent(),
+    this.vaccineName = const Value.absent(),
+    this.disease = const Value.absent(),
+    this.scheduledAt = const Value.absent(),
+    this.appliedAt = const Value.absent(),
+    this.dose = const Value.absent(),
+    this.route = const Value.absent(),
+    this.batchNumber = const Value.absent(),
+    this.manufacturer = const Value.absent(),
+    this.responsible = const Value.absent(),
+    this.status = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  VaccinationRecordsCompanion.insert({
+    required String id,
+    this.lotId = const Value.absent(),
+    required String vaccineName,
+    this.disease = const Value.absent(),
+    required DateTime scheduledAt,
+    this.appliedAt = const Value.absent(),
+    this.dose = const Value.absent(),
+    this.route = const Value.absent(),
+    this.batchNumber = const Value.absent(),
+    this.manufacturer = const Value.absent(),
+    this.responsible = const Value.absent(),
+    this.status = const Value.absent(),
+    this.notes = const Value.absent(),
+    required String createdBy,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       vaccineName = Value(vaccineName),
+       scheduledAt = Value(scheduledAt),
+       createdBy = Value(createdBy),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<VaccinationRecord> custom({
+    Expression<String>? id,
+    Expression<String>? lotId,
+    Expression<String>? vaccineName,
+    Expression<String>? disease,
+    Expression<DateTime>? scheduledAt,
+    Expression<DateTime>? appliedAt,
+    Expression<String>? dose,
+    Expression<String>? route,
+    Expression<String>? batchNumber,
+    Expression<String>? manufacturer,
+    Expression<String>? responsible,
+    Expression<String>? status,
+    Expression<String>? notes,
+    Expression<String>? createdBy,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (lotId != null) 'lot_id': lotId,
+      if (vaccineName != null) 'vaccine_name': vaccineName,
+      if (disease != null) 'disease': disease,
+      if (scheduledAt != null) 'scheduled_at': scheduledAt,
+      if (appliedAt != null) 'applied_at': appliedAt,
+      if (dose != null) 'dose': dose,
+      if (route != null) 'route': route,
+      if (batchNumber != null) 'batch_number': batchNumber,
+      if (manufacturer != null) 'manufacturer': manufacturer,
+      if (responsible != null) 'responsible': responsible,
+      if (status != null) 'status': status,
+      if (notes != null) 'notes': notes,
+      if (createdBy != null) 'created_by': createdBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  VaccinationRecordsCompanion copyWith({
+    Value<String>? id,
+    Value<String?>? lotId,
+    Value<String>? vaccineName,
+    Value<String?>? disease,
+    Value<DateTime>? scheduledAt,
+    Value<DateTime?>? appliedAt,
+    Value<String?>? dose,
+    Value<String?>? route,
+    Value<String?>? batchNumber,
+    Value<String?>? manufacturer,
+    Value<String?>? responsible,
+    Value<String>? status,
+    Value<String?>? notes,
+    Value<String>? createdBy,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return VaccinationRecordsCompanion(
+      id: id ?? this.id,
+      lotId: lotId ?? this.lotId,
+      vaccineName: vaccineName ?? this.vaccineName,
+      disease: disease ?? this.disease,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
+      appliedAt: appliedAt ?? this.appliedAt,
+      dose: dose ?? this.dose,
+      route: route ?? this.route,
+      batchNumber: batchNumber ?? this.batchNumber,
+      manufacturer: manufacturer ?? this.manufacturer,
+      responsible: responsible ?? this.responsible,
+      status: status ?? this.status,
+      notes: notes ?? this.notes,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (lotId.present) {
+      map['lot_id'] = Variable<String>(lotId.value);
+    }
+    if (vaccineName.present) {
+      map['vaccine_name'] = Variable<String>(vaccineName.value);
+    }
+    if (disease.present) {
+      map['disease'] = Variable<String>(disease.value);
+    }
+    if (scheduledAt.present) {
+      map['scheduled_at'] = Variable<DateTime>(scheduledAt.value);
+    }
+    if (appliedAt.present) {
+      map['applied_at'] = Variable<DateTime>(appliedAt.value);
+    }
+    if (dose.present) {
+      map['dose'] = Variable<String>(dose.value);
+    }
+    if (route.present) {
+      map['route'] = Variable<String>(route.value);
+    }
+    if (batchNumber.present) {
+      map['batch_number'] = Variable<String>(batchNumber.value);
+    }
+    if (manufacturer.present) {
+      map['manufacturer'] = Variable<String>(manufacturer.value);
+    }
+    if (responsible.present) {
+      map['responsible'] = Variable<String>(responsible.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VaccinationRecordsCompanion(')
+          ..write('id: $id, ')
+          ..write('lotId: $lotId, ')
+          ..write('vaccineName: $vaccineName, ')
+          ..write('disease: $disease, ')
+          ..write('scheduledAt: $scheduledAt, ')
+          ..write('appliedAt: $appliedAt, ')
+          ..write('dose: $dose, ')
+          ..write('route: $route, ')
+          ..write('batchNumber: $batchNumber, ')
+          ..write('manufacturer: $manufacturer, ')
+          ..write('responsible: $responsible, ')
+          ..write('status: $status, ')
+          ..write('notes: $notes, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -21693,6 +23971,12 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $NotificationSettingsTable notificationSettings =
       $NotificationSettingsTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
+  late final $SensorReadingsTable sensorReadings = $SensorReadingsTable(this);
+  late final $AutomationEventsTable automationEvents = $AutomationEventsTable(
+    this,
+  );
+  late final $VaccinationRecordsTable vaccinationRecords =
+      $VaccinationRecordsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -21735,6 +24019,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     calendarEvents,
     notificationSettings,
     appSettings,
+    sensorReadings,
+    automationEvents,
+    vaccinationRecords,
   ];
 }
 
@@ -32541,6 +34828,1103 @@ typedef $$AppSettingsTableProcessedTableManager =
       AppSetting,
       PrefetchHooks Function()
     >;
+typedef $$SensorReadingsTableCreateCompanionBuilder =
+    SensorReadingsCompanion Function({
+      required String id,
+      required String source,
+      required String metric,
+      required double value,
+      Value<String?> unit,
+      Value<String?> zone,
+      required DateTime capturedAt,
+      Value<String?> transport,
+      Value<String?> payloadJson,
+      Value<String?> createdBy,
+      required DateTime createdAt,
+      Value<int> rowid,
+    });
+typedef $$SensorReadingsTableUpdateCompanionBuilder =
+    SensorReadingsCompanion Function({
+      Value<String> id,
+      Value<String> source,
+      Value<String> metric,
+      Value<double> value,
+      Value<String?> unit,
+      Value<String?> zone,
+      Value<DateTime> capturedAt,
+      Value<String?> transport,
+      Value<String?> payloadJson,
+      Value<String?> createdBy,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$SensorReadingsTableFilterComposer
+    extends Composer<_$AppDatabase, $SensorReadingsTable> {
+  $$SensorReadingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get metric => $composableBuilder(
+    column: $table.metric,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get zone => $composableBuilder(
+    column: $table.zone,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get transport => $composableBuilder(
+    column: $table.transport,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SensorReadingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SensorReadingsTable> {
+  $$SensorReadingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get metric => $composableBuilder(
+    column: $table.metric,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get zone => $composableBuilder(
+    column: $table.zone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get transport => $composableBuilder(
+    column: $table.transport,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SensorReadingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SensorReadingsTable> {
+  $$SensorReadingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get metric =>
+      $composableBuilder(column: $table.metric, builder: (column) => column);
+
+  GeneratedColumn<double> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+
+  GeneratedColumn<String> get unit =>
+      $composableBuilder(column: $table.unit, builder: (column) => column);
+
+  GeneratedColumn<String> get zone =>
+      $composableBuilder(column: $table.zone, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get capturedAt => $composableBuilder(
+    column: $table.capturedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get transport =>
+      $composableBuilder(column: $table.transport, builder: (column) => column);
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$SensorReadingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SensorReadingsTable,
+          SensorReading,
+          $$SensorReadingsTableFilterComposer,
+          $$SensorReadingsTableOrderingComposer,
+          $$SensorReadingsTableAnnotationComposer,
+          $$SensorReadingsTableCreateCompanionBuilder,
+          $$SensorReadingsTableUpdateCompanionBuilder,
+          (
+            SensorReading,
+            BaseReferences<_$AppDatabase, $SensorReadingsTable, SensorReading>,
+          ),
+          SensorReading,
+          PrefetchHooks Function()
+        > {
+  $$SensorReadingsTableTableManager(
+    _$AppDatabase db,
+    $SensorReadingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SensorReadingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SensorReadingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SensorReadingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String> metric = const Value.absent(),
+                Value<double> value = const Value.absent(),
+                Value<String?> unit = const Value.absent(),
+                Value<String?> zone = const Value.absent(),
+                Value<DateTime> capturedAt = const Value.absent(),
+                Value<String?> transport = const Value.absent(),
+                Value<String?> payloadJson = const Value.absent(),
+                Value<String?> createdBy = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SensorReadingsCompanion(
+                id: id,
+                source: source,
+                metric: metric,
+                value: value,
+                unit: unit,
+                zone: zone,
+                capturedAt: capturedAt,
+                transport: transport,
+                payloadJson: payloadJson,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String source,
+                required String metric,
+                required double value,
+                Value<String?> unit = const Value.absent(),
+                Value<String?> zone = const Value.absent(),
+                required DateTime capturedAt,
+                Value<String?> transport = const Value.absent(),
+                Value<String?> payloadJson = const Value.absent(),
+                Value<String?> createdBy = const Value.absent(),
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => SensorReadingsCompanion.insert(
+                id: id,
+                source: source,
+                metric: metric,
+                value: value,
+                unit: unit,
+                zone: zone,
+                capturedAt: capturedAt,
+                transport: transport,
+                payloadJson: payloadJson,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SensorReadingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SensorReadingsTable,
+      SensorReading,
+      $$SensorReadingsTableFilterComposer,
+      $$SensorReadingsTableOrderingComposer,
+      $$SensorReadingsTableAnnotationComposer,
+      $$SensorReadingsTableCreateCompanionBuilder,
+      $$SensorReadingsTableUpdateCompanionBuilder,
+      (
+        SensorReading,
+        BaseReferences<_$AppDatabase, $SensorReadingsTable, SensorReading>,
+      ),
+      SensorReading,
+      PrefetchHooks Function()
+    >;
+typedef $$AutomationEventsTableCreateCompanionBuilder =
+    AutomationEventsCompanion Function({
+      required String id,
+      required String severity,
+      required String type,
+      required String title,
+      required String message,
+      Value<String?> source,
+      Value<String> status,
+      required DateTime occurredAt,
+      Value<DateTime?> resolvedAt,
+      Value<String?> payloadJson,
+      Value<String?> createdBy,
+      required DateTime createdAt,
+      Value<int> rowid,
+    });
+typedef $$AutomationEventsTableUpdateCompanionBuilder =
+    AutomationEventsCompanion Function({
+      Value<String> id,
+      Value<String> severity,
+      Value<String> type,
+      Value<String> title,
+      Value<String> message,
+      Value<String?> source,
+      Value<String> status,
+      Value<DateTime> occurredAt,
+      Value<DateTime?> resolvedAt,
+      Value<String?> payloadJson,
+      Value<String?> createdBy,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$AutomationEventsTableFilterComposer
+    extends Composer<_$AppDatabase, $AutomationEventsTable> {
+  $$AutomationEventsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get severity => $composableBuilder(
+    column: $table.severity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get message => $composableBuilder(
+    column: $table.message,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get occurredAt => $composableBuilder(
+    column: $table.occurredAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get resolvedAt => $composableBuilder(
+    column: $table.resolvedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AutomationEventsTableOrderingComposer
+    extends Composer<_$AppDatabase, $AutomationEventsTable> {
+  $$AutomationEventsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get severity => $composableBuilder(
+    column: $table.severity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get message => $composableBuilder(
+    column: $table.message,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get occurredAt => $composableBuilder(
+    column: $table.occurredAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get resolvedAt => $composableBuilder(
+    column: $table.resolvedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AutomationEventsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AutomationEventsTable> {
+  $$AutomationEventsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get severity =>
+      $composableBuilder(column: $table.severity, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get message =>
+      $composableBuilder(column: $table.message, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get occurredAt => $composableBuilder(
+    column: $table.occurredAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get resolvedAt => $composableBuilder(
+    column: $table.resolvedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$AutomationEventsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AutomationEventsTable,
+          AutomationEvent,
+          $$AutomationEventsTableFilterComposer,
+          $$AutomationEventsTableOrderingComposer,
+          $$AutomationEventsTableAnnotationComposer,
+          $$AutomationEventsTableCreateCompanionBuilder,
+          $$AutomationEventsTableUpdateCompanionBuilder,
+          (
+            AutomationEvent,
+            BaseReferences<
+              _$AppDatabase,
+              $AutomationEventsTable,
+              AutomationEvent
+            >,
+          ),
+          AutomationEvent,
+          PrefetchHooks Function()
+        > {
+  $$AutomationEventsTableTableManager(
+    _$AppDatabase db,
+    $AutomationEventsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AutomationEventsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AutomationEventsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AutomationEventsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> severity = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> message = const Value.absent(),
+                Value<String?> source = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<DateTime> occurredAt = const Value.absent(),
+                Value<DateTime?> resolvedAt = const Value.absent(),
+                Value<String?> payloadJson = const Value.absent(),
+                Value<String?> createdBy = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => AutomationEventsCompanion(
+                id: id,
+                severity: severity,
+                type: type,
+                title: title,
+                message: message,
+                source: source,
+                status: status,
+                occurredAt: occurredAt,
+                resolvedAt: resolvedAt,
+                payloadJson: payloadJson,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String severity,
+                required String type,
+                required String title,
+                required String message,
+                Value<String?> source = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                required DateTime occurredAt,
+                Value<DateTime?> resolvedAt = const Value.absent(),
+                Value<String?> payloadJson = const Value.absent(),
+                Value<String?> createdBy = const Value.absent(),
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => AutomationEventsCompanion.insert(
+                id: id,
+                severity: severity,
+                type: type,
+                title: title,
+                message: message,
+                source: source,
+                status: status,
+                occurredAt: occurredAt,
+                resolvedAt: resolvedAt,
+                payloadJson: payloadJson,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AutomationEventsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AutomationEventsTable,
+      AutomationEvent,
+      $$AutomationEventsTableFilterComposer,
+      $$AutomationEventsTableOrderingComposer,
+      $$AutomationEventsTableAnnotationComposer,
+      $$AutomationEventsTableCreateCompanionBuilder,
+      $$AutomationEventsTableUpdateCompanionBuilder,
+      (
+        AutomationEvent,
+        BaseReferences<_$AppDatabase, $AutomationEventsTable, AutomationEvent>,
+      ),
+      AutomationEvent,
+      PrefetchHooks Function()
+    >;
+typedef $$VaccinationRecordsTableCreateCompanionBuilder =
+    VaccinationRecordsCompanion Function({
+      required String id,
+      Value<String?> lotId,
+      required String vaccineName,
+      Value<String?> disease,
+      required DateTime scheduledAt,
+      Value<DateTime?> appliedAt,
+      Value<String?> dose,
+      Value<String?> route,
+      Value<String?> batchNumber,
+      Value<String?> manufacturer,
+      Value<String?> responsible,
+      Value<String> status,
+      Value<String?> notes,
+      required String createdBy,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$VaccinationRecordsTableUpdateCompanionBuilder =
+    VaccinationRecordsCompanion Function({
+      Value<String> id,
+      Value<String?> lotId,
+      Value<String> vaccineName,
+      Value<String?> disease,
+      Value<DateTime> scheduledAt,
+      Value<DateTime?> appliedAt,
+      Value<String?> dose,
+      Value<String?> route,
+      Value<String?> batchNumber,
+      Value<String?> manufacturer,
+      Value<String?> responsible,
+      Value<String> status,
+      Value<String?> notes,
+      Value<String> createdBy,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$VaccinationRecordsTableFilterComposer
+    extends Composer<_$AppDatabase, $VaccinationRecordsTable> {
+  $$VaccinationRecordsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lotId => $composableBuilder(
+    column: $table.lotId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get vaccineName => $composableBuilder(
+    column: $table.vaccineName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get disease => $composableBuilder(
+    column: $table.disease,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get scheduledAt => $composableBuilder(
+    column: $table.scheduledAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get appliedAt => $composableBuilder(
+    column: $table.appliedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dose => $composableBuilder(
+    column: $table.dose,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get route => $composableBuilder(
+    column: $table.route,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get batchNumber => $composableBuilder(
+    column: $table.batchNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get manufacturer => $composableBuilder(
+    column: $table.manufacturer,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get responsible => $composableBuilder(
+    column: $table.responsible,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$VaccinationRecordsTableOrderingComposer
+    extends Composer<_$AppDatabase, $VaccinationRecordsTable> {
+  $$VaccinationRecordsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lotId => $composableBuilder(
+    column: $table.lotId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get vaccineName => $composableBuilder(
+    column: $table.vaccineName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get disease => $composableBuilder(
+    column: $table.disease,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get scheduledAt => $composableBuilder(
+    column: $table.scheduledAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get appliedAt => $composableBuilder(
+    column: $table.appliedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dose => $composableBuilder(
+    column: $table.dose,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get route => $composableBuilder(
+    column: $table.route,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get batchNumber => $composableBuilder(
+    column: $table.batchNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get manufacturer => $composableBuilder(
+    column: $table.manufacturer,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get responsible => $composableBuilder(
+    column: $table.responsible,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$VaccinationRecordsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $VaccinationRecordsTable> {
+  $$VaccinationRecordsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get lotId =>
+      $composableBuilder(column: $table.lotId, builder: (column) => column);
+
+  GeneratedColumn<String> get vaccineName => $composableBuilder(
+    column: $table.vaccineName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get disease =>
+      $composableBuilder(column: $table.disease, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get scheduledAt => $composableBuilder(
+    column: $table.scheduledAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get appliedAt =>
+      $composableBuilder(column: $table.appliedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get dose =>
+      $composableBuilder(column: $table.dose, builder: (column) => column);
+
+  GeneratedColumn<String> get route =>
+      $composableBuilder(column: $table.route, builder: (column) => column);
+
+  GeneratedColumn<String> get batchNumber => $composableBuilder(
+    column: $table.batchNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get manufacturer => $composableBuilder(
+    column: $table.manufacturer,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get responsible => $composableBuilder(
+    column: $table.responsible,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$VaccinationRecordsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $VaccinationRecordsTable,
+          VaccinationRecord,
+          $$VaccinationRecordsTableFilterComposer,
+          $$VaccinationRecordsTableOrderingComposer,
+          $$VaccinationRecordsTableAnnotationComposer,
+          $$VaccinationRecordsTableCreateCompanionBuilder,
+          $$VaccinationRecordsTableUpdateCompanionBuilder,
+          (
+            VaccinationRecord,
+            BaseReferences<
+              _$AppDatabase,
+              $VaccinationRecordsTable,
+              VaccinationRecord
+            >,
+          ),
+          VaccinationRecord,
+          PrefetchHooks Function()
+        > {
+  $$VaccinationRecordsTableTableManager(
+    _$AppDatabase db,
+    $VaccinationRecordsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VaccinationRecordsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$VaccinationRecordsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$VaccinationRecordsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String?> lotId = const Value.absent(),
+                Value<String> vaccineName = const Value.absent(),
+                Value<String?> disease = const Value.absent(),
+                Value<DateTime> scheduledAt = const Value.absent(),
+                Value<DateTime?> appliedAt = const Value.absent(),
+                Value<String?> dose = const Value.absent(),
+                Value<String?> route = const Value.absent(),
+                Value<String?> batchNumber = const Value.absent(),
+                Value<String?> manufacturer = const Value.absent(),
+                Value<String?> responsible = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<String> createdBy = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VaccinationRecordsCompanion(
+                id: id,
+                lotId: lotId,
+                vaccineName: vaccineName,
+                disease: disease,
+                scheduledAt: scheduledAt,
+                appliedAt: appliedAt,
+                dose: dose,
+                route: route,
+                batchNumber: batchNumber,
+                manufacturer: manufacturer,
+                responsible: responsible,
+                status: status,
+                notes: notes,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                Value<String?> lotId = const Value.absent(),
+                required String vaccineName,
+                Value<String?> disease = const Value.absent(),
+                required DateTime scheduledAt,
+                Value<DateTime?> appliedAt = const Value.absent(),
+                Value<String?> dose = const Value.absent(),
+                Value<String?> route = const Value.absent(),
+                Value<String?> batchNumber = const Value.absent(),
+                Value<String?> manufacturer = const Value.absent(),
+                Value<String?> responsible = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                required String createdBy,
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => VaccinationRecordsCompanion.insert(
+                id: id,
+                lotId: lotId,
+                vaccineName: vaccineName,
+                disease: disease,
+                scheduledAt: scheduledAt,
+                appliedAt: appliedAt,
+                dose: dose,
+                route: route,
+                batchNumber: batchNumber,
+                manufacturer: manufacturer,
+                responsible: responsible,
+                status: status,
+                notes: notes,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$VaccinationRecordsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $VaccinationRecordsTable,
+      VaccinationRecord,
+      $$VaccinationRecordsTableFilterComposer,
+      $$VaccinationRecordsTableOrderingComposer,
+      $$VaccinationRecordsTableAnnotationComposer,
+      $$VaccinationRecordsTableCreateCompanionBuilder,
+      $$VaccinationRecordsTableUpdateCompanionBuilder,
+      (
+        VaccinationRecord,
+        BaseReferences<
+          _$AppDatabase,
+          $VaccinationRecordsTable,
+          VaccinationRecord
+        >,
+      ),
+      VaccinationRecord,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -32631,4 +36015,10 @@ class $AppDatabaseManager {
       $$NotificationSettingsTableTableManager(_db, _db.notificationSettings);
   $$AppSettingsTableTableManager get appSettings =>
       $$AppSettingsTableTableManager(_db, _db.appSettings);
+  $$SensorReadingsTableTableManager get sensorReadings =>
+      $$SensorReadingsTableTableManager(_db, _db.sensorReadings);
+  $$AutomationEventsTableTableManager get automationEvents =>
+      $$AutomationEventsTableTableManager(_db, _db.automationEvents);
+  $$VaccinationRecordsTableTableManager get vaccinationRecords =>
+      $$VaccinationRecordsTableTableManager(_db, _db.vaccinationRecords);
 }

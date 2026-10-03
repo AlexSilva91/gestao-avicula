@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
@@ -40,6 +41,18 @@ class DashboardPage extends ConsumerWidget {
     final appSettings =
         ref.watch(appSettingsProvider).asData?.value ?? const [];
     final sensorSnapshot = _HomeSensorSnapshot.fromSettings(appSettings);
+    final automation = ref.watch(automationOverviewProvider).asData?.value;
+    if (metrics != null || eggs != null || automation != null) {
+      unawaited(
+        ref
+            .read(databaseProvider)
+            .ensureOperationalAutomationAlerts(
+              dashboard: metrics,
+              eggsToday: eggs?.eggsToday,
+              automation: automation,
+            ),
+      );
+    }
     final phaseLots = lots
         .where((summary) => summary.lot.status == 'ACTIVE')
         .map(_LotPhaseSnapshot.fromSummary)
@@ -52,6 +65,10 @@ class DashboardPage extends ConsumerWidget {
         children: [
           _FarmPulsePanel(metrics: metrics, eggs: eggs),
           const SizedBox(height: 14),
+          if (automation != null) ...[
+            _AutomationPulsePanel(overview: automation),
+            const SizedBox(height: 14),
+          ],
           _HomeSensorDeck(snapshot: sensorSnapshot),
           const SizedBox(height: 14),
           _DashboardChartGrid(
@@ -239,6 +256,83 @@ class _MetricGrid extends StatelessWidget {
       );
     },
   );
+}
+
+class _AutomationPulsePanel extends StatelessWidget {
+  const _AutomationPulsePanel({required this.overview});
+
+  final AutomationOverview overview;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest.withValues(alpha: .92),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .72)),
+        borderRadius: BorderRadius.circular(SeletoTokens.radiusMd),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                overview.espOnline ? Icons.hub : Icons.hub_outlined,
+                color: overview.espOnline ? scheme.primary : scheme.error,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Status da automação',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _MetricGrid(
+            children: [
+              _MetricPill(
+                icon: overview.espOnline ? Icons.wifi : Icons.wifi_off,
+                label: 'ESP32',
+                value: overview.espOnline ? 'Online' : 'Offline',
+                color: overview.espOnline ? _chartColors[0] : _chartColors[3],
+              ),
+              _MetricPill(
+                icon: Icons.water_outlined,
+                label: 'Água',
+                value: overview.waterLevelPercent == null
+                    ? '-'
+                    : '${decimal.format(overview.waterLevelPercent)}%',
+                color: (overview.waterLevelPercent ?? 100) <= 25
+                    ? _chartColors[3]
+                    : _chartColors[2],
+              ),
+              _MetricPill(
+                icon: Icons.notifications_active_outlined,
+                label: 'Alertas críticos',
+                value: overview.openAlerts.toString(),
+                color: overview.openAlerts == 0
+                    ? _chartColors[0]
+                    : _chartColors[3],
+              ),
+              _MetricPill(
+                icon: Icons.event_available_outlined,
+                label: 'Agenda luz',
+                value: overview.scheduleSynced ? 'OK' : 'Pendente',
+                color: overview.scheduleSynced
+                    ? _chartColors[0]
+                    : _chartColors[1],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _HomeSensorSnapshot {

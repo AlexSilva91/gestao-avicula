@@ -4,9 +4,11 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/database/operations_repository.dart';
+import '../../../../core/platform/file_export_service.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
@@ -37,7 +39,7 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
         dashboard == null ||
             dashboard.monthExpenseCents == 0 ||
             (eggs?.eggsThisMonth ?? 0) == 0
-        ? 0
+        ? 0.0
         : dashboard.monthExpenseCents / (eggs!.eggsThisMonth);
     return AppShell(
       title: 'Relatórios',
@@ -54,6 +56,17 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
                   selected: f == _period,
                   onSelected: (_) => _selectPeriod(f),
                 ),
+              FilledButton.icon(
+                onPressed: () => _exportPdf(
+                  dashboard: dashboard,
+                  eggs: eggs,
+                  layingRate: layingRate,
+                  costPerEgg: costPerEgg,
+                  range: range,
+                ),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('PDF'),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -245,6 +258,72 @@ class _ReportsPageState extends ConsumerState<ReportsPage> {
         _customRange = picked;
       });
     }
+  }
+
+  Future<void> _exportPdf({
+    required DashboardMetrics? dashboard,
+    required EggMetrics? eggs,
+    required double layingRate,
+    required double costPerEgg,
+    required _ReportRange range,
+  }) async {
+    final doc = pw.Document();
+    final result = dashboard == null
+        ? 0
+        : dashboard.monthIncomeCents - dashboard.monthExpenseCents;
+    doc.addPage(
+      pw.MultiPage(
+        build: (context) => [
+          pw.Header(level: 0, child: pw.Text('Relatorio GRANJA SELETO')),
+          pw.Text('Periodo: ${range.label}'),
+          pw.SizedBox(height: 12),
+          pw.TableHelper.fromTextArray(
+            headers: const ['Indicador', 'Valor'],
+            data: [
+              ['Ovos hoje', '${eggs?.eggsToday ?? 0}'],
+              ['Ovos no mes', '${eggs?.eggsThisMonth ?? 0}'],
+              ['Estoque de ovos', '${dashboard?.eggStock ?? 0}'],
+              ['Aves ativas', '${dashboard?.activeBirds ?? 0}'],
+              ['Lotes ativos', '${dashboard?.activeLots ?? 0}'],
+              [
+                'Racao em estoque',
+                dashboard == null ? '-' : kg(dashboard.feedStockKg),
+              ],
+              [
+                'Racao consumida/mes',
+                dashboard == null ? '-' : kg(dashboard.monthFeedKg),
+              ],
+              [
+                'Receitas/mes',
+                dashboard == null ? '-' : money(dashboard.monthIncomeCents),
+              ],
+              [
+                'Despesas/mes',
+                dashboard == null ? '-' : money(dashboard.monthExpenseCents),
+              ],
+              ['Resultado/mes', money(result)],
+              ['Taxa de postura hoje', percent(layingRate)],
+              ['Custo por ovo', money(costPerEgg.round())],
+              ['Custo por duzia', money((costPerEgg * 12).round())],
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.Text(
+            'Este PDF resume producao, mortalidade/plantel ativo por reflexo dos movimentos, consumo de racao, custos, lucro estimado e desempenho operacional por periodo.',
+          ),
+        ],
+      ),
+    );
+    final filename =
+        'relatorio_seleto_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.pdf';
+    final path = await FileExportService().saveBytes(
+      filename,
+      await doc.save(),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('PDF gerado: $path')));
   }
 }
 

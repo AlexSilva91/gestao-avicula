@@ -154,8 +154,22 @@ const _destinationSections = <_DestinationSection>[
       '/calendar',
       'calendar.view',
     ),
+    _DestinationItem(
+      Icons.vaccines_outlined,
+      Icons.vaccines,
+      'Vacinação',
+      '/vaccination',
+      'calendar.view',
+    ),
   ]),
   _DestinationSection('SENSORES', [
+    _DestinationItem(
+      Icons.hub_outlined,
+      Icons.hub,
+      'Central da automação',
+      '/automation-center',
+      'settings.view',
+    ),
     _DestinationItem(
       Icons.lightbulb_outline,
       Icons.lightbulb,
@@ -285,6 +299,9 @@ String _backgroundForPath(String path) {
     return 'assets/images/backgrounds/bg_eggs.png';
   }
   if (path == '/commercial' || path == '/finance' || path == '/reports') {
+    return 'assets/images/backgrounds/bg_management.png';
+  }
+  if (path == '/vaccination') {
     return 'assets/images/backgrounds/bg_management.png';
   }
   if (path == '/alerts') return 'assets/images/backgrounds/bg_management.png';

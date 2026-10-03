@@ -156,6 +156,21 @@ class HardwareEspClient {
     );
   }
 
+  Future<Map<String, Object?>> configureMqtt({
+    required String endpoint,
+    required bool enabled,
+    required String host,
+    required int port,
+    required String baseTopic,
+    required String deviceId,
+    required String username,
+    required String password,
+  }) async {
+    throw UnsupportedError(
+      'Configuracao MQTT do ESP indisponivel nesta plataforma.',
+    );
+  }
+
   Future<Map<String, Object?>> configureWifi({
     required String endpoint,
     required String ssid,

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/database/operations_repository.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
@@ -186,6 +187,7 @@ class _EnvironmentSensorPageState extends ConsumerState<EnvironmentSensorPage> {
         'hardware_environment_last_humidity_percent',
         decimal.format(reading.airHumidityPercent),
       );
+      await _recordEnvironmentHistory(ref, reading);
       if (!mounted) return;
       setState(() {
         zones = reading.zones;
@@ -391,6 +393,7 @@ class _WaterReservoirSensorPageState
           decimal.format(reading.chlorineOrpMv!),
         );
       }
+      await _recordWaterHistory(ref, reading);
       if (!mounted) return;
       setState(() {
         levelPercent = reading.levelPercent;
@@ -553,6 +556,7 @@ class _WaterQualitySensorPageState
           decimal.format(reading.chlorineOrpMv!),
         );
       }
+      await _recordWaterHistory(ref, reading);
       if (!mounted) return;
       setState(() {
         ph = reading.ph;
@@ -2590,6 +2594,79 @@ double? _settingDouble(List<AppSetting> settings, String key) {
   final value = _setting(settings, key);
   if (value.isEmpty) return null;
   return double.tryParse(value.replaceAll(',', '.'));
+}
+
+Future<void> _recordEnvironmentHistory(
+  WidgetRef ref,
+  EspEnvironmentReading reading,
+) async {
+  final db = ref.read(databaseProvider);
+  for (final zone in reading.zones) {
+    await db.recordSensorReading(
+      source: 'environment',
+      metric: 'air_temperature_c',
+      value: zone.temperatureC,
+      unit: '°C',
+      zone: zone.label,
+      transport: 'HTTP',
+      payload: reading.payload,
+    );
+    await db.recordSensorReading(
+      source: 'environment',
+      metric: 'air_humidity_percent',
+      value: zone.humidityPercent,
+      unit: '%',
+      zone: zone.label,
+      transport: 'HTTP',
+      payload: reading.payload,
+    );
+  }
+}
+
+Future<void> _recordWaterHistory(WidgetRef ref, EspWaterReading reading) async {
+  final db = ref.read(databaseProvider);
+  await db.recordSensorReading(
+    source: 'water',
+    metric: 'water_level_percent',
+    value: reading.levelPercent,
+    unit: '%',
+    transport: 'HTTP',
+    payload: reading.payload,
+  );
+  await db.recordSensorReading(
+    source: 'water',
+    metric: 'water_temperature_c',
+    value: reading.temperatureC,
+    unit: '°C',
+    transport: 'HTTP',
+    payload: reading.payload,
+  );
+  await db.recordSensorReading(
+    source: 'water',
+    metric: 'water_ph',
+    value: reading.ph,
+    unit: 'pH',
+    transport: 'HTTP',
+    payload: reading.payload,
+  );
+  await db.recordSensorReading(
+    source: 'water',
+    metric: 'water_tds_ppm',
+    value: reading.tdsPpm,
+    unit: 'ppm',
+    transport: 'HTTP',
+    payload: reading.payload,
+  );
+  if (reading.chlorineOrpMv != null) {
+    await db.recordSensorReading(
+      source: 'water',
+      metric: 'water_chlorine_orp_mv',
+      value: reading.chlorineOrpMv!,
+      unit: 'mV',
+      transport: 'HTTP',
+      payload: reading.payload,
+    );
+  }
 }
 
 String _sensorEndpoint(List<AppSetting> settings, String preferredKey) {

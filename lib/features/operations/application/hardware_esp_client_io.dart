@@ -257,6 +257,28 @@ class HardwareEspClient {
     });
   }
 
+  Future<Map<String, Object?>> configureMqtt({
+    required String endpoint,
+    required bool enabled,
+    required String host,
+    required int port,
+    required String baseTopic,
+    required String deviceId,
+    required String username,
+    required String password,
+  }) {
+    final normalized = _normalizeEndpoint(endpoint);
+    return _postForm('$normalized/api/mqtt', {
+      'enabled': enabled ? '1' : '0',
+      'host': host,
+      'port': '$port',
+      'baseTopic': baseTopic,
+      'deviceId': deviceId,
+      'username': username,
+      'password': password,
+    });
+  }
+
   Future<Map<String, Object?>> configureWifi({
     required String endpoint,
     required String ssid,

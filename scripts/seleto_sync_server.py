@@ -118,6 +118,7 @@ TABLE_SPECS: tuple[TableSpec, ...] = (
     TableSpec("lightingSteps", "lighting_program_steps", "id", (col("id", "text"), col("programId", "text"), col("startAgeDays", "int"), col("endAgeDays", "int"), col("totalLightMinutes", "int"), col("startTime", "text"), col("endTime", "text"), col("weeklyIncrementMinutes", "int"), col("relatedPhase", "text"), col("notes", "text"))),
     TableSpec("lotLighting", "lot_lighting_programs", "id", (col("id", "text"), col("lotId", "text"), col("programId", "text"), col("assignedAt", "datetime"), col("createdBy", "text"))),
     TableSpec("calendarEvents", "calendar_events", "id", (col("id", "text"), col("title", "text"), col("type", "text"), col("startsAt", "datetime"), col("endsAt", "datetime"), col("lotId", "text"), col("referenceType", "text"), col("referenceId", "text"), col("notes", "text"), col("alertEnabled", "bool"), col("alertMessage", "text"), col("alertTime", "text"), col("recurrence", "text"), col("repeatUntil", "datetime"), col("weekdays", "text"), col("createdBy", "text"), col("createdAt", "datetime"))),
+    TableSpec("vaccinationRecords", "vaccination_records", "id", (col("id", "text"), col("lotId", "text"), col("vaccineName", "text"), col("disease", "text"), col("scheduledAt", "datetime"), col("appliedAt", "datetime"), col("dose", "text"), col("route", "text"), col("batchNumber", "text"), col("manufacturer", "text"), col("responsible", "text"), col("status", "text"), col("notes", "text"), col("createdBy", "text"), col("createdAt", "datetime"), col("updatedAt", "datetime"))),
     TableSpec("notificationSettings", "notification_settings", "id", (col("id", "text"), col("type", "text"), col("isEnabled", "bool"), col("daysBefore", "int"), col("notificationTime", "text"), col("defaultMessage", "text"), col("defaultRecurrence", "text"))),
     TableSpec("appSettings", "app_settings", "key", (col("key", "text"), col("value", "text"), col("updatedAt", "datetime"), col("updatedBy", "text"))),
 )
@@ -139,6 +140,7 @@ CREATED_BY_COLLECTIONS = {
     "packagingItems", "packagingLots", "packagingStockMovements",
     "eggTrayBatches", "eggTrayStockMovements", "sales", "finance",
     "investments", "lightingPrograms", "lotLighting", "calendarEvents",
+    "vaccinationRecords",
 }
 CHILD_COLLECTIONS = {
     "formulaItems": ("formulas", "formulaId"),
@@ -151,7 +153,7 @@ TIMESTAMP_KEYS = [
     "updatedAt", "createdAt", "timestamp", "occurredAt", "collectedOn",
     "effectiveDate", "entryDate", "validFrom", "producedAt", "feedingDate",
     "requestedDate", "purchasedAt", "assembledAt", "soldAt", "investmentDate",
-    "startsAt", "assignedAt", "changedAt",
+    "startsAt", "assignedAt", "changedAt", "scheduledAt", "appliedAt",
 ]
 
 
@@ -359,6 +361,12 @@ def create_schema(cur) -> None:
                 definition += " primary key"
             columns.append(definition)
         cur.execute(f"create table if not exists {spec.table_name} ({', '.join(columns)})")
+        for column in spec.columns:
+            if column.json_key == spec.primary_key:
+                continue
+            cur.execute(
+                f"alter table {spec.table_name} add column if not exists {column.sql_name} {sql_type(column.kind)}"
+            )
     cur.execute(
         """
         create table if not exists seleto_sync_scopes (

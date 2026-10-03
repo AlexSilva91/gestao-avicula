@@ -1,5 +1,5 @@
 /*
-  GRANJA SELETO - Controlador ESP32 de reles para iluminacao e ventilacao
+  SELETO - Controlador ESP32 de reles para iluminacao e ventilacao
 
   Funcao principal:
     - Controlar modulo rele de iluminacao de 4 canais.
@@ -23,28 +23,33 @@
     POST /api/time              epoch=1735689600
     POST /api/wifi              ssid=NomeDaRede&password=SenhaDaRede
     POST /api/wifi/disconnect   clear=1
+    POST /api/mqtt              enabled=1&host=192.168.0.10&port=1883&baseTopic=seleto/esp32
 
   Comunicacao:
     - HTTP local pelo IP do ESP na rede Wi-Fi.
-    - AP local de recuperacao GRANJA-SELETO-SETUP / seleto1234.
+    - MQTT opcional para status, sensores e comandos rapidos de rele.
+    - AP local de recuperacao SELETO-SETUP / seleto1234.
     - Sem Bluetooth e sem servidor remoto.
 */
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <PubSubClient.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <WiFiClient.h>
+#include <ctype.h>
 #include <math.h>
 #include <sys/time.h>
 #include <time.h>
 
 namespace Config {
-const char* deviceId = "GRANJA-SELETO-RELE-01";
+const char* deviceId = "SELETO-RELE-01";
 
 const char* defaultWifiSsid = "";
 const char* defaultWifiPassword = "";
 
-const char* setupApSsid = "GRANJA-SELETO-SETUP";
+const char* setupApSsid = "SELETO-SETUP";
 const char* setupApPassword = "seleto1234";
 constexpr uint8_t setupApChannel = 6;
 constexpr uint8_t setupApMaxClients = 4;
@@ -62,6 +67,8 @@ constexpr uint16_t httpPort = 80;
 constexpr uint32_t wifiConnectTimeoutMs = 15000;
 constexpr uint32_t setupApWatchdogIntervalMs = 10000;
 constexpr uint32_t scheduleCheckIntervalMs = 1000;
+constexpr uint32_t mqttReconnectIntervalMs = 5000;
+constexpr uint32_t mqttPublishIntervalMs = 15000;
 constexpr uint32_t manualOverrideMs = 5UL * 60UL * 1000UL;
 constexpr bool relayActiveLow = true;
 // Canais 1-4: iluminacao existente. Nao alterar sem reconfigurar o app.
@@ -89,6 +96,16 @@ struct WifiCredentials {
   bool isValid() const {
     return ssid.length() > 0;
   }
+};
+
+struct MqttSettings {
+  bool enabled = false;
+  String host;
+  uint16_t port = 1883;
+  String baseTopic = "seleto/esp32";
+  String deviceId = Config::deviceId;
+  String username;
+  String password;
 };
 
 struct ScheduleSlot {
@@ -166,6 +183,32 @@ bool truthyText(String value) {
   return value == "1" || value == "true" || value == "on";
 }
 
+String jsonStringField(const String& payload, const String& key) {
+  const char quote = '"';
+  const char colon = ':';
+  const char comma = ',';
+  const char closeBrace = '}';
+  const String needle = "\"" + key + "\"";
+  int pos = payload.indexOf(needle);
+  if (pos < 0) return "";
+  pos = payload.indexOf(colon, pos + needle.length());
+  if (pos < 0) return "";
+  pos++;
+  while (pos < payload.length() && isspace(payload.charAt(pos))) pos++;
+  if (pos >= payload.length()) return "";
+  if (payload.charAt(pos) == quote) {
+    const int end = payload.indexOf(quote, pos + 1);
+    return end < 0 ? "" : payload.substring(pos + 1, end);
+  }
+  int end = payload.indexOf(comma, pos);
+  const int brace = payload.indexOf(closeBrace, pos);
+  if (end < 0 || (brace >= 0 && brace < end)) end = brace;
+  if (end < 0) end = payload.length();
+  String value = payload.substring(pos, end);
+  value.trim();
+  return value;
+}
+
 class StorageService {
  public:
   void begin() {
@@ -190,6 +233,28 @@ class StorageService {
   void clearWifi() {
     prefs_.remove("wifi_ssid");
     prefs_.remove("wifi_pass");
+  }
+
+  MqttSettings loadMqtt() {
+    MqttSettings settings;
+    settings.enabled = prefs_.getBool("mqtt_en", false);
+    settings.host = prefs_.getString("mqtt_host", "");
+    settings.port = prefs_.getUShort("mqtt_port", 1883);
+    settings.baseTopic = prefs_.getString("mqtt_topic", "seleto/esp32");
+    settings.deviceId = prefs_.getString("mqtt_dev", Config::deviceId);
+    settings.username = prefs_.getString("mqtt_user", "");
+    settings.password = prefs_.getString("mqtt_pass", "");
+    return settings;
+  }
+
+  void saveMqtt(const MqttSettings& settings) {
+    prefs_.putBool("mqtt_en", settings.enabled);
+    prefs_.putString("mqtt_host", settings.host);
+    prefs_.putUShort("mqtt_port", settings.port);
+    prefs_.putString("mqtt_topic", settings.baseTopic);
+    prefs_.putString("mqtt_dev", settings.deviceId);
+    prefs_.putString("mqtt_user", settings.username);
+    prefs_.putString("mqtt_pass", settings.password);
   }
 
   ChannelSchedule loadSchedule(uint8_t channel) {
@@ -721,10 +786,212 @@ class NetworkService {
   }
 };
 
+class MqttService {
+ public:
+  MqttService(
+    StorageService& storage,
+    NetworkService& network,
+    RelayService& relay,
+    ScheduleService& scheduler,
+    EnvironmentService& environment,
+    WaterService& water
+  ) : storage_(storage),
+      network_(network),
+      relay_(relay),
+      scheduler_(scheduler),
+      environment_(environment),
+      water_(water),
+      client_(wifiClient_) {}
+
+  void begin() {
+    settings_ = storage_.loadMqtt();
+    configureClient();
+  }
+
+  void loop() {
+    if (!settings_.enabled || settings_.host.length() == 0) return;
+    if (!network_.connected()) return;
+
+    if (!client_.connected()) {
+      reconnectIfDue();
+    }
+    client_.loop();
+
+    if (client_.connected() &&
+        millis() - lastPublishMs_ >= Config::mqttPublishIntervalMs) {
+      lastPublishMs_ = millis();
+      publishStatus();
+      publishSensors();
+      publishRelays();
+    }
+  }
+
+  bool connected() const {
+    return client_.connected();
+  }
+
+  MqttSettings settings() const {
+    return settings_;
+  }
+
+  void save(const MqttSettings& settings) {
+    settings_ = settings;
+    storage_.saveMqtt(settings_);
+    client_.disconnect();
+    configureClient();
+  }
+
+  String toJson() const {
+    String json = "{\"enabled\":";
+    json += boolJson(settings_.enabled);
+    json += ",\"connected\":";
+    json += boolJson(client_.connected());
+    json += ",\"host\":";
+    json += quoteJson(settings_.host);
+    json += ",\"port\":";
+    json += String(settings_.port);
+    json += ",\"baseTopic\":";
+    json += quoteJson(settings_.baseTopic);
+    json += ",\"deviceId\":";
+    json += quoteJson(settings_.deviceId);
+    json += "}";
+    return json;
+  }
+
+ private:
+  StorageService& storage_;
+  NetworkService& network_;
+  RelayService& relay_;
+  ScheduleService& scheduler_;
+  EnvironmentService& environment_;
+  WaterService& water_;
+  WiFiClient wifiClient_;
+  PubSubClient client_;
+  MqttSettings settings_;
+  uint32_t lastReconnectMs_ = 0;
+  uint32_t lastPublishMs_ = 0;
+  static MqttService* active_;
+
+  void configureClient() {
+    client_.setServer(settings_.host.c_str(), settings_.port);
+    active_ = this;
+    client_.setCallback(dispatchMessage);
+  }
+
+  static void dispatchMessage(char* topic, byte* payload, unsigned int length) {
+    if (active_ == nullptr) return;
+    active_->handleMessage(topic, payload, length);
+  }
+
+  void reconnectIfDue() {
+    if (millis() - lastReconnectMs_ < Config::mqttReconnectIntervalMs) return;
+    lastReconnectMs_ = millis();
+    configureClient();
+
+    String willTopic = topic("status");
+    String willPayload = "{\"online\":false}";
+    bool ok = false;
+    if (settings_.username.length() > 0) {
+      ok = client_.connect(
+        settings_.deviceId.c_str(),
+        settings_.username.c_str(),
+        settings_.password.c_str(),
+        willTopic.c_str(),
+        1,
+        true,
+        willPayload.c_str()
+      );
+    } else {
+      ok = client_.connect(
+        settings_.deviceId.c_str(),
+        willTopic.c_str(),
+        1,
+        true,
+        willPayload.c_str()
+      );
+    }
+    if (!ok) return;
+    client_.subscribe(topic("relay/command").c_str(), 1);
+    client_.subscribe(topic("ping").c_str(), 1);
+    publishStatus();
+    publishSensors();
+    publishRelays();
+  }
+
+  String topic(const String& suffix) const {
+    String base = settings_.baseTopic;
+    while (base.endsWith("/")) base.remove(base.length() - 1);
+    return base + "/" + settings_.deviceId + "/" + suffix;
+  }
+
+  void publishStatus() {
+    String json = "{\"online\":true";
+    json += ",\"deviceId\":" + quoteJson(settings_.deviceId);
+    json += ",\"app\":\"SELETO\"";
+    json += ",\"wifiConnected\":" + boolJson(network_.connected());
+    json += ",\"ip\":" + quoteJson(network_.stationIp());
+    json += ",\"uptimeMs\":" + String(millis());
+    json += "}";
+    client_.publish(topic("status").c_str(), json.c_str(), true);
+  }
+
+  void publishSensors() {
+    String json = "{\"ok\":true";
+    json += ",\"environment\":" + environment_.toJson();
+    json += ",\"water\":" + water_.toJson();
+    json += "}";
+    client_.publish(topic("sensors").c_str(), json.c_str(), false);
+  }
+
+  void publishRelays() {
+    String json = "{\"ok\":true,\"relays\":";
+    json += relay_.toJson();
+    json += "}";
+    client_.publish(topic("relay/state").c_str(), json.c_str(), true);
+  }
+
+  void handleMessage(char* topicValue, byte* payload, unsigned int length) {
+    String currentTopic = String(topicValue);
+    String body;
+    body.reserve(length);
+    for (unsigned int i = 0; i < length; i++) {
+      body += static_cast<char>(payload[i]);
+    }
+
+    if (currentTopic == topic("ping")) {
+      publishStatus();
+      return;
+    }
+    if (currentTopic != topic("relay/command")) return;
+
+    const uint8_t channel = static_cast<uint8_t>(
+      jsonStringField(body, "channel").toInt()
+    );
+    String state = jsonStringField(body, "state");
+    state.toLowerCase();
+    if (!relay_.isValidChannel(channel)) return;
+
+    bool ok = false;
+    if (state == "on" || state == "1") {
+      ok = relay_.set(channel, true);
+      if (ok) scheduler_.holdManualOverride(channel);
+    } else if (state == "off" || state == "0") {
+      ok = relay_.set(channel, false);
+      if (ok) scheduler_.holdManualOverride(channel);
+    } else if (state == "pulse") {
+      ok = relay_.pulse(channel);
+    }
+    if (!ok) return;
+    publishRelays();
+    publishStatus();
+  }
+};
+
 class ApiServer {
  public:
   ApiServer(
     NetworkService& network,
+    MqttService& mqtt,
     ClockService& clock,
     RelayService& relay,
     ScheduleService& scheduler,
@@ -732,6 +999,7 @@ class ApiServer {
     WaterService& water
   ) : server_(Config::httpPort),
       network_(network),
+      mqtt_(mqtt),
       clock_(clock),
       relay_(relay),
       scheduler_(scheduler),
@@ -763,6 +1031,8 @@ class ApiServer {
     server_.on("/api/wifi/disconnect", HTTP_POST, [this]() {
       handleWifiDisconnectPost();
     });
+    server_.on("/api/mqtt", HTTP_GET, [this]() { handleMqttGet(); });
+    server_.on("/api/mqtt", HTTP_POST, [this]() { handleMqttPost(); });
     server_.onNotFound([this]() { handleNotFound(); });
     server_.begin();
   }
@@ -774,6 +1044,7 @@ class ApiServer {
  private:
   WebServer server_;
   NetworkService& network_;
+  MqttService& mqtt_;
   ClockService& clock_;
   RelayService& relay_;
   ScheduleService& scheduler_;
@@ -794,7 +1065,7 @@ class ApiServer {
   String statusJson() {
     String json = "{";
     json += "\"deviceId\":" + quoteJson(Config::deviceId);
-    json += ",\"app\":\"GRANJA_SELETO\"";
+    json += ",\"app\":\"SELETO\"";
     json += ",\"role\":\"RELAY_CONTROLLER\"";
     json += ",\"wifiConnected\":" + boolJson(network_.connected());
     json += ",\"wifiSsid\":" + quoteJson(network_.ssid());
@@ -808,6 +1079,7 @@ class ApiServer {
     json += ",\"relayActiveLow\":" + boolJson(Config::relayActiveLow);
     json += ",\"relays\":" + relay_.toJson();
     json += ",\"schedules\":" + scheduler_.toJson();
+    json += ",\"mqtt\":" + mqtt_.toJson();
     json += ",\"remoteSync\":{\"enabled\":false,\"priority\":\"local\"}";
     json += ",\"sensorEndpoints\":[\"/api/environment\",\"/api/water\",\"/api/sensors\"]";
     json += ",\"uptimeMs\":" + String(millis());
@@ -819,8 +1091,8 @@ class ApiServer {
     addCors();
     String html = "<!doctype html><html><head><meta charset='utf-8'>";
     html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-    html += "<title>GRANJA SELETO RELE</title></head><body>";
-    html += "<h1>GRANJA SELETO ESP32</h1>";
+    html += "<title>SELETO RELE</title></head><body>";
+    html += "<h1>SELETO ESP32</h1>";
     html += "<p>Use /api/status, /api/relay, /api/environment e /api/water.</p>";
     html += "<form method='post' action='/api/wifi'>";
     html += "<h2>Backup manual de Wi-Fi</h2>";
@@ -875,6 +1147,42 @@ class ApiServer {
 
   void handleRemotePost() {
     sendJson("{\"ok\":true,\"remoteSync\":{\"enabled\":false,\"priority\":\"local\"}}");
+  }
+
+  void handleMqttGet() {
+    String json = "{\"ok\":true,\"mqtt\":";
+    json += mqtt_.toJson();
+    json += "}";
+    sendJson(json);
+  }
+
+  void handleMqttPost() {
+    MqttSettings settings = mqtt_.settings();
+    settings.enabled = truthyText(server_.arg("enabled"));
+    settings.host = server_.arg("host");
+    settings.port = static_cast<uint16_t>(
+      server_.hasArg("port") ? server_.arg("port").toInt() : 1883
+    );
+    settings.baseTopic = server_.hasArg("baseTopic")
+        ? server_.arg("baseTopic")
+        : "seleto/esp32";
+    settings.deviceId = server_.hasArg("deviceId")
+        ? server_.arg("deviceId")
+        : Config::deviceId;
+    settings.username = server_.arg("username");
+    settings.password = server_.arg("password");
+    if (settings.enabled && settings.host.length() == 0) {
+      sendJson("{\"ok\":false,\"error\":\"missing_host\"}", 400);
+      return;
+    }
+    if (settings.port == 0) settings.port = 1883;
+    if (settings.baseTopic.length() == 0) settings.baseTopic = "seleto/esp32";
+    if (settings.deviceId.length() == 0) settings.deviceId = Config::deviceId;
+    mqtt_.save(settings);
+    String json = "{\"ok\":true,\"mqtt\":";
+    json += mqtt_.toJson();
+    json += "}";
+    sendJson(json);
   }
 
   void handleRelayGet() {
@@ -1115,6 +1423,8 @@ class ApiServer {
   }
 };
 
+MqttService* MqttService::active_ = nullptr;
+
 StorageService storage;
 ClockService clockService;
 NetworkService network(storage);
@@ -1122,8 +1432,17 @@ RelayService relay;
 ScheduleService scheduler(storage, clockService, relay);
 EnvironmentService environmentService;
 WaterService waterService;
+MqttService mqttService(
+  storage,
+  network,
+  relay,
+  scheduler,
+  environmentService,
+  waterService
+);
 ApiServer api(
   network,
+  mqttService,
   clockService,
   relay,
   scheduler,
@@ -1136,7 +1455,7 @@ void setup() {
   delay(400);
 
   Serial.println();
-  Serial.println("GRANJA SELETO - ESP32 Rele 4 canais");
+  Serial.println("SELETO - ESP32 Rele 4 canais");
 
   storage.begin();
   environmentService.begin();
@@ -1145,6 +1464,7 @@ void setup() {
   network.begin();
   clockService.begin();
   scheduler.begin();
+  mqttService.begin();
   api.begin();
 
   Serial.print("AP de configuracao: ");
@@ -1162,6 +1482,7 @@ void setup() {
 
 void loop() {
   network.maintain();
+  mqttService.loop();
   api.loop();
   scheduler.loop();
 }

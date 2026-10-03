@@ -202,6 +202,7 @@ lighting_programs
 lighting_program_steps
 lot_lighting_programs
 calendar_events
+vaccination_records
 notification_settings
 app_settings
 seleto_sync_scopes

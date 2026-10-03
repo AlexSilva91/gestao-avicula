@@ -165,6 +165,28 @@ final dashboardDailySeriesProvider = StreamProvider(
       .watch(databaseProvider)
       .watchDashboardDailySeries(tenantId: _tenantScope(ref)),
 );
+final automationOverviewProvider = StreamProvider(
+  (ref) => ref.watch(databaseProvider).watchAutomationOverview(),
+);
+final openAutomationEventsProvider = StreamProvider(
+  (ref) => ref.watch(databaseProvider).watchOpenAutomationEvents(),
+);
+final sensorSeriesProvider =
+    StreamProvider.family<List<SensorSeriesPoint>, String>(
+      (ref, metric) => ref
+          .watch(databaseProvider)
+          .watchSensorSeries(
+            metric: metric,
+            start: DateTime.now().subtract(const Duration(days: 7)),
+          ),
+    );
+final vaccinationRecordsProvider = StreamProvider<List<VaccinationOverview>>((
+  ref,
+) {
+  return ref
+      .watch(databaseProvider)
+      .watchVaccinations(tenantId: _tenantScope(ref));
+});
 final eggProductionSeriesRangeProvider =
     StreamProvider.family<List<ReportPoint>, ({DateTime start, DateTime end})>(
       (ref, range) => ref
@@ -749,6 +771,84 @@ class OperationsController {
       weekdays: parseWeekdays(event.weekdays),
     );
   }
+
+  Future<void> addVaccination({
+    required String vaccineName,
+    String? disease,
+    required DateTime scheduledAt,
+    DateTime? appliedAt,
+    String? lotId,
+    String? dose,
+    String? route,
+    String? batchNumber,
+    String? manufacturer,
+    String? responsible,
+    required String status,
+    String? notes,
+  }) => _db.addVaccinationRecord(
+    vaccineName: vaccineName,
+    disease: disease,
+    scheduledAt: scheduledAt,
+    appliedAt: appliedAt,
+    lotId: lotId,
+    dose: dose,
+    route: route,
+    batchNumber: batchNumber,
+    manufacturer: manufacturer,
+    responsible: responsible,
+    status: status,
+    notes: notes,
+    actorId: _actor('calendar.manage'),
+  );
+
+  Future<void> updateVaccination({
+    required VaccinationRecord record,
+    required String vaccineName,
+    String? disease,
+    required DateTime scheduledAt,
+    DateTime? appliedAt,
+    String? lotId,
+    String? dose,
+    String? route,
+    String? batchNumber,
+    String? manufacturer,
+    String? responsible,
+    required String status,
+    String? notes,
+  }) => _db.updateVaccinationRecord(
+    record: record,
+    vaccineName: vaccineName,
+    disease: disease,
+    scheduledAt: scheduledAt,
+    appliedAt: appliedAt,
+    lotId: lotId,
+    dose: dose,
+    route: route,
+    batchNumber: batchNumber,
+    manufacturer: manufacturer,
+    responsible: responsible,
+    status: status,
+    notes: notes,
+    actorId: _actor('calendar.manage'),
+  );
+
+  Future<void> deleteVaccination(VaccinationRecord record) =>
+      _db.deleteVaccinationRecord(
+        record: record,
+        actorId: _actor('calendar.manage'),
+      );
+
+  Future<List<VaccinationOverview>> vaccinationReportRows() =>
+      _db.vaccinationReportRows(tenantId: _tenantScope(ref));
+
+  Future<String?> vaccinationReportLogoBase64() =>
+      _db.vaccinationReportLogoBase64();
+
+  Future<void> saveVaccinationReportLogo(String? base64Logo) =>
+      _db.saveVaccinationReportLogo(
+        base64Logo: base64Logo,
+        actorId: _actor('calendar.manage'),
+      );
 
   Future<void> assignLight(String lotId, String programId) =>
       _db.assignLightingProgram(

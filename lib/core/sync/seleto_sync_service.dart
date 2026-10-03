@@ -64,6 +64,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   final String _syncToken;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   Timer? _presenceTimer;
+  Timer? _realtimeSyncTimer;
   Future<SyncResult>? _activeSync;
   Future<void>? _activePresence;
   _SyncScope? _scope;
@@ -76,8 +77,9 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   static const _deviceIdKey = 'seleto.sync.device_id';
   static const _lastLocalHashKey = 'seleto.sync.last_local_hash';
   static const _lastRemoteHashKey = 'seleto.sync.last_remote_hash';
-  static const _minimumSyncInterval = Duration(minutes: 5);
+  static const _minimumSyncInterval = Duration(seconds: 15);
   static const _presenceInterval = Duration(seconds: 8);
+  static const _realtimeSyncInterval = Duration(seconds: 20);
   static const _networkTimeout = Duration(seconds: 10);
   static const _presenceTimeout = Duration(seconds: 4);
   static const _defaultBaseUrl = String.fromEnvironment(
@@ -104,7 +106,10 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       _hasSuccessfulSync = false;
     }
     _scope = next;
-    if (_started) _startPresenceHeartbeat();
+    if (_started) {
+      _startPresenceHeartbeat();
+      _startRealtimeSync();
+    }
   }
 
   void clearUserScope() {
@@ -114,6 +119,8 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     }
     _presenceTimer?.cancel();
     _presenceTimer = null;
+    _realtimeSyncTimer?.cancel();
+    _realtimeSyncTimer = null;
     _scope = null;
     _lastAttemptAt = null;
     _hasSuccessfulSync = false;
@@ -129,10 +136,12 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       if (_scope != null &&
           results.any((result) => result != ConnectivityResult.none)) {
         _startPresenceHeartbeat();
+        _startRealtimeSync();
         unawaited(syncNow(reason: 'connectivity'));
       }
     });
     _startPresenceHeartbeat();
+    _startRealtimeSync();
   }
 
   Future<SyncResult> syncNow({String reason = 'manual', bool force = false}) {
@@ -222,6 +231,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _presenceTimer?.cancel();
+    _realtimeSyncTimer?.cancel();
     unawaited(_connectivitySubscription?.cancel());
     if (_ownsHttpClient) _httpClient.close();
     super.dispose();
@@ -233,6 +243,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     switch (state) {
       case AppLifecycleState.resumed:
         _startPresenceHeartbeat();
+        _startRealtimeSync();
         unawaited(syncNow(reason: 'app_resumed'));
       case AppLifecycleState.inactive:
       case AppLifecycleState.paused:
@@ -240,6 +251,8 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       case AppLifecycleState.hidden:
         _presenceTimer?.cancel();
         _presenceTimer = null;
+        _realtimeSyncTimer?.cancel();
+        _realtimeSyncTimer = null;
         unawaited(_sendPresence(online: false, appState: state.name));
     }
   }
@@ -493,6 +506,15 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     unawaited(_sendPresence(online: true, appState: 'active'));
     _presenceTimer = Timer.periodic(_presenceInterval, (_) {
       unawaited(_sendPresence(online: true, appState: 'active'));
+    });
+  }
+
+  void _startRealtimeSync() {
+    if (!_started || _scope == null || !_isConfigured) return;
+    _realtimeSyncTimer?.cancel();
+    unawaited(syncNow(reason: 'realtime_start'));
+    _realtimeSyncTimer = Timer.periodic(_realtimeSyncInterval, (_) {
+      unawaited(syncNow(reason: 'realtime'));
     });
   }
 
@@ -868,6 +890,11 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
             .into(_database.calendarEvents)
             .insertOnConflictUpdate(CalendarEvent.fromJson(_eventJson(row)));
       }
+      for (final row in _rows(payload, 'vaccinationRecords')) {
+        await _database
+            .into(_database.vaccinationRecords)
+            .insertOnConflictUpdate(VaccinationRecord.fromJson(row));
+      }
     });
   }
 
@@ -1052,6 +1079,7 @@ const _syncTables = [
   _SyncTableSpec('lightingSteps', 'lighting_program_steps'),
   _SyncTableSpec('lotLighting', 'lot_lighting_programs'),
   _SyncTableSpec('calendarEvents', 'calendar_events'),
+  _SyncTableSpec('vaccinationRecords', 'vaccination_records'),
   _SyncTableSpec('notificationSettings', 'notification_settings'),
   _SyncTableSpec('appSettings', 'app_settings', primaryKey: 'key'),
 ];

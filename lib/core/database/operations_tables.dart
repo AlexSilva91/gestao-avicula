@@ -421,3 +421,58 @@ class AppSettings extends Table {
   @override
   Set<Column<Object>> get primaryKey => {key};
 }
+
+class SensorReadings extends Table {
+  TextColumn get id => text()();
+  TextColumn get source => text()();
+  TextColumn get metric => text()();
+  RealColumn get value => real()();
+  TextColumn get unit => text().nullable()();
+  TextColumn get zone => text().nullable()();
+  DateTimeColumn get capturedAt => dateTime()();
+  TextColumn get transport => text().nullable()();
+  TextColumn get payloadJson => text().nullable()();
+  TextColumn get createdBy => text().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class AutomationEvents extends Table {
+  TextColumn get id => text()();
+  TextColumn get severity => text()();
+  TextColumn get type => text()();
+  TextColumn get title => text()();
+  TextColumn get message => text()();
+  TextColumn get source => text().nullable()();
+  TextColumn get status => text().withDefault(const Constant('OPEN'))();
+  DateTimeColumn get occurredAt => dateTime()();
+  DateTimeColumn get resolvedAt => dateTime().nullable()();
+  TextColumn get payloadJson => text().nullable()();
+  TextColumn get createdBy => text().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class VaccinationRecords extends Table {
+  TextColumn get id => text()();
+  TextColumn get lotId => text().nullable()();
+  TextColumn get vaccineName => text()();
+  TextColumn get disease => text().nullable()();
+  DateTimeColumn get scheduledAt => dateTime()();
+  DateTimeColumn get appliedAt => dateTime().nullable()();
+  TextColumn get dose => text().nullable()();
+  TextColumn get route => text().nullable()();
+  TextColumn get batchNumber => text().nullable()();
+  TextColumn get manufacturer => text().nullable()();
+  TextColumn get responsible => text().nullable()();
+  TextColumn get status => text().withDefault(const Constant('SCHEDULED'))();
+  TextColumn get notes => text().nullable()();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}

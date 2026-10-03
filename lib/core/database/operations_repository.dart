@@ -151,6 +151,62 @@ class DashboardMetrics {
   final double monthFeedKg;
 }
 
+class AutomationOverview {
+  const AutomationOverview({
+    required this.espOnline,
+    required this.espIp,
+    required this.lastSyncAt,
+    required this.temperatureC,
+    required this.humidityPercent,
+    required this.waterLevelPercent,
+    required this.waterPh,
+    required this.waterTdsPpm,
+    required this.openAlerts,
+    required this.relayStates,
+    required this.scheduleSynced,
+  });
+
+  final bool espOnline;
+  final String espIp;
+  final DateTime? lastSyncAt;
+  final double? temperatureC;
+  final double? humidityPercent;
+  final double? waterLevelPercent;
+  final double? waterPh;
+  final double? waterTdsPpm;
+  final int openAlerts;
+  final List<bool> relayStates;
+  final bool scheduleSynced;
+}
+
+class SensorSeriesPoint {
+  const SensorSeriesPoint({
+    required this.capturedAt,
+    required this.metric,
+    required this.value,
+    this.unit,
+    this.zone,
+  });
+
+  final DateTime capturedAt;
+  final String metric;
+  final double value;
+  final String? unit;
+  final String? zone;
+}
+
+class VaccinationOverview {
+  const VaccinationOverview({
+    required this.record,
+    this.lotName,
+    this.activeBirds,
+  });
+
+  final VaccinationRecord record;
+  final String? lotName;
+  final int? activeBirds;
+}
+
 class BirdMovementOverview {
   const BirdMovementOverview({
     required this.movement,
@@ -3593,6 +3649,243 @@ extension OperationsRepository on AppDatabase {
               (p) => OrderingTerm.asc(p.name),
             ]))
           .watch();
+
+  Stream<List<VaccinationOverview>> watchVaccinations({String? tenantId}) {
+    return customSelect(
+      '''
+        SELECT v.*,
+          l.name AS lot_name,
+          COALESCE(SUM(
+            CASE WHEN m.type IN ('PURCHASE', 'TRANSFER_IN', 'ADJUSTMENT_IN')
+            THEN m.quantity ELSE -m.quantity END
+          ), 0) AS active_birds
+        FROM vaccination_records v
+        LEFT JOIN lots l ON l.id = v.lot_id
+        LEFT JOIN bird_movements m ON m.lot_id = l.id
+        WHERE ${_tenantSql('v', tenantId)}
+        GROUP BY v.id
+        ORDER BY
+          CASE v.status
+            WHEN 'SCHEDULED' THEN 0
+            WHEN 'MISSED' THEN 1
+            WHEN 'APPLIED' THEN 2
+            ELSE 3
+          END,
+          v.scheduled_at ASC
+      ''',
+      variables: _tenantVariables(tenantId),
+      readsFrom: {vaccinationRecords, lots, birdMovements},
+    ).watch().map((rows) => rows.map(_vaccinationOverviewFromRow).toList());
+  }
+
+  Future<List<VaccinationOverview>> vaccinationReportRows({
+    String? tenantId,
+  }) async {
+    final rows = await customSelect(
+      '''
+        SELECT v.*,
+          l.name AS lot_name,
+          COALESCE(SUM(
+            CASE WHEN m.type IN ('PURCHASE', 'TRANSFER_IN', 'ADJUSTMENT_IN')
+            THEN m.quantity ELSE -m.quantity END
+          ), 0) AS active_birds
+        FROM vaccination_records v
+        LEFT JOIN lots l ON l.id = v.lot_id
+        LEFT JOIN bird_movements m ON m.lot_id = l.id
+        WHERE ${_tenantSql('v', tenantId)}
+        GROUP BY v.id
+        ORDER BY v.scheduled_at ASC
+      ''',
+      variables: _tenantVariables(tenantId),
+      readsFrom: {vaccinationRecords, lots, birdMovements},
+    ).get();
+    return rows.map(_vaccinationOverviewFromRow).toList();
+  }
+
+  Future<String?> vaccinationReportLogoBase64() async {
+    final setting =
+        await (select(appSettings)
+              ..where((s) => s.key.equals('vaccination_report_logo_base64')))
+            .getSingleOrNull();
+    return _cleanValue(setting?.value);
+  }
+
+  Future<void> saveVaccinationReportLogo({
+    required String? base64Logo,
+    required String actorId,
+  }) async {
+    final now = DateTime.now();
+    final value = _cleanValue(base64Logo);
+    if (value == null) {
+      await (delete(
+        appSettings,
+      )..where((s) => s.key.equals('vaccination_report_logo_base64'))).go();
+    } else {
+      await into(appSettings).insertOnConflictUpdate(
+        AppSettingsCompanion.insert(
+          key: 'vaccination_report_logo_base64',
+          value: value,
+          updatedAt: now,
+          updatedBy: Value(actorId),
+        ),
+      );
+    }
+    await addAudit(
+      userId: actorId,
+      action: 'vaccination.logo_update',
+      entityType: 'app_setting',
+      entityId: 'vaccination_report_logo_base64',
+      description: value == null
+          ? 'Logo personalizada de vacinação removida.'
+          : 'Logo personalizada de vacinação atualizada.',
+    );
+  }
+
+  Future<String> addVaccinationRecord({
+    required String vaccineName,
+    String? disease,
+    required DateTime scheduledAt,
+    DateTime? appliedAt,
+    String? lotId,
+    String? dose,
+    String? route,
+    String? batchNumber,
+    String? manufacturer,
+    String? responsible,
+    required String status,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (vaccineName.trim().isEmpty) {
+      throw ArgumentError('Informe o nome da vacina.');
+    }
+    if (lotId != null) {
+      await _assertActorCanUseRecord(
+        tableName: 'lots',
+        recordId: lotId,
+        actorId: actorId,
+      );
+    }
+    final normalizedStatus = _normalizeVaccinationStatus(status);
+    final now = DateTime.now();
+    final id = _uuid.v4();
+    await transaction(() async {
+      await into(vaccinationRecords).insert(
+        VaccinationRecordsCompanion.insert(
+          id: id,
+          lotId: Value(lotId),
+          vaccineName: vaccineName.trim(),
+          disease: Value(_cleanValue(disease)),
+          scheduledAt: scheduledAt,
+          appliedAt: Value(appliedAt),
+          dose: Value(_cleanValue(dose)),
+          route: Value(_cleanValue(route)),
+          batchNumber: Value(_cleanValue(batchNumber)),
+          manufacturer: Value(_cleanValue(manufacturer)),
+          responsible: Value(_cleanValue(responsible)),
+          status: Value(normalizedStatus),
+          notes: Value(_cleanValue(notes)),
+          createdBy: actorId,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'vaccination.create',
+        entityType: 'vaccination_record',
+        entityId: id,
+        description: 'Vacinação ${vaccineName.trim()} cadastrada.',
+      );
+    });
+    return id;
+  }
+
+  Future<void> updateVaccinationRecord({
+    required VaccinationRecord record,
+    required String vaccineName,
+    String? disease,
+    required DateTime scheduledAt,
+    DateTime? appliedAt,
+    String? lotId,
+    String? dose,
+    String? route,
+    String? batchNumber,
+    String? manufacturer,
+    String? responsible,
+    required String status,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (vaccineName.trim().isEmpty) {
+      throw ArgumentError('Informe o nome da vacina.');
+    }
+    await _assertActorCanUseRecord(
+      tableName: 'vaccination_records',
+      recordId: record.id,
+      actorId: actorId,
+    );
+    if (lotId != null) {
+      await _assertActorCanUseRecord(
+        tableName: 'lots',
+        recordId: lotId,
+        actorId: actorId,
+      );
+    }
+    final normalizedStatus = _normalizeVaccinationStatus(status);
+    await transaction(() async {
+      await (update(
+        vaccinationRecords,
+      )..where((v) => v.id.equals(record.id))).write(
+        VaccinationRecordsCompanion(
+          lotId: Value(lotId),
+          vaccineName: Value(vaccineName.trim()),
+          disease: Value(_cleanValue(disease)),
+          scheduledAt: Value(scheduledAt),
+          appliedAt: Value(appliedAt),
+          dose: Value(_cleanValue(dose)),
+          route: Value(_cleanValue(route)),
+          batchNumber: Value(_cleanValue(batchNumber)),
+          manufacturer: Value(_cleanValue(manufacturer)),
+          responsible: Value(_cleanValue(responsible)),
+          status: Value(normalizedStatus),
+          notes: Value(_cleanValue(notes)),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'vaccination.update',
+        entityType: 'vaccination_record',
+        entityId: record.id,
+        description: 'Vacinação ${vaccineName.trim()} atualizada.',
+      );
+    });
+  }
+
+  Future<void> deleteVaccinationRecord({
+    required VaccinationRecord record,
+    required String actorId,
+  }) async {
+    await _assertActorCanUseRecord(
+      tableName: 'vaccination_records',
+      recordId: record.id,
+      actorId: actorId,
+    );
+    await transaction(() async {
+      await (delete(
+        vaccinationRecords,
+      )..where((v) => v.id.equals(record.id))).go();
+      await addAudit(
+        userId: actorId,
+        action: 'vaccination.delete',
+        entityType: 'vaccination_record',
+        entityId: record.id,
+        description: 'Vacinação ${record.vaccineName} removida.',
+      );
+    });
+  }
+
   Stream<List<LightingProgramStep>> watchLightingSteps(String programId) =>
       (select(lightingProgramSteps)
             ..where((s) => s.programId.equals(programId))
@@ -3867,6 +4160,298 @@ extension OperationsRepository on AppDatabase {
       entityType: 'app_setting',
       entityId: key,
       description: 'Configuração $key atualizada.',
+    );
+  }
+
+  Future<void> recordSensorReading({
+    required String source,
+    required String metric,
+    required double value,
+    String? unit,
+    String? zone,
+    DateTime? capturedAt,
+    String? transport,
+    Map<String, Object?>? payload,
+    String? actorId,
+  }) async {
+    final now = DateTime.now();
+    await into(sensorReadings).insert(
+      SensorReadingsCompanion.insert(
+        id: _uuid.v4(),
+        source: source,
+        metric: metric,
+        value: value,
+        unit: Value(_cleanValue(unit)),
+        zone: Value(_cleanValue(zone)),
+        capturedAt: capturedAt ?? now,
+        transport: Value(_cleanValue(transport)),
+        payloadJson: Value(payload == null ? null : jsonEncode(payload)),
+        createdBy: Value(actorId),
+        createdAt: now,
+      ),
+    );
+    await _evaluateAutomationAlert(
+      metric: metric,
+      value: value,
+      unit: unit,
+      zone: zone,
+      actorId: actorId,
+    );
+  }
+
+  Future<void> recordRelayState({
+    required int channel,
+    required bool on,
+    String? transport,
+    Map<String, Object?>? payload,
+    String? actorId,
+  }) => recordSensorReading(
+    source: 'relay',
+    metric: 'relay_$channel',
+    value: on ? 1 : 0,
+    unit: 'bool',
+    zone: 'Canal $channel',
+    transport: transport,
+    payload: payload,
+    actorId: actorId,
+  );
+
+  Future<void> recordAutomationEvent({
+    required String severity,
+    required String type,
+    required String title,
+    required String message,
+    String? source,
+    String status = 'OPEN',
+    DateTime? occurredAt,
+    Map<String, Object?>? payload,
+    String? actorId,
+  }) async {
+    final now = DateTime.now();
+    await into(automationEvents).insert(
+      AutomationEventsCompanion.insert(
+        id: _uuid.v4(),
+        severity: severity,
+        type: type,
+        title: title,
+        message: message,
+        source: Value(_cleanValue(source)),
+        status: Value(status),
+        occurredAt: occurredAt ?? now,
+        payloadJson: Value(payload == null ? null : jsonEncode(payload)),
+        createdBy: Value(actorId),
+        createdAt: now,
+      ),
+    );
+  }
+
+  Stream<List<SensorSeriesPoint>> watchSensorSeries({
+    required String metric,
+    DateTime? start,
+    int limit = 120,
+  }) {
+    final query = select(sensorReadings)
+      ..where((r) => r.metric.equals(metric))
+      ..orderBy([(r) => OrderingTerm.desc(r.capturedAt)])
+      ..limit(limit);
+    if (start != null) {
+      query.where((r) => r.capturedAt.isBiggerOrEqualValue(start));
+    }
+    return query.watch().map(
+      (rows) => rows.reversed
+          .map(
+            (row) => SensorSeriesPoint(
+              capturedAt: row.capturedAt,
+              metric: row.metric,
+              value: row.value,
+              unit: row.unit,
+              zone: row.zone,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Stream<List<AutomationEvent>> watchOpenAutomationEvents({int limit = 20}) {
+    final query = select(automationEvents)
+      ..where((e) => e.status.equals('OPEN'))
+      ..orderBy([(e) => OrderingTerm.desc(e.occurredAt)])
+      ..limit(limit);
+    return query.watch();
+  }
+
+  Stream<AutomationOverview> watchAutomationOverview() {
+    final query = customSelect(
+      '''
+      SELECT
+        (SELECT value FROM app_settings WHERE key='hardware_lighting_endpoint') esp_ip,
+        (SELECT value FROM app_settings WHERE key='hardware_esp_last_seen_at') last_seen,
+        (SELECT value FROM app_settings WHERE key='hardware_lighting_schedule_last_synced_at') last_sync,
+        (SELECT value FROM sensor_readings WHERE metric='air_temperature_c' ORDER BY captured_at DESC LIMIT 1) temp,
+        (SELECT value FROM sensor_readings WHERE metric='air_humidity_percent' ORDER BY captured_at DESC LIMIT 1) humidity,
+        (SELECT value FROM sensor_readings WHERE metric='water_level_percent' ORDER BY captured_at DESC LIMIT 1) water_level,
+        (SELECT value FROM sensor_readings WHERE metric='water_ph' ORDER BY captured_at DESC LIMIT 1) water_ph,
+        (SELECT value FROM sensor_readings WHERE metric='water_tds_ppm' ORDER BY captured_at DESC LIMIT 1) water_tds,
+        COALESCE((SELECT COUNT(*) FROM automation_events WHERE status='OPEN'),0) open_alerts,
+        COALESCE((SELECT value FROM sensor_readings WHERE metric='relay_1' ORDER BY captured_at DESC LIMIT 1),0) relay_1,
+        COALESCE((SELECT value FROM sensor_readings WHERE metric='relay_2' ORDER BY captured_at DESC LIMIT 1),0) relay_2,
+        COALESCE((SELECT value FROM sensor_readings WHERE metric='relay_3' ORDER BY captured_at DESC LIMIT 1),0) relay_3,
+        COALESCE((SELECT value FROM sensor_readings WHERE metric='relay_4' ORDER BY captured_at DESC LIMIT 1),0) relay_4
+      ''',
+      readsFrom: {appSettings, sensorReadings, automationEvents},
+    );
+    return query.watchSingle().map((row) {
+      final lastSeen = DateTime.tryParse(
+        row.readNullable<String>('last_seen') ?? '',
+      );
+      final lastSync = DateTime.tryParse(
+        row.readNullable<String>('last_sync') ?? '',
+      );
+      final espOnline =
+          lastSeen != null &&
+          DateTime.now().difference(lastSeen) < const Duration(minutes: 2);
+      return AutomationOverview(
+        espOnline: espOnline,
+        espIp: row.readNullable<String>('esp_ip') ?? '',
+        lastSyncAt: lastSync,
+        temperatureC: row.readNullable<double>('temp'),
+        humidityPercent: row.readNullable<double>('humidity'),
+        waterLevelPercent: row.readNullable<double>('water_level'),
+        waterPh: row.readNullable<double>('water_ph'),
+        waterTdsPpm: row.readNullable<double>('water_tds'),
+        openAlerts: row.read<int>('open_alerts'),
+        relayStates: [
+          (row.read<double>('relay_1')) >= .5,
+          (row.read<double>('relay_2')) >= .5,
+          (row.read<double>('relay_3')) >= .5,
+          (row.read<double>('relay_4')) >= .5,
+        ],
+        scheduleSynced:
+            lastSync != null &&
+            DateTime.now().difference(lastSync) < const Duration(days: 2),
+      );
+    });
+  }
+
+  Future<void> _evaluateAutomationAlert({
+    required String metric,
+    required double value,
+    String? unit,
+    String? zone,
+    String? actorId,
+  }) async {
+    String? type;
+    String? title;
+    String? message;
+    String severity = 'WARN';
+    if (metric == 'air_temperature_c' && value >= 32) {
+      type = 'temperature_high';
+      title = 'Temperatura alta';
+      message =
+          'Temperatura ${decimal.format(value)} ${unit ?? '°C'}${zone == null ? '' : ' em $zone'}.';
+      severity = value >= 35 ? 'CRITICAL' : 'WARN';
+    } else if (metric == 'air_humidity_percent' && (value < 45 || value > 85)) {
+      type = 'humidity_out_of_range';
+      title = 'Umidade fora do ideal';
+      message =
+          'Umidade ${decimal.format(value)}%${zone == null ? '' : ' em $zone'}.';
+    } else if (metric == 'water_level_percent' && value <= 25) {
+      type = 'water_low';
+      title = 'Nível de água baixo';
+      message = 'Reservatório em ${decimal.format(value)}%.';
+      severity = value <= 10 ? 'CRITICAL' : 'WARN';
+    } else if (metric == 'water_ph' && (value < 6.2 || value > 8.5)) {
+      type = 'water_ph_out_of_range';
+      title = 'pH da água fora do ideal';
+      message = 'pH ${decimal.format(value)}.';
+    } else if (metric == 'water_tds_ppm' && value >= 900) {
+      type = 'water_tds_high';
+      title = 'TDS da água elevado';
+      message = 'TDS ${decimal.format(value)} ppm.';
+    }
+    if (type == null) return;
+    final existing =
+        await (select(automationEvents)
+              ..where((e) => e.type.equals(type!) & e.status.equals('OPEN'))
+              ..limit(1))
+            .getSingleOrNull();
+    if (existing != null) return;
+    await recordAutomationEvent(
+      severity: severity,
+      type: type,
+      title: title!,
+      message: message!,
+      source: 'sensor',
+      payload: {'metric': metric, 'value': value, 'zone': zone},
+      actorId: actorId,
+    );
+  }
+
+  Future<void> ensureOperationalAutomationAlerts({
+    DashboardMetrics? dashboard,
+    int? eggsToday,
+    AutomationOverview? automation,
+    String? actorId,
+  }) async {
+    if (automation != null &&
+        !automation.espOnline &&
+        automation.espIp.isNotEmpty) {
+      await _openAutomationAlertOnce(
+        severity: 'WARN',
+        type: 'esp_offline',
+        title: 'ESP32 offline',
+        message: 'Controlador ${automation.espIp} sem status recente.',
+        source: 'automation',
+        actorId: actorId,
+      );
+    }
+    if (dashboard != null && dashboard.feedStockKg <= 20) {
+      await _openAutomationAlertOnce(
+        severity: dashboard.feedStockKg <= 5 ? 'CRITICAL' : 'WARN',
+        type: 'feed_stock_low',
+        title: 'Estoque de ração baixo',
+        message: 'Estoque atual: ${kg(dashboard.feedStockKg)}.',
+        source: 'stock',
+        actorId: actorId,
+      );
+    }
+    if (dashboard != null &&
+        eggsToday != null &&
+        dashboard.activeBirds > 0 &&
+        eggsToday / dashboard.activeBirds < .35) {
+      await _openAutomationAlertOnce(
+        severity: 'WARN',
+        type: 'egg_production_drop',
+        title: 'Queda de produção de ovos',
+        message:
+            'Postura hoje em ${percent(eggsToday / dashboard.activeBirds)} com ${dashboard.activeBirds} aves ativas.',
+        source: 'production',
+        actorId: actorId,
+      );
+    }
+  }
+
+  Future<void> _openAutomationAlertOnce({
+    required String severity,
+    required String type,
+    required String title,
+    required String message,
+    String? source,
+    String? actorId,
+  }) async {
+    final existing =
+        await (select(automationEvents)
+              ..where((e) => e.type.equals(type) & e.status.equals('OPEN'))
+              ..limit(1))
+            .getSingleOrNull();
+    if (existing != null) return;
+    await recordAutomationEvent(
+      severity: severity,
+      type: type,
+      title: title,
+      message: message,
+      source: source,
+      actorId: actorId,
     );
   }
 
@@ -4246,6 +4831,9 @@ extension OperationsRepository on AppDatabase {
     final lightingProgramsQuery = select(lightingPrograms);
     final lotLightingQuery = select(lotLightingPrograms);
     final calendarEventsQuery = select(calendarEvents);
+    final sensorReadingsQuery = select(sensorReadings);
+    final automationEventsQuery = select(automationEvents);
+    final vaccinationRecordsQuery = select(vaccinationRecords);
     if (tenantId != null) {
       lotsQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
       birdMovementsQuery.where(
@@ -4302,6 +4890,9 @@ extension OperationsRepository on AppDatabase {
         (row) => _tenantExpression(row.createdBy, tenantId),
       );
       calendarEventsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      vaccinationRecordsQuery.where(
         (row) => _tenantExpression(row.createdBy, tenantId),
       );
     }
@@ -4442,6 +5033,15 @@ extension OperationsRepository on AppDatabase {
       'appSettings': (await select(
         appSettings,
       ).get()).map((e) => e.toJson()).toList(),
+      'sensorReadings': (await sensorReadingsQuery.get())
+          .map((e) => e.toJson())
+          .toList(),
+      'automationEvents': (await automationEventsQuery.get())
+          .map((e) => e.toJson())
+          .toList(),
+      'vaccinationRecords': (await vaccinationRecordsQuery.get())
+          .map((e) => e.toJson())
+          .toList(),
     };
     return const JsonEncoder.withIndent('  ').convert(payload);
   }
@@ -4483,6 +5083,9 @@ extension OperationsRepository on AppDatabase {
     await transaction(() async {
       await delete(notificationSettings).go();
       await delete(appSettings).go();
+      await delete(sensorReadings).go();
+      await delete(automationEvents).go();
+      await delete(vaccinationRecords).go();
       await delete(lotLightingPrograms).go();
       await delete(lightingProgramSteps).go();
       await delete(lightingPrograms).go();
@@ -4624,6 +5227,9 @@ extension OperationsRepository on AppDatabase {
           calendarEvents,
         ).insert(CalendarEvent.fromJson(_eventJson(e)));
       }
+      for (final e in rows('vaccinationRecords')) {
+        await into(vaccinationRecords).insert(VaccinationRecord.fromJson(e));
+      }
       for (final e in rows('notificationSettings')) {
         await into(
           notificationSettings,
@@ -4631,6 +5237,12 @@ extension OperationsRepository on AppDatabase {
       }
       for (final e in rows('appSettings')) {
         await into(appSettings).insert(AppSetting.fromJson(e));
+      }
+      for (final e in rows('sensorReadings')) {
+        await into(sensorReadings).insert(SensorReading.fromJson(e));
+      }
+      for (final e in rows('automationEvents')) {
+        await into(automationEvents).insert(AutomationEvent.fromJson(e));
       }
       if (writeAudit) {
         await addAudit(
@@ -4647,6 +5259,39 @@ extension OperationsRepository on AppDatabase {
 String? _cleanValue(String? value) {
   final result = value?.trim();
   return result == null || result.isEmpty ? null : result;
+}
+
+String _normalizeVaccinationStatus(String value) {
+  final normalized = value.trim().toUpperCase();
+  return switch (normalized) {
+    'APPLIED' || 'SCHEDULED' || 'MISSED' || 'CANCELED' => normalized,
+    _ => 'SCHEDULED',
+  };
+}
+
+VaccinationOverview _vaccinationOverviewFromRow(QueryRow row) {
+  return VaccinationOverview(
+    record: VaccinationRecord(
+      id: row.read<String>('id'),
+      lotId: row.readNullable<String>('lot_id'),
+      vaccineName: row.read<String>('vaccine_name'),
+      disease: row.readNullable<String>('disease'),
+      scheduledAt: row.read<DateTime>('scheduled_at'),
+      appliedAt: row.readNullable<DateTime>('applied_at'),
+      dose: row.readNullable<String>('dose'),
+      route: row.readNullable<String>('route'),
+      batchNumber: row.readNullable<String>('batch_number'),
+      manufacturer: row.readNullable<String>('manufacturer'),
+      responsible: row.readNullable<String>('responsible'),
+      status: row.read<String>('status'),
+      notes: row.readNullable<String>('notes'),
+      createdBy: row.read<String>('created_by'),
+      createdAt: row.read<DateTime>('created_at'),
+      updatedAt: row.read<DateTime>('updated_at'),
+    ),
+    lotName: row.readNullable<String>('lot_name'),
+    activeBirds: row.readNullable<int>('active_birds'),
+  );
 }
 
 Map<String, dynamic> _eventJson(Map<String, dynamic> json) => {

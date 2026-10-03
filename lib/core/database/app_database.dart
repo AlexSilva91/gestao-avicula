@@ -367,6 +367,9 @@ class MonthlyPostureComparison {
     CalendarEvents,
     NotificationSettings,
     AppSettings,
+    SensorReadings,
+    AutomationEvents,
+    VaccinationRecords,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -384,7 +387,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -498,6 +501,15 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(users, users.lastSeenAt);
         await _createPerformanceIndexes();
       }
+      if (from < 15) {
+        await m.createTable(sensorReadings);
+        await m.createTable(automationEvents);
+        await _createPerformanceIndexes();
+      }
+      if (from < 16) {
+        await m.createTable(vaccinationRecords);
+        await _createPerformanceIndexes();
+      }
     },
     beforeOpen: (_) async {
       await _ensureDefaultTenant();
@@ -562,6 +574,21 @@ class AppDatabase extends _$AppDatabase {
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_audit_user_timestamp ON audit_logs (user_id, timestamp)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_sensor_readings_metric_time ON sensor_readings (metric, captured_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_sensor_readings_source_time ON sensor_readings (source, captured_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_automation_events_status_time ON automation_events (status, occurred_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_vaccination_records_status_date ON vaccination_records (status, scheduled_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_vaccination_records_lot_date ON vaccination_records (lot_id, scheduled_at)',
     );
   }
 
