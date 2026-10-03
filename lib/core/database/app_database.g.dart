@@ -23410,6 +23410,18 @@ class $CalendarEventsTable extends CalendarEvents
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -23429,6 +23441,7 @@ class $CalendarEventsTable extends CalendarEvents
     weekdays,
     createdBy,
     createdAt,
+    updatedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -23568,6 +23581,12 @@ class $CalendarEventsTable extends CalendarEvents
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -23645,6 +23664,10 @@ class $CalendarEventsTable extends CalendarEvents
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
     );
   }
 
@@ -23672,6 +23695,7 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
   final String? weekdays;
   final String createdBy;
   final DateTime createdAt;
+  final DateTime updatedAt;
   const CalendarEvent({
     required this.id,
     required this.title,
@@ -23690,6 +23714,7 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
     this.weekdays,
     required this.createdBy,
     required this.createdAt,
+    required this.updatedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -23727,6 +23752,7 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
     }
     map['created_by'] = Variable<String>(createdBy);
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
 
@@ -23765,6 +23791,7 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
           : Value(weekdays),
       createdBy: Value(createdBy),
       createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
     );
   }
 
@@ -23791,6 +23818,7 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
       weekdays: serializer.fromJson<String?>(json['weekdays']),
       createdBy: serializer.fromJson<String>(json['createdBy']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
   @override
@@ -23814,6 +23842,7 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
       'weekdays': serializer.toJson<String?>(weekdays),
       'createdBy': serializer.toJson<String>(createdBy),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
@@ -23835,6 +23864,7 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
     Value<String?> weekdays = const Value.absent(),
     String? createdBy,
     DateTime? createdAt,
+    DateTime? updatedAt,
   }) => CalendarEvent(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -23855,6 +23885,7 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
     weekdays: weekdays.present ? weekdays.value : this.weekdays,
     createdBy: createdBy ?? this.createdBy,
     createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
   );
   CalendarEvent copyWithCompanion(CalendarEventsCompanion data) {
     return CalendarEvent(
@@ -23887,6 +23918,7 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
       weekdays: data.weekdays.present ? data.weekdays.value : this.weekdays,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
 
@@ -23909,7 +23941,8 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
           ..write('repeatUntil: $repeatUntil, ')
           ..write('weekdays: $weekdays, ')
           ..write('createdBy: $createdBy, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -23933,6 +23966,7 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
     weekdays,
     createdBy,
     createdAt,
+    updatedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -23954,7 +23988,8 @@ class CalendarEvent extends DataClass implements Insertable<CalendarEvent> {
           other.repeatUntil == this.repeatUntil &&
           other.weekdays == this.weekdays &&
           other.createdBy == this.createdBy &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
 }
 
 class CalendarEventsCompanion extends UpdateCompanion<CalendarEvent> {
@@ -23975,6 +24010,7 @@ class CalendarEventsCompanion extends UpdateCompanion<CalendarEvent> {
   final Value<String?> weekdays;
   final Value<String> createdBy;
   final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const CalendarEventsCompanion({
     this.id = const Value.absent(),
@@ -23994,6 +24030,7 @@ class CalendarEventsCompanion extends UpdateCompanion<CalendarEvent> {
     this.weekdays = const Value.absent(),
     this.createdBy = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CalendarEventsCompanion.insert({
@@ -24014,6 +24051,7 @@ class CalendarEventsCompanion extends UpdateCompanion<CalendarEvent> {
     this.weekdays = const Value.absent(),
     required String createdBy,
     required DateTime createdAt,
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -24039,6 +24077,7 @@ class CalendarEventsCompanion extends UpdateCompanion<CalendarEvent> {
     Expression<String>? weekdays,
     Expression<String>? createdBy,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -24059,6 +24098,7 @@ class CalendarEventsCompanion extends UpdateCompanion<CalendarEvent> {
       if (weekdays != null) 'weekdays': weekdays,
       if (createdBy != null) 'created_by': createdBy,
       if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -24081,6 +24121,7 @@ class CalendarEventsCompanion extends UpdateCompanion<CalendarEvent> {
     Value<String?>? weekdays,
     Value<String>? createdBy,
     Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
     Value<int>? rowid,
   }) {
     return CalendarEventsCompanion(
@@ -24101,6 +24142,7 @@ class CalendarEventsCompanion extends UpdateCompanion<CalendarEvent> {
       weekdays: weekdays ?? this.weekdays,
       createdBy: createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -24159,6 +24201,9 @@ class CalendarEventsCompanion extends UpdateCompanion<CalendarEvent> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -24185,6 +24230,7 @@ class CalendarEventsCompanion extends UpdateCompanion<CalendarEvent> {
           ..write('weekdays: $weekdays, ')
           ..write('createdBy: $createdBy, ')
           ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -38981,6 +39027,7 @@ typedef $$CalendarEventsTableCreateCompanionBuilder =
       Value<String?> weekdays,
       required String createdBy,
       required DateTime createdAt,
+      Value<DateTime> updatedAt,
       Value<int> rowid,
     });
 typedef $$CalendarEventsTableUpdateCompanionBuilder =
@@ -39002,6 +39049,7 @@ typedef $$CalendarEventsTableUpdateCompanionBuilder =
       Value<String?> weekdays,
       Value<String> createdBy,
       Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
       Value<int> rowid,
     });
 
@@ -39096,6 +39144,11 @@ class $$CalendarEventsTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -39193,6 +39246,11 @@ class $$CalendarEventsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CalendarEventsTableAnnotationComposer
@@ -39266,6 +39324,9 @@ class $$CalendarEventsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
 
 class $$CalendarEventsTableTableManager
@@ -39318,6 +39379,7 @@ class $$CalendarEventsTableTableManager
                 Value<String?> weekdays = const Value.absent(),
                 Value<String> createdBy = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CalendarEventsCompanion(
                 id: id,
@@ -39337,6 +39399,7 @@ class $$CalendarEventsTableTableManager
                 weekdays: weekdays,
                 createdBy: createdBy,
                 createdAt: createdAt,
+                updatedAt: updatedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -39358,6 +39421,7 @@ class $$CalendarEventsTableTableManager
                 Value<String?> weekdays = const Value.absent(),
                 required String createdBy,
                 required DateTime createdAt,
+                Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CalendarEventsCompanion.insert(
                 id: id,
@@ -39377,6 +39441,7 @@ class $$CalendarEventsTableTableManager
                 weekdays: weekdays,
                 createdBy: createdBy,
                 createdAt: createdAt,
+                updatedAt: updatedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -114,10 +114,15 @@ TABLE_SPECS: tuple[TableSpec, ...] = (
     TableSpec("sales", "sales", "id", (col("id", "text"), col("soldAt", "datetime"), col("customerId", "text"), col("orderId", "text"), col("trayBatchId", "text"), col("trayQuantity", "int"), col("dozens", "int"), col("looseEggs", "int"), col("dozenPriceCents", "int"), col("totalCents", "int"), col("paymentMethod", "text"), col("status", "text"), col("notes", "text"), col("createdBy", "text"), col("createdAt", "datetime"))),
     TableSpec("finance", "finance_transactions", "id", (col("id", "text"), col("occurredAt", "datetime"), col("type", "text"), col("category", "text"), col("description", "text"), col("amountCents", "int"), col("referenceType", "text"), col("referenceId", "text"), col("paymentMethod", "text"), col("status", "text"), col("notes", "text"), col("createdBy", "text"), col("createdAt", "datetime"))),
     TableSpec("investments", "investments", "id", (col("id", "text"), col("description", "text"), col("category", "text"), col("investmentDate", "datetime"), col("amountCents", "int"), col("lotId", "text"), col("createdBy", "text"), col("createdAt", "datetime"))),
+    TableSpec("financialEstablishments", "financial_establishments", "id", (col("id", "text"), col("name", "text"), col("type", "text"), col("contact", "text"), col("notes", "text"), col("isActive", "bool"), col("createdBy", "text"), col("createdAt", "datetime"))),
+    TableSpec("personalFinance", "personal_finance_transactions", "id", (col("id", "text"), col("occurredAt", "datetime"), col("type", "text"), col("category", "text"), col("description", "text"), col("amountCents", "int"), col("establishmentId", "text"), col("paymentMethod", "text"), col("status", "text"), col("notes", "text"), col("referenceType", "text"), col("referenceId", "text"), col("createdBy", "text"), col("createdAt", "datetime"))),
+    TableSpec("financialReserves", "financial_reserves", "id", (col("id", "text"), col("name", "text"), col("targetAmountCents", "int"), col("currentAmountCents", "int"), col("account", "text"), col("notes", "text"), col("createdBy", "text"), col("createdAt", "datetime"), col("updatedAt", "datetime"))),
+    TableSpec("personalInvestments", "personal_investments", "id", (col("id", "text"), col("description", "text"), col("category", "text"), col("institution", "text"), col("amountCents", "int"), col("allocationPercent", "real"), col("investmentDate", "datetime"), col("notes", "text"), col("createdBy", "text"), col("createdAt", "datetime"))),
+    TableSpec("personalDebts", "personal_debts", "id", (col("id", "text"), col("creditor", "text"), col("debtType", "text"), col("totalAmountCents", "int"), col("paidAmountCents", "int"), col("installmentAmountCents", "int"), col("dueDate", "datetime"), col("expectedPayoffDate", "datetime"), col("alertEnabled", "bool"), col("notes", "text"), col("status", "text"), col("createdBy", "text"), col("createdAt", "datetime"))),
     TableSpec("lightingPrograms", "lighting_programs", "id", (col("id", "text"), col("name", "text"), col("description", "text"), col("isDefault", "bool"), col("isActive", "bool"), col("createdBy", "text"), col("createdAt", "datetime"))),
     TableSpec("lightingSteps", "lighting_program_steps", "id", (col("id", "text"), col("programId", "text"), col("startAgeDays", "int"), col("endAgeDays", "int"), col("totalLightMinutes", "int"), col("startTime", "text"), col("endTime", "text"), col("weeklyIncrementMinutes", "int"), col("relatedPhase", "text"), col("notes", "text"))),
     TableSpec("lotLighting", "lot_lighting_programs", "id", (col("id", "text"), col("lotId", "text"), col("programId", "text"), col("assignedAt", "datetime"), col("createdBy", "text"))),
-    TableSpec("calendarEvents", "calendar_events", "id", (col("id", "text"), col("title", "text"), col("type", "text"), col("startsAt", "datetime"), col("endsAt", "datetime"), col("lotId", "text"), col("referenceType", "text"), col("referenceId", "text"), col("notes", "text"), col("alertEnabled", "bool"), col("alertMessage", "text"), col("alertTime", "text"), col("recurrence", "text"), col("repeatUntil", "datetime"), col("weekdays", "text"), col("createdBy", "text"), col("createdAt", "datetime"))),
+    TableSpec("calendarEvents", "calendar_events", "id", (col("id", "text"), col("title", "text"), col("type", "text"), col("startsAt", "datetime"), col("endsAt", "datetime"), col("lotId", "text"), col("referenceType", "text"), col("referenceId", "text"), col("notes", "text"), col("alertEnabled", "bool"), col("alertMessage", "text"), col("alertTime", "text"), col("recurrence", "text"), col("repeatUntil", "datetime"), col("weekdays", "text"), col("createdBy", "text"), col("createdAt", "datetime"), col("updatedAt", "datetime"))),
     TableSpec("vaccinationRecords", "vaccination_records", "id", (col("id", "text"), col("lotId", "text"), col("vaccineName", "text"), col("disease", "text"), col("scheduledAt", "datetime"), col("appliedAt", "datetime"), col("dose", "text"), col("route", "text"), col("batchNumber", "text"), col("manufacturer", "text"), col("responsible", "text"), col("status", "text"), col("notes", "text"), col("createdBy", "text"), col("createdAt", "datetime"), col("updatedAt", "datetime"))),
     TableSpec("notificationSettings", "notification_settings", "id", (col("id", "text"), col("type", "text"), col("isEnabled", "bool"), col("daysBefore", "int"), col("notificationTime", "text"), col("defaultMessage", "text"), col("defaultRecurrence", "text"))),
     TableSpec("appSettings", "app_settings", "key", (col("key", "text"), col("value", "text"), col("updatedAt", "datetime"), col("updatedBy", "text"))),
@@ -139,8 +144,9 @@ CREATED_BY_COLLECTIONS = {
     "formulas", "feedBatches", "feedStock", "feedings", "customers", "orders",
     "packagingItems", "packagingLots", "packagingStockMovements",
     "eggTrayBatches", "eggTrayStockMovements", "sales", "finance",
-    "investments", "lightingPrograms", "lotLighting", "calendarEvents",
-    "vaccinationRecords",
+    "investments", "financialEstablishments", "personalFinance",
+    "financialReserves", "personalInvestments", "personalDebts",
+    "lightingPrograms", "lotLighting", "calendarEvents", "vaccinationRecords",
 }
 CHILD_COLLECTIONS = {
     "formulaItems": ("formulas", "formulaId"),
@@ -154,6 +160,7 @@ TIMESTAMP_KEYS = [
     "effectiveDate", "entryDate", "validFrom", "producedAt", "feedingDate",
     "requestedDate", "purchasedAt", "assembledAt", "soldAt", "investmentDate",
     "startsAt", "assignedAt", "changedAt", "scheduledAt", "appliedAt",
+    "dueDate", "expectedPayoffDate",
 ]
 
 
@@ -367,6 +374,13 @@ def create_schema(cur) -> None:
             cur.execute(
                 f"alter table {spec.table_name} add column if not exists {column.sql_name} {sql_type(column.kind)}"
             )
+
+    def ensure_columns(table_name: str, columns: tuple[tuple[str, str], ...]) -> None:
+        for column_name, column_type in columns:
+            cur.execute(
+                f"alter table {table_name} add column if not exists {column_name} {column_type}"
+            )
+
     cur.execute(
         """
         create table if not exists seleto_sync_scopes (
@@ -382,6 +396,19 @@ def create_schema(cur) -> None:
         )
         """
     )
+    ensure_columns(
+        "seleto_sync_scopes",
+        (
+            ("tenant_id", "text"),
+            ("user_id", "text"),
+            ("is_super_admin", "boolean not null default false"),
+            ("payload_hash", "text"),
+            ("revision", "bigint not null default 0"),
+            ("updated_at", "timestamptz not null default now()"),
+            ("updated_by_device", "text"),
+            ("reason", "text"),
+        ),
+    )
     cur.execute(
         """
         create table if not exists seleto_sync_row_scopes (
@@ -391,6 +418,14 @@ def create_schema(cur) -> None:
           primary key (collection_key, row_key, scope_key)
         )
         """
+    )
+    ensure_columns(
+        "seleto_sync_row_scopes",
+        (
+            ("collection_key", "text"),
+            ("row_key", "text"),
+            ("scope_key", "text"),
+        ),
     )
     cur.execute(
         """
@@ -409,6 +444,21 @@ def create_schema(cur) -> None:
         )
         """
     )
+    ensure_columns(
+        "seleto_sync_events",
+        (
+            ("scope_key", "text"),
+            ("device_id", "text"),
+            ("user_id", "text"),
+            ("status", "text"),
+            ("local_hash", "text"),
+            ("remote_hash_before", "text"),
+            ("remote_hash_after", "text"),
+            ("revision", "bigint"),
+            ("reason", "text"),
+            ("created_at", "timestamptz not null default now()"),
+        ),
+    )
     cur.execute(
         """
         create table if not exists seleto_user_presence (
@@ -424,6 +474,20 @@ def create_schema(cur) -> None:
           app_state text
         )
         """
+    )
+    ensure_columns(
+        "seleto_user_presence",
+        (
+            ("tenant_id", "text"),
+            ("scope_key", "text"),
+            ("device_id", "text"),
+            ("is_super_admin", "boolean not null default false"),
+            ("is_online", "boolean not null default false"),
+            ("last_seen_at", "timestamptz"),
+            ("last_offline_at", "timestamptz"),
+            ("updated_at", "timestamptz not null default now()"),
+            ("app_state", "text"),
+        ),
     )
     cur.execute("create index if not exists idx_seleto_sync_row_scopes_scope on seleto_sync_row_scopes (scope_key, collection_key)")
     cur.execute("create index if not exists idx_seleto_sync_events_scope_created on seleto_sync_events (scope_key, created_at desc)")
@@ -618,6 +682,7 @@ def replace_payload_scope(
     is_super_admin: bool,
     device_id: str | None,
     reason: str | None,
+    prune_missing: bool = True,
 ) -> int:
     payload = normalize_payload(payload)
     payload_hash_value = payload_hash(payload)
@@ -639,38 +704,39 @@ def replace_payload_scope(
                     (spec.collection_key, row_key, row_scope),
                 )
 
-        cur.execute(
-            """
-            select row_key from seleto_sync_row_scopes
-             where collection_key = %s and scope_key = %s
-            """,
-            (spec.collection_key, scope_key),
-        )
-        existing_keys = {str(row["row_key"]) for row in cur.fetchall()}
-        for row_key in existing_keys - incoming_keys:
-            if scope_key == "super_admin":
-                cur.execute(
-                    "delete from seleto_sync_row_scopes where collection_key = %s and row_key = %s",
-                    (spec.collection_key, row_key),
-                )
-                cur.execute(f"delete from {spec.table_name} where {spec.primary_sql} = %s", (row_key,))
-            else:
-                cur.execute(
-                    """
-                    delete from seleto_sync_row_scopes
-                     where collection_key = %s and row_key = %s and scope_key = %s
-                    """,
-                    (spec.collection_key, row_key, scope_key),
-                )
-                cur.execute(
-                    """
-                    select 1 from seleto_sync_row_scopes
-                     where collection_key = %s and row_key = %s limit 1
-                    """,
-                    (spec.collection_key, row_key),
-                )
-                if cur.fetchone() is None:
+        if prune_missing:
+            cur.execute(
+                """
+                select row_key from seleto_sync_row_scopes
+                 where collection_key = %s and scope_key = %s
+                """,
+                (spec.collection_key, scope_key),
+            )
+            existing_keys = {str(row["row_key"]) for row in cur.fetchall()}
+            for row_key in existing_keys - incoming_keys:
+                if scope_key == "super_admin":
+                    cur.execute(
+                        "delete from seleto_sync_row_scopes where collection_key = %s and row_key = %s",
+                        (spec.collection_key, row_key),
+                    )
                     cur.execute(f"delete from {spec.table_name} where {spec.primary_sql} = %s", (row_key,))
+                else:
+                    cur.execute(
+                        """
+                        delete from seleto_sync_row_scopes
+                         where collection_key = %s and row_key = %s and scope_key = %s
+                        """,
+                        (spec.collection_key, row_key, scope_key),
+                    )
+                    cur.execute(
+                        """
+                        select 1 from seleto_sync_row_scopes
+                         where collection_key = %s and row_key = %s limit 1
+                        """,
+                        (spec.collection_key, row_key),
+                    )
+                    if cur.fetchone() is None:
+                        cur.execute(f"delete from {spec.table_name} where {spec.primary_sql} = %s", (row_key,))
 
     stored_payload = payload_from_tables(cur, scope_key)
     return upsert_scope(
@@ -824,7 +890,9 @@ def sync_snapshot(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
                     result_payload = None
                     result_hash = None
             elif prefer_local_on_first_sync and last_remote_hash is None and has_rows(local_payload):
-                status = "uploaded"
+                status = "merged"
+                result_payload = merge_payloads(local_payload, remote_payload)
+                result_hash = payload_hash(result_payload)
                 should_store = True
             elif local_hash == remote_hash:
                 status = "idle"
@@ -853,6 +921,7 @@ def sync_snapshot(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
                     is_super_admin=is_super_admin,
                     device_id=device_id,
                     reason=str(reason) if reason is not None else None,
+                    prune_missing=False,
                 )
                 result_payload = payload_from_tables(cur, scope_key)
                 result_hash = payload_hash(result_payload)

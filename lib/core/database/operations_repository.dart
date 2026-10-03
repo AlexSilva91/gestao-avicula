@@ -4409,6 +4409,7 @@ extension OperationsRepository on AppDatabase {
           weekdays: Value(_cleanValue(weekdays)),
           createdBy: actorId,
           createdAt: DateTime.now(),
+          updatedAt: Value(DateTime.now()),
         ),
       );
       await addAudit(
@@ -4464,6 +4465,7 @@ extension OperationsRepository on AppDatabase {
           recurrence: Value(recurrence),
           repeatUntil: Value(repeatUntil),
           weekdays: Value(_cleanValue(weekdays)),
+          updatedAt: Value(DateTime.now()),
         ),
       );
       await addAudit(
@@ -4679,7 +4681,7 @@ extension OperationsRepository on AppDatabase {
       );
       final espOnline =
           lastSeen != null &&
-          DateTime.now().difference(lastSeen) < const Duration(minutes: 2);
+          DateTime.now().difference(lastSeen) < const Duration(minutes: 15);
       return AutomationOverview(
         espOnline: espOnline,
         espIp: row.readNullable<String>('esp_ip') ?? '',
@@ -5198,6 +5200,11 @@ extension OperationsRepository on AppDatabase {
     final salesQuery = select(sales);
     final financeQuery = select(financeTransactions);
     final investmentsQuery = select(investments);
+    final financialEstablishmentsQuery = select(financialEstablishments);
+    final personalFinanceQuery = select(personalFinanceTransactions);
+    final financialReservesQuery = select(financialReserves);
+    final personalInvestmentsQuery = select(personalInvestments);
+    final personalDebtsQuery = select(personalDebts);
     final lightingProgramsQuery = select(lightingPrograms);
     final lotLightingQuery = select(lotLightingPrograms);
     final calendarEventsQuery = select(calendarEvents);
@@ -5251,6 +5258,21 @@ extension OperationsRepository on AppDatabase {
       salesQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
       financeQuery.where((row) => _tenantExpression(row.createdBy, tenantId));
       investmentsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      financialEstablishmentsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      personalFinanceQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      financialReservesQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      personalInvestmentsQuery.where(
+        (row) => _tenantExpression(row.createdBy, tenantId),
+      );
+      personalDebtsQuery.where(
         (row) => _tenantExpression(row.createdBy, tenantId),
       );
       lightingProgramsQuery.where(
@@ -5391,6 +5413,21 @@ extension OperationsRepository on AppDatabase {
       'investments': (await investmentsQuery.get())
           .map((e) => e.toJson())
           .toList(),
+      'financialEstablishments': (await financialEstablishmentsQuery.get())
+          .map((e) => e.toJson())
+          .toList(),
+      'personalFinance': (await personalFinanceQuery.get())
+          .map((e) => e.toJson())
+          .toList(),
+      'financialReserves': (await financialReservesQuery.get())
+          .map((e) => e.toJson())
+          .toList(),
+      'personalInvestments': (await personalInvestmentsQuery.get())
+          .map((e) => e.toJson())
+          .toList(),
+      'personalDebts': (await personalDebtsQuery.get())
+          .map((e) => e.toJson())
+          .toList(),
       'lightingPrograms': lightingProgramRows.map((e) => e.toJson()).toList(),
       'lightingSteps': lightingStepRows.map((e) => e.toJson()).toList(),
       'lotLighting': lotLightingRows.map((e) => e.toJson()).toList(),
@@ -5469,6 +5506,11 @@ extension OperationsRepository on AppDatabase {
       await delete(packagingStockMovements).go();
       await delete(packagingLots).go();
       await delete(packagingItems).go();
+      await delete(personalDebts).go();
+      await delete(personalInvestments).go();
+      await delete(financialReserves).go();
+      await delete(personalFinanceTransactions).go();
+      await delete(financialEstablishments).go();
       await delete(investments).go();
       await delete(financeTransactions).go();
       await delete(dailyFeedings).go();
@@ -5581,6 +5623,25 @@ extension OperationsRepository on AppDatabase {
       for (final e in rows('investments')) {
         await into(investments).insert(Investment.fromJson(e));
       }
+      for (final e in rows('financialEstablishments')) {
+        await into(
+          financialEstablishments,
+        ).insert(FinancialEstablishment.fromJson(e));
+      }
+      for (final e in rows('personalFinance')) {
+        await into(
+          personalFinanceTransactions,
+        ).insert(PersonalFinanceTransaction.fromJson(e));
+      }
+      for (final e in rows('financialReserves')) {
+        await into(financialReserves).insert(FinancialReserve.fromJson(e));
+      }
+      for (final e in rows('personalInvestments')) {
+        await into(personalInvestments).insert(PersonalInvestment.fromJson(e));
+      }
+      for (final e in rows('personalDebts')) {
+        await into(personalDebts).insert(PersonalDebt.fromJson(e));
+      }
       for (final e in rows('lightingPrograms')) {
         await into(lightingPrograms).insert(LightingProgram.fromJson(e));
       }
@@ -5672,6 +5733,7 @@ Map<String, dynamic> _eventJson(Map<String, dynamic> json) => {
   'recurrence': json['recurrence'] ?? 'ONCE',
   'repeatUntil': json['repeatUntil'],
   'weekdays': json['weekdays'],
+  'updatedAt': json['updatedAt'] ?? json['createdAt'],
 };
 
 Map<String, dynamic> _notificationJson(Map<String, dynamic> json) => {

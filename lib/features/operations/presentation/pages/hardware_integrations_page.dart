@@ -1138,6 +1138,13 @@ class _HardwareIntegrationsPageState
         lightingStatus = 'MQTT bidirecional ativo em tempo de execução.';
         espTerminalTitle = 'MQTT TEMPO REAL';
       });
+      await ref
+          .read(databaseProvider)
+          .saveAppSetting(
+            'hardware_esp_last_seen_at',
+            DateTime.now().toIso8601String(),
+            'system',
+          );
       _appendEspLog(
         'MQTT> tempo real conectado em ${config.host}:${config.port}',
       );
@@ -1174,6 +1181,15 @@ class _HardwareIntegrationsPageState
       return;
     }
     if (update.topic == 'runtime/connected') {
+      unawaited(
+        ref
+            .read(databaseProvider)
+            .saveAppSetting(
+              'hardware_esp_last_seen_at',
+              update.receivedAt.toIso8601String(),
+              'system',
+            ),
+      );
       setState(() {
         mqttConnected = true;
         lightingConnectionResult = 'OK MQTT: tempo real ativo.';
@@ -2047,6 +2063,10 @@ class _HardwareIntegrationsPageState
         );
       }
     }
+    await controller.saveSetting(
+      'hardware_esp_last_seen_at',
+      DateTime.now().toIso8601String(),
+    );
     setState(() {
       lightingEnabled = true;
       lightingConnection = 'WIFI';

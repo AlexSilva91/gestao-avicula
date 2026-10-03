@@ -191,6 +191,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         (266, 'Entrada em PRODUÇÃO II'),
         (462, 'Entrada em PRODUÇÃO III'),
       ]) {
+        final now = DateTime.now();
         result.add(
           CalendarEvent(
             id: 'phase-${summary.lot.id}-${entry.$1}',
@@ -202,7 +203,8 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
             alertTime: '08:00',
             recurrence: 'ONCE',
             createdBy: 'system',
-            createdAt: DateTime.now(),
+            createdAt: now,
+            updatedAt: now,
           ),
         );
       }
@@ -229,6 +231,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         arrivalAgeDays: summary.lot.arrivalAgeDays,
       );
       for (final entry in schedule) {
+        final now = DateTime.now();
         result.add(
           CalendarEvent(
             id: 'vaccine-${summary.lot.id}-${entry.$1}',
@@ -241,7 +244,8 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
             alertTime: '08:00',
             recurrence: 'ONCE',
             createdBy: 'system',
-            createdAt: DateTime.now(),
+            createdAt: now,
+            updatedAt: now,
           ),
         );
       }

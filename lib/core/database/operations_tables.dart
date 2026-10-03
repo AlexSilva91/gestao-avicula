@@ -474,6 +474,7 @@ class CalendarEvents extends Table {
   TextColumn get weekdays => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }

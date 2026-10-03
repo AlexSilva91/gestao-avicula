@@ -199,7 +199,11 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _startRealtimeSync();
   }
 
-  Future<SyncResult> syncNow({String reason = 'manual', bool force = false}) {
+  Future<SyncResult> syncNow({
+    String reason = 'manual',
+    bool force = false,
+  }) async {
+    await _loadStoredConfiguration();
     final scope = _scope;
     if (scope == null) {
       return Future.value(
@@ -582,6 +586,15 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   };
 
   void _startPresenceHeartbeat() {
+    unawaited(_startPresenceHeartbeatLoaded());
+  }
+
+  void _startRealtimeSync() {
+    unawaited(_startRealtimeSyncLoaded());
+  }
+
+  Future<void> _startPresenceHeartbeatLoaded() async {
+    await _loadStoredConfiguration();
     if (!_started || _scope == null || !_isConfigured) return;
     _presenceTimer?.cancel();
     unawaited(_sendPresence(online: true, appState: 'active'));
@@ -590,7 +603,8 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
-  void _startRealtimeSync() {
+  Future<void> _startRealtimeSyncLoaded() async {
+    await _loadStoredConfiguration();
     if (!_started || _scope == null || !_isConfigured) return;
     _realtimeSyncTimer?.cancel();
     unawaited(syncNow(reason: 'realtime_start'));
@@ -604,6 +618,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _SyncScope? scopeOverride,
     String appState = 'active',
   }) async {
+    await _loadStoredConfiguration();
     if (!_isConfigured) return;
     final scope = scopeOverride ?? _scope;
     if (scope == null) return;
@@ -951,6 +966,31 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
             .into(_database.investments)
             .insertOnConflictUpdate(Investment.fromJson(row));
       }
+      for (final row in _rows(payload, 'financialEstablishments')) {
+        await _database
+            .into(_database.financialEstablishments)
+            .insertOnConflictUpdate(FinancialEstablishment.fromJson(row));
+      }
+      for (final row in _rows(payload, 'personalFinance')) {
+        await _database
+            .into(_database.personalFinanceTransactions)
+            .insertOnConflictUpdate(PersonalFinanceTransaction.fromJson(row));
+      }
+      for (final row in _rows(payload, 'financialReserves')) {
+        await _database
+            .into(_database.financialReserves)
+            .insertOnConflictUpdate(FinancialReserve.fromJson(row));
+      }
+      for (final row in _rows(payload, 'personalInvestments')) {
+        await _database
+            .into(_database.personalInvestments)
+            .insertOnConflictUpdate(PersonalInvestment.fromJson(row));
+      }
+      for (final row in _rows(payload, 'personalDebts')) {
+        await _database
+            .into(_database.personalDebts)
+            .insertOnConflictUpdate(PersonalDebt.fromJson(row));
+      }
       for (final row in _rows(payload, 'lightingPrograms')) {
         await _database
             .into(_database.lightingPrograms)
@@ -1156,6 +1196,11 @@ const _syncTables = [
   _SyncTableSpec('sales', 'sales'),
   _SyncTableSpec('finance', 'finance_transactions'),
   _SyncTableSpec('investments', 'investments'),
+  _SyncTableSpec('financialEstablishments', 'financial_establishments'),
+  _SyncTableSpec('personalFinance', 'personal_finance_transactions'),
+  _SyncTableSpec('financialReserves', 'financial_reserves'),
+  _SyncTableSpec('personalInvestments', 'personal_investments'),
+  _SyncTableSpec('personalDebts', 'personal_debts'),
   _SyncTableSpec('lightingPrograms', 'lighting_programs'),
   _SyncTableSpec('lightingSteps', 'lighting_program_steps'),
   _SyncTableSpec('lotLighting', 'lot_lighting_programs'),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
@@ -50,6 +51,8 @@ class EspMqttUpdate {
   final Map<String, Object?> payload;
   final DateTime receivedAt;
 }
+
+bool _mqttUsesTls(EspMqttConfig config) => config.port == 8883;
 
 class HardwareMqttClient {
   const HardwareMqttClient();
@@ -131,9 +134,13 @@ class HardwareMqttClient {
     );
     client
       ..logging(on: false)
+      ..secure = _mqttUsesTls(config)
       ..keepAlivePeriod = 20
       ..connectTimeoutPeriod = _connectTimeout.inMilliseconds
       ..autoReconnect = false;
+    if (_mqttUsesTls(config)) {
+      client.securityContext = SecurityContext.defaultContext;
+    }
     client.connectionMessage = MqttConnectMessage()
         .withClientIdentifier(clientId)
         .startClean()
@@ -259,6 +266,7 @@ class HardwareMqttRuntime {
     );
     client
       ..logging(on: false)
+      ..secure = _mqttUsesTls(config)
       ..keepAlivePeriod = 20
       ..connectTimeoutPeriod = _connectTimeout.inMilliseconds
       ..autoReconnect = true
@@ -284,6 +292,9 @@ class HardwareMqttRuntime {
           ),
         );
       };
+    if (_mqttUsesTls(config)) {
+      client.securityContext = SecurityContext.defaultContext;
+    }
     client.connectionMessage = MqttConnectMessage()
         .withClientIdentifier(clientId)
         .startClean()

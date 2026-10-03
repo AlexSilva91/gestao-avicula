@@ -392,7 +392,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -510,6 +510,14 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(financialReserves);
         await m.createTable(personalInvestments);
         await m.createTable(personalDebts);
+      }
+      if (from < 18) {
+        await customStatement(
+          'ALTER TABLE calendar_events ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0',
+        );
+        await customStatement(
+          'UPDATE calendar_events SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = 0',
+        );
       }
       await _createPerformanceIndexes();
     },

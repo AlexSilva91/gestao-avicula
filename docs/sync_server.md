@@ -58,6 +58,57 @@ flutter build apk \
 
 Sem `SELETO_SYNC_BASE_URL`, o app usa `http://solveontecnology.com.br:5005`.
 
+## Stack remota ESP32 + APP
+
+Para comunicacao remota entre app e ESP32, use MQTT na VPS. O script abaixo
+instala Mosquitto, cria usuarios separados para app e ESP, aplica ACL por
+topico, configura firewall, fail2ban e, quando `CERT_EMAIL` e informado,
+habilita TLS na porta `8883` com Let's Encrypt.
+
+Copie e execute na VPS:
+
+```bash
+sudo DOMAIN=solveontecnology.com.br \
+  CERT_EMAIL=admin@solveontecnology.com.br \
+  scripts/install_solveon_remote_iot_stack.sh
+```
+
+Sem `CERT_EMAIL`, o script ainda instala MQTT autenticado, mas sem TLS publico.
+Use isso apenas para teste inicial:
+
+```bash
+sudo DOMAIN=solveontecnology.com.br \
+  ENABLE_PLAIN_MQTT=true \
+  scripts/install_solveon_remote_iot_stack.sh
+```
+
+O resumo com credenciais fica em:
+
+```text
+/root/seleto-remote-stack-credentials.txt
+```
+
+Configuracao sugerida no app e no ESP32:
+
+```text
+Broker MQTT: solveontecnology.com.br
+Porta: 8883 com TLS, ou 1883 apenas em teste
+Topico base: seleto/esp32
+Device ID: SELETO-RELE-01
+Usuario APP: seleto_app
+Usuario ESP: seleto_esp
+```
+
+Com `ENABLE_SYNC_PROXY=true`, o script tambem prepara Nginx para publicar a
+sincronizacao por HTTPS no dominio e remove a necessidade de expor `5005` no
+firewall. Nesse modo, faca o build do app com:
+
+```bash
+flutter build apk \
+  --dart-define=SELETO_SYNC_BASE_URL=https://solveontecnology.com.br \
+  --dart-define=SELETO_SYNC_TOKEN=<token-do-servidor-sync>
+```
+
 ## Endpoints
 
 ```text
@@ -198,6 +249,11 @@ egg_tray_stock_movements
 sales
 finance_transactions
 investments
+financial_establishments
+personal_finance_transactions
+financial_reserves
+personal_investments
+personal_debts
 lighting_programs
 lighting_program_steps
 lot_lighting_programs
