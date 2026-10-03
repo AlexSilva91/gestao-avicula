@@ -46,6 +46,18 @@ class SyncServerException implements Exception {
   String toString() => message;
 }
 
+class SyncRuntimeConfig {
+  const SyncRuntimeConfig({
+    required this.baseUrl,
+    required this.tokenConfigured,
+    required this.usingBuildToken,
+  });
+
+  final String baseUrl;
+  final bool tokenConfigured;
+  final bool usingBuildToken;
+}
+
 class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   SeletoSyncService(
     this._database, {
@@ -60,8 +72,8 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   final AppDatabase _database;
   final http.Client _httpClient;
   final bool _ownsHttpClient;
-  final Uri _baseUri;
-  final String _syncToken;
+  Uri _baseUri;
+  String _syncToken;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   Timer? _presenceTimer;
   Timer? _realtimeSyncTimer;
@@ -77,6 +89,8 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   static const _deviceIdKey = 'seleto.sync.device_id';
   static const _lastLocalHashKey = 'seleto.sync.last_local_hash';
   static const _lastRemoteHashKey = 'seleto.sync.last_remote_hash';
+  static const _runtimeBaseUrlKey = 'seleto.sync.base_url';
+  static const _runtimeTokenKey = 'seleto.sync.token';
   static const _minimumSyncInterval = Duration(seconds: 15);
   static const _presenceInterval = Duration(seconds: 8);
   static const _realtimeSyncInterval = Duration(seconds: 20);
@@ -90,6 +104,46 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
 
   SyncResult get lastResult => _lastResult;
   bool get isSynced => _hasSuccessfulSync;
+
+  Future<SyncRuntimeConfig> configuration() async {
+    await _loadStoredConfiguration();
+    return SyncRuntimeConfig(
+      baseUrl: _baseUri.toString(),
+      tokenConfigured: _syncToken.isNotEmpty,
+      usingBuildToken: _syncToken.isNotEmpty && _syncToken == _defaultSyncToken,
+    );
+  }
+
+  Future<void> configureRuntime({
+    required String baseUrl,
+    String? token,
+    bool clearToken = false,
+  }) async {
+    final normalizedUrl = baseUrl.trim().isEmpty
+        ? _defaultBaseUrl
+        : baseUrl.trim();
+    final nextUri = Uri.tryParse(normalizedUrl);
+    if (nextUri == null || !nextUri.hasScheme || nextUri.host.isEmpty) {
+      throw ArgumentError('Informe uma URL válida para o servidor de sync.');
+    }
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_runtimeBaseUrlKey, nextUri.toString());
+    _baseUri = nextUri;
+    if (clearToken) {
+      await preferences.remove(_runtimeTokenKey);
+      _syncToken = _defaultSyncToken;
+    } else if (token != null && token.trim().isNotEmpty) {
+      _syncToken = token.trim();
+      await preferences.setString(_runtimeTokenKey, _syncToken);
+    }
+    _lastAttemptAt = null;
+    _hasSuccessfulSync = false;
+    if (_started) {
+      _startPresenceHeartbeat();
+      _startRealtimeSync();
+    }
+    if (!_disposed) notifyListeners();
+  }
 
   void setUserScope({
     required String userId,
@@ -128,6 +182,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> start() async {
     if (_started) return;
+    await _loadStoredConfiguration();
     _started = true;
     WidgetsBinding.instance.addObserver(this);
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
@@ -175,6 +230,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<SyncResult> syncForLoginUsername(String username) async {
+    await _loadStoredConfiguration();
     final normalizedUsername = username.trim().toLowerCase();
     if (normalizedUsername.isEmpty) {
       return const SyncResult(SyncStatus.skipped);
@@ -183,7 +239,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       return const SyncResult(
         SyncStatus.skipped,
         message:
-            'Servidor de sincronização sem token no app. Configure SELETO_SYNC_TOKEN no build.',
+            'Servidor de sincronização sem token. Informe o token em Configurações > Servidor SELETO Sync.',
       );
     }
     try {
@@ -274,11 +330,12 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<SyncResult> _sync(String reason, _SyncScope scope) async {
     try {
+      await _loadStoredConfiguration();
       if (!_isConfigured) {
         return const SyncResult(
           SyncStatus.skipped,
           message:
-              'Servidor de sincronização sem token no app. Configure SELETO_SYNC_TOKEN no build.',
+              'Servidor de sincronização sem token. Informe o token em Configurações > Servidor SELETO Sync.',
         );
       }
       if (!await _hasConnection()) {
@@ -345,6 +402,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       _syncToken.isNotEmpty && _baseUri.hasScheme && _baseUri.host.isNotEmpty;
 
   Future<Map<String, dynamic>> testConfiguration() async {
+    await _loadStoredConfiguration();
     final checkedAt = DateTime.now().toIso8601String();
     final result = <String, dynamic>{
       'servico': 'Servidor SELETO Sync',
@@ -388,6 +446,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<Map<String, dynamic>> checkRemoteHealth() async {
+    await _loadStoredConfiguration();
     final checkedAt = DateTime.now();
     final started = DateTime.now();
     try {
@@ -430,7 +489,27 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     return created;
   }
 
+  Future<void> _loadStoredConfiguration() async {
+    final preferences = await SharedPreferences.getInstance();
+    final storedBaseUrl = preferences.getString(_runtimeBaseUrlKey);
+    final parsedBaseUrl = Uri.tryParse(
+      storedBaseUrl?.trim().isNotEmpty == true
+          ? storedBaseUrl!.trim()
+          : _defaultBaseUrl,
+    );
+    if (parsedBaseUrl != null &&
+        parsedBaseUrl.hasScheme &&
+        parsedBaseUrl.host.isNotEmpty) {
+      _baseUri = parsedBaseUrl;
+    }
+    final storedToken = preferences.getString(_runtimeTokenKey);
+    _syncToken = storedToken?.trim().isNotEmpty == true
+        ? storedToken!.trim()
+        : _defaultSyncToken;
+  }
+
   Future<Map<String, dynamic>> _getJson(String path) async {
+    await _loadStoredConfiguration();
     final response = await _httpClient
         .get(_endpoint(path), headers: _headers())
         .timeout(_networkTimeout);
@@ -441,6 +520,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     String path,
     Map<String, dynamic> body,
   ) async {
+    await _loadStoredConfiguration();
     final response = await _httpClient
         .post(_endpoint(path), headers: _headers(), body: jsonEncode(body))
         .timeout(_networkTimeout);
@@ -451,6 +531,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     String path,
     Map<String, dynamic> body,
   ) async {
+    await _loadStoredConfiguration();
     final response = await _httpClient
         .post(_endpoint(path), headers: _headers(), body: jsonEncode(body))
         .timeout(_presenceTimeout);

@@ -915,16 +915,30 @@ class _SyncServerPanel extends StatefulWidget {
 
 class _SyncServerPanelState extends State<_SyncServerPanel> {
   static const _encoder = JsonEncoder.withIndent('  ');
+  final _baseUrlController = TextEditingController();
+  final _tokenController = TextEditingController();
   Map<String, dynamic>? _result;
   Map<String, dynamic>? _health;
   bool _checkingHealth = false;
   bool _testing = false;
   bool _syncing = false;
+  bool _savingConfig = false;
+  bool _tokenConfigured = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkHealth());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadConfig();
+      await _checkHealth();
+    });
+  }
+
+  @override
+  void dispose() {
+    _baseUrlController.dispose();
+    _tokenController.dispose();
+    super.dispose();
   }
 
   @override
@@ -962,6 +976,52 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _baseUrlController,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                labelText: 'URL do servidor',
+                prefixIcon: Icon(Icons.link_outlined),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _tokenController,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Token de sincronização',
+                helperText: _tokenConfigured
+                    ? 'Token salvo. Informe outro apenas para substituir.'
+                    : 'Informe o token gerado no servidor remoto.',
+                prefixIcon: const Icon(Icons.key_outlined),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: _savingConfig ? null : _saveConfig,
+                  icon: _savingConfig
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(_savingConfig ? 'Salvando...' : 'Salvar config'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _savingConfig || !_tokenConfigured
+                      ? null
+                      : _clearToken,
+                  icon: const Icon(Icons.key_off_outlined),
+                  label: const Text('Limpar token'),
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             DecoratedBox(
@@ -1026,7 +1086,9 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
                   label: Text(_checkingHealth ? 'Checando...' : 'Saúde remota'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _testing || _syncing ? null : _test,
+                  onPressed: _testing || _syncing || !_tokenConfigured
+                      ? null
+                      : _test,
                   icon: _testing
                       ? const SizedBox(
                           width: 16,
@@ -1034,10 +1096,18 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.rule_folder_outlined),
-                  label: Text(_testing ? 'Testando...' : 'Testar config'),
+                  label: Text(
+                    !_tokenConfigured
+                        ? 'Informe token'
+                        : _testing
+                        ? 'Testando...'
+                        : 'Testar config',
+                  ),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: _testing || _syncing ? null : _syncNow,
+                  onPressed: _testing || _syncing || !_tokenConfigured
+                      ? null
+                      : _syncNow,
                   icon: _syncing
                       ? const SizedBox(
                           width: 16,
@@ -1045,7 +1115,13 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.sync_rounded),
-                  label: Text(_syncing ? 'Sincronizando...' : 'Sincronizar'),
+                  label: Text(
+                    !_tokenConfigured
+                        ? 'Informe token'
+                        : _syncing
+                        ? 'Sincronizando...'
+                        : 'Sincronizar',
+                  ),
                 ),
               ],
             ),
@@ -1086,6 +1162,68 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
       }
     } finally {
       if (mounted) setState(() => _checkingHealth = false);
+    }
+  }
+
+  Future<void> _loadConfig() async {
+    final config = await widget.ref
+        .read(seletoSyncServiceProvider)
+        .configuration();
+    if (!mounted) return;
+    setState(() {
+      _baseUrlController.text = config.baseUrl;
+      _tokenConfigured = config.tokenConfigured;
+    });
+  }
+
+  Future<void> _saveConfig() async {
+    setState(() => _savingConfig = true);
+    try {
+      await widget.ref
+          .read(seletoSyncServiceProvider)
+          .configureRuntime(
+            baseUrl: _baseUrlController.text,
+            token: _tokenController.text,
+          );
+      _tokenController.clear();
+      await _loadConfig();
+      if (mounted) {
+        setState(
+          () => _result = {
+            'servico': 'Servidor SELETO Sync',
+            'status': 'sucesso',
+            'mensagem': 'Configuração de sincronização salva no aparelho.',
+            'endpoint': _baseUrlController.text.trim(),
+            'tokenConfiguradoNoApp': _tokenConfigured,
+            'verificadoEm': DateTime.now().toIso8601String(),
+          },
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _result = {
+            'servico': 'Servidor SELETO Sync',
+            'status': 'erro',
+            'erro': {'mensagem': error.toString()},
+          },
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingConfig = false);
+    }
+  }
+
+  Future<void> _clearToken() async {
+    setState(() => _savingConfig = true);
+    try {
+      await widget.ref
+          .read(seletoSyncServiceProvider)
+          .configureRuntime(baseUrl: _baseUrlController.text, clearToken: true);
+      _tokenController.clear();
+      await _loadConfig();
+    } finally {
+      if (mounted) setState(() => _savingConfig = false);
     }
   }
 
