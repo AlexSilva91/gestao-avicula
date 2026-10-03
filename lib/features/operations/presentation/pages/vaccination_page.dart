@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../../../core/database/app_database.dart';
@@ -233,23 +234,61 @@ class _VaccinationPageState extends ConsumerState<VaccinationPage> {
           : base64Decode(customLogo);
       final doc = pw.Document();
       final image = pw.MemoryImage(Uint8List.fromList(logoBytes));
-      final applied = rows.where((row) => row.record.status == 'APPLIED');
-      final pending = rows.where((row) => row.record.status != 'APPLIED');
+      final applied = rows
+          .where((row) => row.record.status == 'APPLIED')
+          .toList();
+      final pending = rows
+          .where((row) => row.record.status != 'APPLIED')
+          .toList();
+      final overdue = pending
+          .where((row) => row.record.scheduledAt.isBefore(DateTime.now()))
+          .length;
+      final generatedAt = DateTime.now();
       doc.addPage(
         pw.MultiPage(
+          margin: const pw.EdgeInsets.fromLTRB(28, 24, 28, 28),
+          pageTheme: const pw.PageTheme(pageFormat: PdfPageFormat.a4),
+          footer: (context) => pw.Container(
+            alignment: pw.Alignment.centerRight,
+            padding: const pw.EdgeInsets.only(top: 8),
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(
+                top: pw.BorderSide(color: PdfColors.grey300, width: .6),
+              ),
+            ),
+            child: pw.Text(
+              'SELETO • Vacinação • Página ${context.pageNumber}/${context.pagesCount}',
+              style: const pw.TextStyle(color: PdfColors.grey600, fontSize: 8),
+            ),
+          ),
           build: (_) => [
-            pw.Center(child: pw.Image(image, height: 72)),
-            pw.SizedBox(height: 12),
-            pw.Header(level: 0, child: pw.Text('Relatorio de vacinacao')),
-            pw.Text('Gerado em ${shortDate.format(DateTime.now())}'),
-            pw.SizedBox(height: 12),
-            pw.Text('Vacinas aplicadas', style: pw.TextStyle(fontSize: 16)),
-            pw.SizedBox(height: 6),
-            _pdfTable(applied.toList()),
+            _pdfCoverHeader(image, generatedAt),
+            pw.SizedBox(height: 16),
+            pw.Row(
+              children: [
+                _pdfSummaryCard('Registros', rows.length.toString()),
+                pw.SizedBox(width: 8),
+                _pdfSummaryCard('Aplicadas', applied.length.toString()),
+                pw.SizedBox(width: 8),
+                _pdfSummaryCard('Pendentes', pending.length.toString()),
+                pw.SizedBox(width: 8),
+                _pdfSummaryCard('Atrasadas', overdue.toString()),
+              ],
+            ),
             pw.SizedBox(height: 18),
-            pw.Text('Vacinas a aplicar', style: pw.TextStyle(fontSize: 16)),
-            pw.SizedBox(height: 6),
-            _pdfTable(pending.toList()),
+            _pdfSection(
+              title: 'Vacinas aplicadas',
+              subtitle: 'Histórico sanitário já executado.',
+              color: PdfColors.green700,
+              child: _pdfTable(applied, applied: true),
+            ),
+            pw.SizedBox(height: 16),
+            _pdfSection(
+              title: 'Vacinas a aplicar',
+              subtitle: 'Agenda futura, pendências e itens cancelados.',
+              color: PdfColors.orange700,
+              child: _pdfTable(pending, applied: false),
+            ),
           ],
         ),
       );
@@ -265,31 +304,285 @@ class _VaccinationPageState extends ConsumerState<VaccinationPage> {
     }
   }
 
-  pw.Widget _pdfTable(List<VaccinationOverview> rows) {
-    if (rows.isEmpty) return pw.Text('Sem registros.');
-    return pw.TableHelper.fromTextArray(
-      headers: const [
-        'Data',
-        'Lote',
-        'Vacina',
-        'Doenca',
-        'Dose',
-        'Via',
-        'Status',
-      ],
-      data: rows
-          .map(
-            (row) => [
-              shortDate.format(row.record.appliedAt ?? row.record.scheduledAt),
-              row.lotName ?? 'Todos',
-              row.record.vaccineName,
-              row.record.disease ?? '-',
-              row.record.dose ?? '-',
-              row.record.route ?? '-',
-              _statusLabel(row.record.status),
+  pw.Widget _pdfCoverHeader(pw.ImageProvider image, DateTime generatedAt) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(16),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey100,
+        borderRadius: pw.BorderRadius.circular(10),
+        border: pw.Border.all(color: PdfColors.grey300, width: .7),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Center(child: pw.Image(image, height: 76)),
+          pw.SizedBox(height: 12),
+          pw.Center(
+            child: pw.Text(
+              'Relatório de Vacinação',
+              style: pw.TextStyle(
+                fontSize: 22,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.green900,
+              ),
+            ),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Center(
+            child: pw.Text(
+              'Controle sanitário das aves • SELETO',
+              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+            ),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Center(
+            child: pw.Container(
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 5,
+              ),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.white,
+                borderRadius: pw.BorderRadius.circular(999),
+                border: pw.Border.all(color: PdfColors.grey300, width: .6),
+              ),
+              child: pw.Text(
+                'Gerado em ${shortDate.format(generatedAt)} às ${shortTime.format(generatedAt)}',
+                style: const pw.TextStyle(
+                  fontSize: 9,
+                  color: PdfColors.grey700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _pdfSummaryCard(String label, String value) {
+    return pw.Expanded(
+      child: pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: pw.BoxDecoration(
+          color: PdfColors.white,
+          borderRadius: pw.BorderRadius.circular(8),
+          border: pw.Border.all(color: PdfColors.grey300, width: .7),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              label.toUpperCase(),
+              style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              value,
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  pw.Widget _pdfSection({
+    required String title,
+    required String subtitle,
+    required PdfColor color,
+    required pw.Widget child,
+  }) {
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        borderRadius: pw.BorderRadius.circular(8),
+        border: pw.Border.all(color: PdfColors.grey300, width: .7),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Container(
+            padding: const pw.EdgeInsets.fromLTRB(12, 9, 12, 8),
+            decoration: pw.BoxDecoration(
+              color: color,
+              borderRadius: const pw.BorderRadius.vertical(
+                top: pw.Radius.circular(8),
+              ),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  title,
+                  style: pw.TextStyle(
+                    color: PdfColors.white,
+                    fontSize: 14,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  subtitle,
+                  style: const pw.TextStyle(
+                    color: PdfColors.white,
+                    fontSize: 8,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          pw.Padding(padding: const pw.EdgeInsets.all(10), child: child),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _pdfTable(List<VaccinationOverview> rows, {required bool applied}) {
+    if (rows.isEmpty) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(12),
+        decoration: pw.BoxDecoration(
+          color: PdfColors.grey100,
+          borderRadius: pw.BorderRadius.circular(6),
+        ),
+        child: pw.Text(
+          'Sem registros nesta seção.',
+          style: const pw.TextStyle(color: PdfColors.grey700, fontSize: 10),
+        ),
+      );
+    }
+    final sorted = [...rows]
+      ..sort(
+        (a, b) => (a.record.appliedAt ?? a.record.scheduledAt).compareTo(
+          b.record.appliedAt ?? b.record.scheduledAt,
+        ),
+      );
+    return pw.Table(
+      border: pw.TableBorder.all(color: PdfColors.grey300, width: .5),
+      columnWidths: const {
+        0: pw.FixedColumnWidth(54),
+        1: pw.FlexColumnWidth(1.2),
+        2: pw.FlexColumnWidth(1.5),
+        3: pw.FlexColumnWidth(1.1),
+        4: pw.FixedColumnWidth(62),
+      },
+      children: [
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+          children: [
+            _pdfCell(applied ? 'Aplicação' : 'Agenda', header: true),
+            _pdfCell('Lote', header: true),
+            _pdfCell('Vacina', header: true),
+            _pdfCell('Dose / Via', header: true),
+            _pdfCell('Status', header: true),
+          ],
+        ),
+        for (var index = 0; index < sorted.length; index++)
+          pw.TableRow(
+            decoration: pw.BoxDecoration(
+              color: index.isEven ? PdfColors.white : PdfColors.grey50,
+            ),
+            children: [
+              _pdfCell(
+                shortDate.format(
+                  sorted[index].record.appliedAt ??
+                      sorted[index].record.scheduledAt,
+                ),
+              ),
+              _pdfCell(sorted[index].lotName ?? 'Todos os lotes'),
+              _pdfVaccineCell(sorted[index].record),
+              _pdfCell(
+                [sorted[index].record.dose, sorted[index].record.route]
+                    .where((value) => value?.trim().isNotEmpty == true)
+                    .join(' / '),
+                fallback: '-',
+              ),
+              _pdfStatusCell(sorted[index].record.status),
             ],
-          )
-          .toList(),
+          ),
+      ],
+    );
+  }
+
+  pw.Widget _pdfVaccineCell(VaccinationRecord record) {
+    final details = [
+      record.disease,
+      record.manufacturer,
+      record.batchNumber == null ? null : 'Lote ${record.batchNumber}',
+      record.responsible == null ? null : 'Resp. ${record.responsible}',
+    ].where((value) => value?.trim().isNotEmpty == true).join(' • ');
+    return pw.Padding(
+      padding: const pw.EdgeInsets.all(6),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            record.vaccineName,
+            style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+          ),
+          if (details.isNotEmpty) ...[
+            pw.SizedBox(height: 2),
+            pw.Text(
+              details,
+              style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700),
+            ),
+          ],
+          if (record.notes?.trim().isNotEmpty == true) ...[
+            pw.SizedBox(height: 2),
+            pw.Text(
+              record.notes!,
+              style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _pdfCell(
+    String value, {
+    bool header = false,
+    String fallback = '',
+  }) {
+    final text = value.trim().isEmpty ? fallback : value.trim();
+    return pw.Padding(
+      padding: const pw.EdgeInsets.all(6),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(
+          fontSize: header ? 8 : 9,
+          fontWeight: header ? pw.FontWeight.bold : pw.FontWeight.normal,
+          color: header ? PdfColors.grey800 : PdfColors.grey900,
+        ),
+      ),
+    );
+  }
+
+  pw.Widget _pdfStatusCell(String status) {
+    final color = switch (status) {
+      'APPLIED' => PdfColors.green700,
+      'MISSED' => PdfColors.red700,
+      'CANCELED' => PdfColors.grey600,
+      _ => PdfColors.orange700,
+    };
+    return pw.Padding(
+      padding: const pw.EdgeInsets.all(5),
+      child: pw.Container(
+        alignment: pw.Alignment.center,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+        decoration: pw.BoxDecoration(
+          color: color,
+          borderRadius: pw.BorderRadius.circular(999),
+        ),
+        child: pw.Text(
+          _statusLabel(status),
+          style: pw.TextStyle(
+            color: PdfColors.white,
+            fontSize: 7,
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+      ),
     );
   }
 }
