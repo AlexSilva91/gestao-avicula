@@ -1594,6 +1594,76 @@ void main() {
     },
   );
 
+  test(
+    'personal finance tracks pro labore reserves investments and debts',
+    () async {
+      await db.addFinancialEstablishment(
+        name: 'Cartão Seleto',
+        type: 'Cartão',
+        actorId: actor,
+      );
+      final establishment =
+          (await db.watchFinancialEstablishments().first).single;
+
+      await db.addProLabore(
+        description: 'Retirada mensal',
+        amountCents: 30000,
+        actorId: actor,
+      );
+      await db.addPersonalFinance(
+        type: 'EXPENSE',
+        category: 'Cartão',
+        description: 'Compra pessoal',
+        amountCents: 12000,
+        establishmentId: establishment.id,
+        actorId: actor,
+      );
+      await db.addFinancialReserve(
+        name: 'Reserva de emergência',
+        targetAmountCents: 100000,
+        currentAmountCents: 25000,
+        actorId: actor,
+      );
+      await db.addPersonalInvestment(
+        description: 'CDB liquidez',
+        category: 'Renda fixa',
+        amountCents: 50000,
+        allocationPercent: 25,
+        actorId: actor,
+      );
+      await db.addPersonalDebt(
+        creditor: 'Cartão Seleto',
+        debtType: 'Cartão',
+        totalAmountCents: 40000,
+        paidAmountCents: 10000,
+        dueDate: DateTime.now().add(const Duration(days: 3)),
+        expectedPayoffDate: DateTime.now().add(const Duration(days: 60)),
+        actorId: actor,
+      );
+      await db.addPersonalFinance(
+        type: 'EXPENSE',
+        category: 'Transferência de pró-labore',
+        description: 'Transferência de pró-labore para sócio',
+        amountCents: 8000,
+        paymentMethod: 'PIX',
+        notes: 'Destino: Conta do sócio',
+        actorId: actor,
+      );
+
+      final business = await db.watchFinanceMetrics().first;
+      expect(business.proLaboreCents, 30000);
+      expect(business.expenseCents, 30000);
+
+      final personal = await db.watchPersonalFinanceMetrics().first;
+      expect(personal.incomeCents, 30000);
+      expect(personal.expenseCents, 20000);
+      expect(personal.reserveCents, 25000);
+      expect(personal.investmentCents, 50000);
+      expect(personal.debtOpenCents, 30000);
+      expect(personal.debtDueSoonCount, 1);
+    },
+  );
+
   test('delivering an order is idempotent', () async {
     await db.registerLotPurchase(
       name: 'Postura',

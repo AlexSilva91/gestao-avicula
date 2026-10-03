@@ -219,8 +219,15 @@ const _destinationSections = <_DestinationSection>[
     _DestinationItem(
       Icons.account_balance_wallet_outlined,
       Icons.account_balance_wallet,
-      'Financeiro',
+      'Granja',
       '/finance',
+      'finance.view',
+    ),
+    _DestinationItem(
+      Icons.savings_outlined,
+      Icons.savings,
+      'Pessoal',
+      '/personal-finance',
       'finance.view',
     ),
   ]),
@@ -298,7 +305,10 @@ String _backgroundForPath(String path) {
       path == '/egg-stock') {
     return 'assets/images/backgrounds/bg_eggs.png';
   }
-  if (path == '/commercial' || path == '/finance' || path == '/reports') {
+  if (path == '/commercial' ||
+      path == '/finance' ||
+      path == '/personal-finance' ||
+      path == '/reports') {
     return 'assets/images/backgrounds/bg_management.png';
   }
   if (path == '/vaccination') {

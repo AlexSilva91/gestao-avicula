@@ -120,14 +120,38 @@ class FinanceMetrics {
     required this.incomeCents,
     required this.expenseCents,
     required this.investmentCents,
+    required this.proLaboreCents,
   });
   final int incomeCents;
   final int expenseCents;
   final int investmentCents;
+  final int proLaboreCents;
   int get resultCents => incomeCents - expenseCents;
   double get margin => incomeCents == 0 ? 0 : resultCents / incomeCents;
   double? get paybackMonths =>
       resultCents <= 0 ? null : investmentCents / resultCents;
+}
+
+class PersonalFinanceMetrics {
+  const PersonalFinanceMetrics({
+    required this.incomeCents,
+    required this.expenseCents,
+    required this.reserveCents,
+    required this.reserveTargetCents,
+    required this.investmentCents,
+    required this.debtOpenCents,
+    required this.debtDueSoonCount,
+  });
+  final int incomeCents;
+  final int expenseCents;
+  final int reserveCents;
+  final int reserveTargetCents;
+  final int investmentCents;
+  final int debtOpenCents;
+  final int debtDueSoonCount;
+  int get balanceCents => incomeCents - expenseCents;
+  double get reservePercent =>
+      reserveTargetCents == 0 ? 0 : reserveCents / reserveTargetCents;
 }
 
 class DashboardMetrics {
@@ -3486,6 +3510,7 @@ extension OperationsRepository on AppDatabase {
         '''SELECT
     COALESCE(SUM(CASE WHEN type='INCOME' AND status='CONFIRMED' THEN amount_cents ELSE 0 END),0) income,
     COALESCE(SUM(CASE WHEN type='EXPENSE' AND status='CONFIRMED' THEN amount_cents ELSE 0 END),0) expense,
+    COALESCE(SUM(CASE WHEN type='EXPENSE' AND category='Pró-labore' AND status='CONFIRMED' THEN amount_cents ELSE 0 END),0) pro_labore,
     COALESCE((SELECT SUM(amount_cents) FROM investments WHERE ${_tenantSql('investments', tenantId)}),0) investment
     FROM finance_transactions
     WHERE ${_tenantSql('finance_transactions', tenantId)}''',
@@ -3499,6 +3524,7 @@ extension OperationsRepository on AppDatabase {
           incomeCents: r.read<int>('income'),
           expenseCents: r.read<int>('expense'),
           investmentCents: r.read<int>('investment'),
+          proLaboreCents: r.read<int>('pro_labore'),
         ),
       );
 
@@ -3639,6 +3665,350 @@ extension OperationsRepository on AppDatabase {
         description: 'Investimento registrado.',
       );
     });
+  }
+
+  Stream<List<FinancialEstablishment>> watchFinancialEstablishments({
+    String? tenantId,
+  }) {
+    final query = select(financialEstablishments)
+      ..where((e) => e.isActive.equals(true))
+      ..orderBy([(e) => OrderingTerm.asc(e.name)]);
+    if (tenantId != null) {
+      query.where((e) => _tenantExpression(e.createdBy, tenantId));
+    }
+    return query.watch();
+  }
+
+  Future<void> addFinancialEstablishment({
+    required String name,
+    required String type,
+    String? contact,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (name.trim().isEmpty || type.trim().isEmpty) {
+      throw ArgumentError('Informe o nome e o tipo do estabelecimento.');
+    }
+    final id = _uuid.v4();
+    await transaction(() async {
+      await into(financialEstablishments).insert(
+        FinancialEstablishmentsCompanion.insert(
+          id: id,
+          name: name.trim(),
+          type: type.trim(),
+          contact: Value(_cleanValue(contact)),
+          notes: Value(_cleanValue(notes)),
+          createdBy: actorId,
+          createdAt: DateTime.now(),
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'financial_establishments.create',
+        entityType: 'financial_establishment',
+        entityId: id,
+        description: 'Estabelecimento financeiro cadastrado.',
+      );
+    });
+  }
+
+  Stream<List<PersonalFinanceTransaction>> watchPersonalFinance({
+    int limit = 200,
+    String? tenantId,
+  }) {
+    final query = select(personalFinanceTransactions)
+      ..orderBy([(f) => OrderingTerm.desc(f.occurredAt)])
+      ..limit(limit);
+    if (tenantId != null) {
+      query.where((f) => _tenantExpression(f.createdBy, tenantId));
+    }
+    return query.watch();
+  }
+
+  Stream<PersonalFinanceMetrics> watchPersonalFinanceMetrics({
+    String? tenantId,
+  }) =>
+      customSelect(
+        '''SELECT
+    COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='INCOME' AND status='CONFIRMED' AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) income,
+    COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='EXPENSE' AND status='CONFIRMED' AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) expense,
+    COALESCE((SELECT SUM(current_amount_cents) FROM financial_reserves WHERE ${_tenantSql('financial_reserves', tenantId)}),0) reserve,
+    COALESCE((SELECT SUM(target_amount_cents) FROM financial_reserves WHERE ${_tenantSql('financial_reserves', tenantId)}),0) reserve_target,
+    COALESCE((SELECT SUM(amount_cents) FROM personal_investments WHERE ${_tenantSql('personal_investments', tenantId)}),0) investment,
+    COALESCE((SELECT SUM(total_amount_cents - paid_amount_cents) FROM personal_debts WHERE status='OPEN' AND ${_tenantSql('personal_debts', tenantId)}),0) debt_open,
+    COALESCE((SELECT COUNT(*) FROM personal_debts WHERE status='OPEN' AND alert_enabled=1 AND due_date<=? AND ${_tenantSql('personal_debts', tenantId)}),0) due_soon''',
+        variables: [
+          ..._tenantVariables(tenantId),
+          ..._tenantVariables(tenantId),
+          ..._tenantVariables(tenantId),
+          ..._tenantVariables(tenantId),
+          ..._tenantVariables(tenantId),
+          ..._tenantVariables(tenantId),
+          Variable<DateTime>(DateTime.now().add(const Duration(days: 7))),
+          ..._tenantVariables(tenantId),
+        ],
+        readsFrom: {
+          personalFinanceTransactions,
+          financialReserves,
+          personalInvestments,
+          personalDebts,
+        },
+      ).watchSingle().map(
+        (r) => PersonalFinanceMetrics(
+          incomeCents: r.read<int>('income'),
+          expenseCents: r.read<int>('expense'),
+          reserveCents: r.read<int>('reserve'),
+          reserveTargetCents: r.read<int>('reserve_target'),
+          investmentCents: r.read<int>('investment'),
+          debtOpenCents: r.read<int>('debt_open'),
+          debtDueSoonCount: r.read<int>('due_soon'),
+        ),
+      );
+
+  Future<void> addPersonalFinance({
+    required String type,
+    required String category,
+    required String description,
+    required int amountCents,
+    DateTime? date,
+    String? establishmentId,
+    String? paymentMethod,
+    String? notes,
+    String? referenceType,
+    String? referenceId,
+    required String actorId,
+  }) async {
+    if (!{'INCOME', 'EXPENSE'}.contains(type) ||
+        category.trim().isEmpty ||
+        description.trim().isEmpty ||
+        amountCents <= 0) {
+      throw ArgumentError('Revise os dados do lançamento pessoal.');
+    }
+    if (establishmentId != null) {
+      await _assertActorCanUseRecord(
+        tableName: 'financial_establishments',
+        recordId: establishmentId,
+        actorId: actorId,
+      );
+    }
+    final id = _uuid.v4();
+    await transaction(() async {
+      await into(personalFinanceTransactions).insert(
+        PersonalFinanceTransactionsCompanion.insert(
+          id: id,
+          occurredAt: date ?? DateTime.now(),
+          type: type,
+          category: category.trim(),
+          description: description.trim(),
+          amountCents: amountCents,
+          establishmentId: Value(establishmentId),
+          paymentMethod: Value(_cleanValue(paymentMethod)),
+          notes: Value(_cleanValue(notes)),
+          referenceType: Value(_cleanValue(referenceType)),
+          referenceId: Value(_cleanValue(referenceId)),
+          createdBy: actorId,
+          createdAt: DateTime.now(),
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'personal_finance.create',
+        entityType: 'personal_finance_transaction',
+        entityId: id,
+        description: 'Lançamento financeiro pessoal registrado.',
+      );
+    });
+  }
+
+  Future<void> addProLabore({
+    required String description,
+    required int amountCents,
+    DateTime? date,
+    String? paymentMethod,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (description.trim().isEmpty || amountCents <= 0) {
+      throw ArgumentError('Revise os dados do pró-labore.');
+    }
+    final companyId = _uuid.v4();
+    final personalId = _uuid.v4();
+    final now = DateTime.now();
+    final occurredAt = date ?? now;
+    await transaction(() async {
+      await into(financeTransactions).insert(
+        FinanceTransactionsCompanion.insert(
+          id: companyId,
+          occurredAt: occurredAt,
+          type: 'EXPENSE',
+          category: 'Pró-labore',
+          description: description.trim(),
+          amountCents: amountCents,
+          paymentMethod: Value(_cleanValue(paymentMethod)),
+          notes: Value(_cleanValue(notes)),
+          referenceType: const Value('PRO_LABORE'),
+          referenceId: Value(personalId),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await into(personalFinanceTransactions).insert(
+        PersonalFinanceTransactionsCompanion.insert(
+          id: personalId,
+          occurredAt: occurredAt,
+          type: 'INCOME',
+          category: 'Pró-labore',
+          description: description.trim(),
+          amountCents: amountCents,
+          paymentMethod: Value(_cleanValue(paymentMethod)),
+          notes: Value(_cleanValue(notes)),
+          referenceType: const Value('PRO_LABORE'),
+          referenceId: Value(companyId),
+          createdBy: actorId,
+          createdAt: now,
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'pro_labore.create',
+        entityType: 'finance_transaction',
+        entityId: companyId,
+        description: 'Retirada de pró-labore registrada.',
+      );
+    });
+  }
+
+  Stream<List<FinancialReserve>> watchFinancialReserves({String? tenantId}) {
+    final query = select(financialReserves)
+      ..orderBy([(r) => OrderingTerm.asc(r.name)]);
+    if (tenantId != null) {
+      query.where((r) => _tenantExpression(r.createdBy, tenantId));
+    }
+    return query.watch();
+  }
+
+  Future<void> addFinancialReserve({
+    required String name,
+    required int targetAmountCents,
+    required int currentAmountCents,
+    String? account,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (name.trim().isEmpty ||
+        targetAmountCents <= 0 ||
+        currentAmountCents < 0) {
+      throw ArgumentError('Revise os dados da reserva.');
+    }
+    final now = DateTime.now();
+    final id = _uuid.v4();
+    await into(financialReserves).insert(
+      FinancialReservesCompanion.insert(
+        id: id,
+        name: name.trim(),
+        targetAmountCents: targetAmountCents,
+        currentAmountCents: currentAmountCents,
+        account: Value(_cleanValue(account)),
+        notes: Value(_cleanValue(notes)),
+        createdBy: actorId,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+  }
+
+  Stream<List<PersonalInvestment>> watchPersonalInvestments({
+    String? tenantId,
+  }) {
+    final query = select(personalInvestments)
+      ..orderBy([(i) => OrderingTerm.desc(i.investmentDate)]);
+    if (tenantId != null) {
+      query.where((i) => _tenantExpression(i.createdBy, tenantId));
+    }
+    return query.watch();
+  }
+
+  Future<void> addPersonalInvestment({
+    required String description,
+    required String category,
+    required int amountCents,
+    double allocationPercent = 0,
+    DateTime? date,
+    String? institution,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (description.trim().isEmpty ||
+        category.trim().isEmpty ||
+        amountCents <= 0 ||
+        allocationPercent < 0 ||
+        allocationPercent > 100) {
+      throw ArgumentError('Revise os dados do investimento pessoal.');
+    }
+    await into(personalInvestments).insert(
+      PersonalInvestmentsCompanion.insert(
+        id: _uuid.v4(),
+        description: description.trim(),
+        category: category.trim(),
+        institution: Value(_cleanValue(institution)),
+        amountCents: amountCents,
+        allocationPercent: Value(allocationPercent),
+        investmentDate: date ?? DateTime.now(),
+        notes: Value(_cleanValue(notes)),
+        createdBy: actorId,
+        createdAt: DateTime.now(),
+      ),
+    );
+  }
+
+  Stream<List<PersonalDebt>> watchPersonalDebts({String? tenantId}) {
+    final query = select(personalDebts)
+      ..orderBy([
+        (d) => OrderingTerm.asc(d.status),
+        (d) => OrderingTerm.asc(d.dueDate),
+      ]);
+    if (tenantId != null) {
+      query.where((d) => _tenantExpression(d.createdBy, tenantId));
+    }
+    return query.watch();
+  }
+
+  Future<void> addPersonalDebt({
+    required String creditor,
+    required String debtType,
+    required int totalAmountCents,
+    int paidAmountCents = 0,
+    int? installmentAmountCents,
+    required DateTime dueDate,
+    DateTime? expectedPayoffDate,
+    bool alertEnabled = true,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (creditor.trim().isEmpty ||
+        debtType.trim().isEmpty ||
+        totalAmountCents <= 0 ||
+        paidAmountCents < 0 ||
+        paidAmountCents > totalAmountCents ||
+        (installmentAmountCents != null && installmentAmountCents <= 0)) {
+      throw ArgumentError('Revise os dados da dívida.');
+    }
+    await into(personalDebts).insert(
+      PersonalDebtsCompanion.insert(
+        id: _uuid.v4(),
+        creditor: creditor.trim(),
+        debtType: debtType.trim(),
+        totalAmountCents: totalAmountCents,
+        paidAmountCents: Value(paidAmountCents),
+        installmentAmountCents: Value(installmentAmountCents),
+        dueDate: dueDate,
+        expectedPayoffDate: Value(expectedPayoffDate),
+        alertEnabled: Value(alertEnabled),
+        notes: Value(_cleanValue(notes)),
+        createdBy: actorId,
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   Stream<List<LightingProgram>> watchLightingPrograms() =>

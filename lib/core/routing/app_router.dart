@@ -64,6 +64,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/egg-stock', builder: (_, _) => const EggStockPage()),
       GoRoute(path: '/commercial', builder: (_, _) => const CommercialPage()),
       GoRoute(path: '/finance', builder: (_, _) => const FinancePage()),
+      GoRoute(
+        path: '/personal-finance',
+        builder: (_, _) => const PersonalFinancePage(),
+      ),
       GoRoute(path: '/calendar', builder: (_, _) => const CalendarPage()),
       GoRoute(path: '/vaccination', builder: (_, _) => const VaccinationPage()),
       GoRoute(path: '/reports', builder: (_, _) => const ReportsPage()),

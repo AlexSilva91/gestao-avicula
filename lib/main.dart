@@ -56,10 +56,32 @@ class _AppBootstrapState extends ConsumerState<_AppBootstrap> {
       const bool.fromEnvironment('SELETO_DEMO_DB')
           ? seedDemoDatabase(widget.database)
           : widget.database.seedInitialData(),
-      NotificationService().initialize(),
     ]);
-    await ref.read(seletoSyncServiceProvider).start();
-    await schedulePersistedAlerts(widget.database);
+    await _runOptionalStartupTask(
+      'notifications',
+      () => NotificationService().initialize(),
+    );
+    await _runOptionalStartupTask(
+      'sync',
+      () => ref.read(seletoSyncServiceProvider).start(),
+    );
+    await _runOptionalStartupTask(
+      'alerts',
+      () => schedulePersistedAlerts(widget.database),
+    );
+  }
+
+  Future<void> _runOptionalStartupTask(
+    String name,
+    Future<void> Function() task,
+  ) async {
+    try {
+      await task();
+    } catch (error, stackTrace) {
+      debugPrint('SELETO startup optional task failed: $name');
+      debugPrint('$error');
+      debugPrint('$stackTrace');
+    }
   }
 
   @override
@@ -76,7 +98,7 @@ class _AppBootstrapState extends ConsumerState<_AppBootstrap> {
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Text(
-                    'Não foi possível preparar o banco local. Reinicie o aplicativo.',
+                    'Não foi possível preparar o banco local.\n\n${snapshot.error}',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),

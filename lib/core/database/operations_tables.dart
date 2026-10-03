@@ -339,6 +339,85 @@ class Investments extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+class FinancialEstablishments extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get type => text()();
+  TextColumn get contact => text().nullable()();
+  TextColumn get notes => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class PersonalFinanceTransactions extends Table {
+  TextColumn get id => text()();
+  DateTimeColumn get occurredAt => dateTime()();
+  TextColumn get type => text()();
+  TextColumn get category => text()();
+  TextColumn get description => text()();
+  IntColumn get amountCents => integer()();
+  TextColumn get establishmentId => text().nullable()();
+  TextColumn get paymentMethod => text().nullable()();
+  TextColumn get status => text().withDefault(const Constant('CONFIRMED'))();
+  TextColumn get notes => text().nullable()();
+  TextColumn get referenceType => text().nullable()();
+  TextColumn get referenceId => text().nullable()();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class FinancialReserves extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  IntColumn get targetAmountCents => integer()();
+  IntColumn get currentAmountCents => integer()();
+  TextColumn get account => text().nullable()();
+  TextColumn get notes => text().nullable()();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class PersonalInvestments extends Table {
+  TextColumn get id => text()();
+  TextColumn get description => text()();
+  TextColumn get category => text()();
+  TextColumn get institution => text().nullable()();
+  IntColumn get amountCents => integer()();
+  RealColumn get allocationPercent => real().withDefault(const Constant(0))();
+  DateTimeColumn get investmentDate => dateTime()();
+  TextColumn get notes => text().nullable()();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class PersonalDebts extends Table {
+  TextColumn get id => text()();
+  TextColumn get creditor => text()();
+  TextColumn get debtType => text()();
+  IntColumn get totalAmountCents => integer()();
+  IntColumn get paidAmountCents => integer().withDefault(const Constant(0))();
+  IntColumn get installmentAmountCents => integer().nullable()();
+  DateTimeColumn get dueDate => dateTime()();
+  DateTimeColumn get expectedPayoffDate => dateTime().nullable()();
+  BoolColumn get alertEnabled => boolean().withDefault(const Constant(true))();
+  TextColumn get notes => text().nullable()();
+  TextColumn get status => text().withDefault(const Constant('OPEN'))();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 class LightingPrograms extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();

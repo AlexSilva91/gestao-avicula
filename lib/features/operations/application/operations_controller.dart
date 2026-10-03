@@ -98,6 +98,36 @@ final investmentsProvider = StreamProvider(
   (ref) =>
       ref.watch(databaseProvider).watchInvestments(tenantId: _tenantScope(ref)),
 );
+final financialEstablishmentsProvider = StreamProvider(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchFinancialEstablishments(tenantId: _tenantScope(ref)),
+);
+final personalFinanceProvider = StreamProvider(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchPersonalFinance(tenantId: _tenantScope(ref)),
+);
+final personalFinanceMetricsProvider = StreamProvider(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchPersonalFinanceMetrics(tenantId: _tenantScope(ref)),
+);
+final financialReservesProvider = StreamProvider(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchFinancialReserves(tenantId: _tenantScope(ref)),
+);
+final personalInvestmentsProvider = StreamProvider(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchPersonalInvestments(tenantId: _tenantScope(ref)),
+);
+final personalDebtsProvider = StreamProvider(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchPersonalDebts(tenantId: _tenantScope(ref)),
+);
 final eggStockProvider = StreamProvider(
   (ref) => ref
       .watch(databaseProvider)
@@ -624,6 +654,100 @@ class OperationsController {
     category: category,
     amountCents: amount,
     lotId: lotId,
+    actorId: _actor('finance.create'),
+  );
+  Future<void> addFinancialEstablishment({
+    required String name,
+    required String type,
+    String? contact,
+    String? notes,
+  }) => _db.addFinancialEstablishment(
+    name: name,
+    type: type,
+    contact: contact,
+    notes: notes,
+    actorId: _actor('finance.create'),
+  );
+  Future<void> addProLabore({
+    required String description,
+    required int amount,
+    String? payment,
+    String? notes,
+  }) => _db.addProLabore(
+    description: description,
+    amountCents: amount,
+    paymentMethod: payment,
+    notes: notes,
+    actorId: _actor('finance.create'),
+  );
+  Future<void> addPersonalFinance({
+    required String type,
+    required String category,
+    required String description,
+    required int amount,
+    String? establishmentId,
+    String? payment,
+    String? notes,
+  }) => _db.addPersonalFinance(
+    type: type,
+    category: category,
+    description: description,
+    amountCents: amount,
+    establishmentId: establishmentId,
+    paymentMethod: payment,
+    notes: notes,
+    actorId: _actor('finance.create'),
+  );
+  Future<void> addFinancialReserve({
+    required String name,
+    required int targetAmount,
+    required int currentAmount,
+    String? account,
+    String? notes,
+  }) => _db.addFinancialReserve(
+    name: name,
+    targetAmountCents: targetAmount,
+    currentAmountCents: currentAmount,
+    account: account,
+    notes: notes,
+    actorId: _actor('finance.create'),
+  );
+  Future<void> addPersonalInvestment({
+    required String description,
+    required String category,
+    required int amount,
+    required double allocationPercent,
+    String? institution,
+    String? notes,
+  }) => _db.addPersonalInvestment(
+    description: description,
+    category: category,
+    amountCents: amount,
+    allocationPercent: allocationPercent,
+    institution: institution,
+    notes: notes,
+    actorId: _actor('finance.create'),
+  );
+  Future<void> addPersonalDebt({
+    required String creditor,
+    required String debtType,
+    required int totalAmount,
+    required int paidAmount,
+    int? installmentAmount,
+    required DateTime dueDate,
+    DateTime? expectedPayoffDate,
+    required bool alertEnabled,
+    String? notes,
+  }) => _db.addPersonalDebt(
+    creditor: creditor,
+    debtType: debtType,
+    totalAmountCents: totalAmount,
+    paidAmountCents: paidAmount,
+    installmentAmountCents: installmentAmount,
+    dueDate: dueDate,
+    expectedPayoffDate: expectedPayoffDate,
+    alertEnabled: alertEnabled,
+    notes: notes,
     actorId: _actor('finance.create'),
   );
   Future<void> addEvent(

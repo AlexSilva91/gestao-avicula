@@ -361,6 +361,11 @@ class MonthlyPostureComparison {
     Sales,
     FinanceTransactions,
     Investments,
+    FinancialEstablishments,
+    PersonalFinanceTransactions,
+    FinancialReserves,
+    PersonalInvestments,
+    PersonalDebts,
     LightingPrograms,
     LightingProgramSteps,
     LotLightingPrograms,
@@ -387,7 +392,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -403,9 +408,6 @@ class AppDatabase extends _$AppDatabase {
       if (from < 3) {
         await m.createTable(eggCollections);
         await m.createTable(eggStockMovements);
-      }
-      if (from < 4) {
-        await _createPerformanceIndexes();
       }
       if (from < 5) {
         await m.createTable(ingredients);
@@ -429,7 +431,6 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(calendarEvents);
         await m.createTable(notificationSettings);
         await m.createTable(appSettings);
-        await _createPerformanceIndexes();
       }
       if (from < 6) {
         await m.addColumn(calendarEvents, calendarEvents.alertEnabled);
@@ -450,11 +451,9 @@ class AppDatabase extends _$AppDatabase {
       if (from < 7) {
         await m.createTable(ingredientLots);
         await m.createTable(ingredientStockMovements);
-        await _createPerformanceIndexes();
       }
       if (from < 8) {
         await m.createTable(feedConsumptionRecommendations);
-        await _createPerformanceIndexes();
         await _seedFeedConsumptionRecommendations('system', DateTime.now());
       }
       if (from < 9) {
@@ -465,7 +464,6 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(eggTrayStockMovements);
         await m.addColumn(sales, sales.trayBatchId);
         await m.addColumn(sales, sales.trayQuantity);
-        await _createPerformanceIndexes();
       }
       if (from < 10) {
         await m.addColumn(eggTrayBatches, eggTrayBatches.trayUnitCostCents);
@@ -495,21 +493,25 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(tenants);
         await m.addColumn(users, users.tenantId);
         await _ensureDefaultTenant();
-        await _createPerformanceIndexes();
       }
       if (from < 14) {
         await m.addColumn(users, users.lastSeenAt);
-        await _createPerformanceIndexes();
       }
       if (from < 15) {
         await m.createTable(sensorReadings);
         await m.createTable(automationEvents);
-        await _createPerformanceIndexes();
       }
       if (from < 16) {
         await m.createTable(vaccinationRecords);
-        await _createPerformanceIndexes();
       }
+      if (from < 17) {
+        await m.createTable(financialEstablishments);
+        await m.createTable(personalFinanceTransactions);
+        await m.createTable(financialReserves);
+        await m.createTable(personalInvestments);
+        await m.createTable(personalDebts);
+      }
+      await _createPerformanceIndexes();
     },
     beforeOpen: (_) async {
       await _ensureDefaultTenant();
@@ -562,6 +564,12 @@ class AppDatabase extends _$AppDatabase {
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_finance_date_type ON finance_transactions (occurred_at, type)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_personal_finance_date_type ON personal_finance_transactions (occurred_at, type)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_personal_debts_due_status ON personal_debts (due_date, status)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_events_date_type ON calendar_events (starts_at, type)',
