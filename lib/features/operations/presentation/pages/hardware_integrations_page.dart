@@ -94,8 +94,8 @@ class _HardwareIntegrationsPageState
   final wifiProvisionPassword = TextEditingController();
   final mqttHost = TextEditingController();
   final mqttPort = TextEditingController(text: '1883');
-  final mqttBaseTopic = TextEditingController(text: 'granja/esp32');
-  final mqttDeviceId = TextEditingController(text: 'GRANJA-SELETO-RELE-01');
+  final mqttBaseTopic = TextEditingController(text: 'seleto/esp32');
+  final mqttDeviceId = TextEditingController(text: 'SELETO-RELE-01');
   final mqttUsername = TextEditingController();
   final mqttPassword = TextEditingController();
   final lightingChannelNames = List.generate(
@@ -156,7 +156,7 @@ class _HardwareIntegrationsPageState
   List<String> espTerminalLines = const [
     'SYS> aguardando handshake com ESP32',
     'SYS> modo Wi-Fi procura /api/status automaticamente',
-    'SYS> fallback AP: GRANJA-SELETO-SETUP / seleto1234',
+    'SYS> fallback AP: SELETO-SETUP / seleto1234',
   ];
 
   @override
@@ -216,11 +216,17 @@ class _HardwareIntegrationsPageState
     mqttEnabled = values['hardware_esp_mqtt_enabled'] == 'true';
     mqttHost.text = values['hardware_esp_mqtt_host']?.trim() ?? '';
     mqttPort.text = values['hardware_esp_mqtt_port']?.trim() ?? '1883';
+    final savedMqttBaseTopic = values['hardware_esp_mqtt_base_topic']?.trim();
     mqttBaseTopic.text =
-        values['hardware_esp_mqtt_base_topic']?.trim() ?? 'granja/esp32';
+        savedMqttBaseTopic == null || savedMqttBaseTopic == 'granja/esp32'
+        ? 'seleto/esp32'
+        : savedMqttBaseTopic;
+    final savedMqttDeviceId = values['hardware_esp_mqtt_device_id']?.trim();
     mqttDeviceId.text =
-        values['hardware_esp_mqtt_device_id']?.trim() ??
-        'GRANJA-SELETO-RELE-01';
+        savedMqttDeviceId == null ||
+            savedMqttDeviceId == 'GRANJA-SELETO-RELE-01'
+        ? 'SELETO-RELE-01'
+        : savedMqttDeviceId;
     mqttUsername.text = values['hardware_esp_mqtt_username']?.trim() ?? '';
     mqttPassword.text = values['hardware_esp_mqtt_password'] ?? '';
     for (final channel in config.lightingChannels) {
@@ -951,10 +957,10 @@ class _HardwareIntegrationsPageState
     host: mqttHost.text.trim(),
     port: int.tryParse(mqttPort.text.trim()) ?? 1883,
     baseTopic: mqttBaseTopic.text.trim().isEmpty
-        ? 'granja/esp32'
+        ? 'seleto/esp32'
         : mqttBaseTopic.text.trim(),
     deviceId: mqttDeviceId.text.trim().isEmpty
-        ? 'GRANJA-SELETO-RELE-01'
+        ? 'SELETO-RELE-01'
         : mqttDeviceId.text.trim(),
     username: mqttUsername.text.trim(),
     password: mqttPassword.text,
@@ -1883,7 +1889,7 @@ class _HardwareIntegrationsPageState
         lightingConnection = 'WIFI';
         lightingConnectionResult = 'Wi-Fi do ESP desconectado.';
         lightingStatus =
-            'ESP saiu da rede Wi-Fi. Use o AP GRANJA-SELETO-SETUP para reconectar.';
+            'ESP saiu da rede Wi-Fi. Use o AP SELETO-SETUP para reconectar.';
         espTerminalTitle = 'WIFI DESCONECTADO';
       });
       _appendEspLog('ESP> Wi-Fi desconectado e credenciais removidas');
@@ -1907,7 +1913,7 @@ class _HardwareIntegrationsPageState
       builder: (context) => AlertDialog(
         title: const Text('Conectar o ESP no Wi-Fi'),
         content: const Text(
-          'Conecte o celular na rede GRANJA-SELETO-SETUP, senha seleto1234. '
+          'Conecte o celular na rede SELETO-SETUP, senha seleto1234. '
           'Depois informe o Wi-Fi da propriedade aqui no app e toque em Enviar. '
           'A tela web do ESP continua disponivel apenas como backup.',
         ),
@@ -1939,7 +1945,7 @@ class _HardwareIntegrationsPageState
           lightingStatus =
               'ESP não encontrado. Use a rede padrão do controlador.';
         });
-        _appendEspLog('AP> SSID GRANJA-SELETO-SETUP');
+        _appendEspLog('AP> SSID SELETO-SETUP');
         _appendEspLog('AP> senha seleto1234');
         _appendEspLog('AP> depois toque em Detectar ESP');
         return;
@@ -1983,7 +1989,7 @@ class _HardwareIntegrationsPageState
             source: 'HTTP',
           );
       _appendEspLog('ERR> endpoint sem resposta: $error');
-      _appendEspLog('AP> tente conectar em GRANJA-SELETO-SETUP / seleto1234');
+      _appendEspLog('AP> tente conectar em SELETO-SETUP / seleto1234');
     } finally {
       if (mounted) setState(() => espScanning = false);
     }
@@ -2016,7 +2022,7 @@ class _HardwareIntegrationsPageState
             source: 'HTTP',
           );
       _appendEspLog('ERR> handshake falhou: $error');
-      _appendEspLog('AP> conecte no Wi-Fi GRANJA-SELETO-SETUP e tente de novo');
+      _appendEspLog('AP> conecte no Wi-Fi SELETO-SETUP e tente de novo');
     } finally {
       if (mounted) setState(() => espScanning = false);
     }
@@ -2353,7 +2359,7 @@ class _EspWifiProvisionPanel extends StatelessWidget {
             _InfoStrip(
               icon: Icons.security_outlined,
               text:
-                  'Use o AP GRANJA-SELETO-SETUP apenas para configurar. Depois disso o app fala com o ESP pelo IP recebido na rede local.',
+                  'Use o AP SELETO-SETUP apenas para configurar. Depois disso o app fala com o ESP pelo IP recebido na rede local.',
             ),
             const SizedBox(height: 10),
             Wrap(

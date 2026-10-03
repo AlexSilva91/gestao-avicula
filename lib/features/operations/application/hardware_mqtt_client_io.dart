@@ -165,7 +165,7 @@ class HardwareMqttClient {
   String _topic(EspMqttConfig config, String suffix) {
     final base = config.baseTopic.trim().replaceAll(RegExp(r'/+$'), '');
     final device = config.deviceId.trim().isEmpty
-        ? 'GRANJA-SELETO-RELE-01'
+        ? 'SELETO-RELE-01'
         : config.deviceId.trim();
     return '$base/$device/$suffix';
   }
@@ -332,7 +332,7 @@ class HardwareMqttRuntime {
   String _topic(EspMqttConfig config, String suffix) {
     final base = config.baseTopic.trim().replaceAll(RegExp(r'/+$'), '');
     final device = config.deviceId.trim().isEmpty
-        ? 'GRANJA-SELETO-RELE-01'
+        ? 'SELETO-RELE-01'
         : config.deviceId.trim();
     return '$base/$device/$suffix';
   }

@@ -826,7 +826,7 @@ class MqttService {
     }
   }
 
-  bool connected() const {
+  bool connected() {
     return client_.connected();
   }
 
@@ -841,7 +841,7 @@ class MqttService {
     configureClient();
   }
 
-  String toJson() const {
+  String toJson() {
     String json = "{\"enabled\":";
     json += boolJson(settings_.enabled);
     json += ",\"connected\":";

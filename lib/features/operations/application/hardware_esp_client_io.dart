@@ -132,7 +132,7 @@ class HardwareEspClient {
     final baseHosts = await _localSubnetBaseHosts();
     if (baseHosts.isEmpty) {
       onLog?.call('SYS> Wi-Fi atual nao identificado');
-      onLog?.call('SYS> conecte no Wi-Fi GRANJA-SELETO-SETUP e tente de novo');
+      onLog?.call('SYS> conecte no Wi-Fi SELETO-SETUP e tente de novo');
       return null;
     }
 
@@ -145,7 +145,7 @@ class HardwareEspClient {
     }
 
     onLog?.call('SYS> ESP32 nao respondeu nesta rede');
-    onLog?.call('SYS> fallback: Wi-Fi GRANJA-SELETO-SETUP / seleto1234');
+    onLog?.call('SYS> fallback: Wi-Fi SELETO-SETUP / seleto1234');
     return null;
   }
 
@@ -168,9 +168,8 @@ class HardwareEspClient {
 
   Future<EspDeviceProbe> _pingOnce(String normalized) async {
     final payload = await _getJson('$normalized/api/status');
-    final deviceId =
-        (payload['deviceId'] ?? payload['id'] ?? 'GRANJA-SELETO-ESP32')
-            .toString();
+    final deviceId = (payload['deviceId'] ?? payload['id'] ?? 'SELETO-ESP32')
+        .toString();
     final reportedIp = (payload['ip'] ?? '').toString().trim();
     final setupIp = (payload['setupApIp'] ?? '').toString().trim();
     final endpointHost = Uri.parse(normalized).host;
@@ -536,8 +535,11 @@ class HardwareEspClient {
       final probe = await ping(endpoint).timeout(_probeTimeout);
       final app = probe.payload['app']?.toString();
       final deviceId = probe.deviceId.toUpperCase();
+      final normalizedApp = app?.trim().toUpperCase();
       final isSeletoEsp =
-          app == 'GRANJA_SELETO' || deviceId.contains('GRANJA-SELETO');
+          normalizedApp == 'SELETO' ||
+          normalizedApp == 'GRANJA_SELETO' ||
+          deviceId.contains('SELETO');
       return isSeletoEsp ? probe : null;
     } catch (_) {
       return null;
