@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<contas>
+  <conta>
+    <descricao>Fatura energia</descricao>
+    <categoria>Energia</categoria>
+    <valor>803,78</valor>
+    <vencimento>10/04/2026</vencimento>
+    <parcelas>1</parcelas>
+    <forma_pagamento>Boleto</forma_pagamento>
+    <observacao>Conta de energia da granja</observacao>
+  </conta>
+  <conta>
+    <descricao>Compra de ração</descricao>
+    <categoria>Compra parcelada</categoria>
+    <valor_total>3000,00</valor_total>
+    <vencimento>15/04/2026</vencimento>
+    <parcelas>3</parcelas>
+    <forma_pagamento>Cartão</forma_pagamento>
+    <observacao>Compra parcelada em 3 vezes</observacao>
+  </conta>
+</contas>

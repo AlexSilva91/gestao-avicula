@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<contas>
+  <conta>
+    <descricao>Fatura cartão</descricao>
+    <categoria>Fatura de cartão</categoria>
+    <valor>1200,50</valor>
+    <vencimento>12/04/2026</vencimento>
+    <parcelas>1</parcelas>
+    <forma_pagamento>Cartão</forma_pagamento>
+    <observacao>Cartão pessoal</observacao>
+  </conta>
+  <conta>
+    <descricao>Notebook</descricao>
+    <categoria>Compra parcelada</categoria>
+    <valor_total>3000,00</valor_total>
+    <vencimento>20/04/2026</vencimento>
+    <parcelas>6</parcelas>
+    <forma_pagamento>Cartão</forma_pagamento>
+    <observacao>Compra parcelada em 6 vezes</observacao>
+  </conta>
+</contas>

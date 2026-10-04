@@ -920,6 +920,7 @@ extension OperationsRepository on AppDatabase {
                 isActive: row.read<bool>('is_active'),
                 notes: row.readNullable<String>('notes'),
                 createdAt: row.read<DateTime>('created_at'),
+                updatedAt: row.read<DateTime>('updated_at'),
                 createdBy: row.read<String>('created_by'),
               ),
               stockKg: _nonNegativeStock(row.read<double>('stock_kg')),
@@ -996,6 +997,7 @@ extension OperationsRepository on AppDatabase {
                 notes: r.readNullable<String>('notes'),
                 createdBy: r.read<String>('created_by'),
                 createdAt: r.read<DateTime>('created_at'),
+                updatedAt: r.read<DateTime>('updated_at'),
               ),
               ingredientName: r.read<String>('ingredient_name'),
               balanceKg: _nonNegativeStock(r.read<double>('balance_kg')),
@@ -1510,6 +1512,7 @@ extension OperationsRepository on AppDatabase {
               notes: row.readNullable<String>('notes'),
               createdBy: row.read<String>('created_by'),
               createdAt: row.read<DateTime>('created_at'),
+              updatedAt: row.read<DateTime>('updated_at'),
             ),
             items: [item],
           );
@@ -1719,6 +1722,7 @@ extension OperationsRepository on AppDatabase {
         notes: r.readNullable<String>('notes'),
         createdBy: r.read<String>('created_by'),
         createdAt: r.read<DateTime>('created_at'),
+        updatedAt: r.read<DateTime>('updated_at'),
       );
       usages.add(
         IngredientLotUsage(
@@ -1987,6 +1991,7 @@ extension OperationsRepository on AppDatabase {
                 notes: r.readNullable<String>('notes'),
                 createdBy: r.read<String>('created_by'),
                 createdAt: r.read<DateTime>('created_at'),
+                updatedAt: r.read<DateTime>('updated_at'),
               ),
               balanceKg: _nonNegativeStock(r.read<double>('balance_kg')),
               formulaName: r.readNullable<String>('formula_name'),
@@ -2268,6 +2273,7 @@ extension OperationsRepository on AppDatabase {
                 isActive: row.read<bool>('is_active'),
                 createdBy: row.read<String>('created_by'),
                 createdAt: row.read<DateTime>('created_at'),
+                updatedAt: row.read<DateTime>('updated_at'),
               ),
               balance: row.read<int>('balance'),
               activeLotCount: row.read<int>('active_lot_count'),
@@ -2288,10 +2294,10 @@ extension OperationsRepository on AppDatabase {
       SELECT l.id AS lot_id, l.item_id, l.batch_code, l.initial_quantity,
         l.unit_cost_cents, l.total_cost_cents, l.purchased_at, l.supplier,
         l.notes AS lot_notes, l.created_by AS lot_created_by,
-        l.created_at AS lot_created_at,
+        l.created_at AS lot_created_at, l.updated_at AS lot_updated_at,
         i.id AS item_id_value, i.type AS item_type, i.name AS item_name,
         i.notes AS item_notes, i.is_active, i.created_by AS item_created_by,
-        i.created_at AS item_created_at,
+        i.created_at AS item_created_at, i.updated_at AS item_updated_at,
         COALESCE(SUM(
           CASE WHEN m.type IN ('PURCHASE_IN','ADJUSTMENT_IN')
           THEN m.quantity ELSE -m.quantity END
@@ -2324,6 +2330,7 @@ extension OperationsRepository on AppDatabase {
                 notes: row.readNullable<String>('lot_notes'),
                 createdBy: row.read<String>('lot_created_by'),
                 createdAt: row.read<DateTime>('lot_created_at'),
+                updatedAt: row.read<DateTime>('lot_updated_at'),
               ),
               item: PackagingItem(
                 id: row.read<String>('item_id_value'),
@@ -2333,6 +2340,7 @@ extension OperationsRepository on AppDatabase {
                 isActive: row.read<bool>('is_active'),
                 createdBy: row.read<String>('item_created_by'),
                 createdAt: row.read<DateTime>('item_created_at'),
+                updatedAt: row.read<DateTime>('item_updated_at'),
               ),
               balance: row.read<int>('balance'),
             ),
@@ -2389,6 +2397,7 @@ extension OperationsRepository on AppDatabase {
                 notes: row.readNullable<String>('notes'),
                 createdBy: row.read<String>('created_by'),
                 createdAt: row.read<DateTime>('created_at'),
+                updatedAt: row.read<DateTime>('updated_at'),
               ),
               balance: row.read<int>('balance'),
               trayName: row.read<String>('tray_name'),
@@ -2936,10 +2945,10 @@ extension OperationsRepository on AppDatabase {
       SELECT l.id AS lot_id, l.item_id, l.batch_code, l.initial_quantity,
         l.unit_cost_cents, l.total_cost_cents, l.purchased_at, l.supplier,
         l.notes AS lot_notes, l.created_by AS lot_created_by,
-        l.created_at AS lot_created_at,
+        l.created_at AS lot_created_at, l.updated_at AS lot_updated_at,
         i.id AS item_id_value, i.type AS item_type, i.name AS item_name,
         i.notes AS item_notes, i.is_active, i.created_by AS item_created_by,
-        i.created_at AS item_created_at
+        i.created_at AS item_created_at, i.updated_at AS item_updated_at
       FROM packaging_lots l
       JOIN packaging_items i ON i.id = l.item_id
       WHERE l.id = ? AND i.type = ?
@@ -2970,6 +2979,7 @@ extension OperationsRepository on AppDatabase {
         notes: row.readNullable<String>('lot_notes'),
         createdBy: row.read<String>('lot_created_by'),
         createdAt: row.read<DateTime>('lot_created_at'),
+        updatedAt: row.read<DateTime>('lot_updated_at'),
       ),
       item: PackagingItem(
         id: row.read<String>('item_id_value'),
@@ -2979,6 +2989,7 @@ extension OperationsRepository on AppDatabase {
         isActive: row.read<bool>('is_active'),
         createdBy: row.read<String>('item_created_by'),
         createdAt: row.read<DateTime>('item_created_at'),
+        updatedAt: row.read<DateTime>('item_updated_at'),
       ),
       balance: 0,
     );
@@ -3094,7 +3105,6 @@ extension OperationsRepository on AppDatabase {
           createdBy: actorId,
           updatedBy: actorId,
           createdAt: now,
-          updatedAt: now,
         ),
       );
       await into(orderItems).insert(
@@ -3409,7 +3419,10 @@ extension OperationsRepository on AppDatabase {
                 f.referenceType.equals('SALE') & f.referenceId.equals(saleId),
           ))
           .write(
-            const FinanceTransactionsCompanion(status: Value('CANCELLED')),
+            FinanceTransactionsCompanion(
+              status: const Value('CANCELLED'),
+              updatedAt: Value(DateTime.now()),
+            ),
           );
       await addAudit(
         userId: actorId,
@@ -3505,6 +3518,20 @@ extension OperationsRepository on AppDatabase {
     return query.watch();
   }
 
+  Future<List<FinanceTransaction>> pendingFinancePayables({String? tenantId}) {
+    final query = select(financeTransactions)
+      ..where(
+        (f) =>
+            f.type.equals('EXPENSE') &
+            f.status.equals('PENDING') &
+            f.dueDate.isNotNull(),
+      );
+    if (tenantId != null) {
+      query.where((f) => _tenantExpression(f.createdBy, tenantId));
+    }
+    return query.get();
+  }
+
   Stream<FinanceMetrics> watchFinanceMetrics({String? tenantId}) =>
       customSelect(
         '''SELECT
@@ -3535,14 +3562,23 @@ extension OperationsRepository on AppDatabase {
     required int amountCents,
     DateTime? date,
     String? paymentMethod,
+    String status = 'CONFIRMED',
+    DateTime? dueDate,
     String? notes,
     required String actorId,
   }) async {
     if (!{'INCOME', 'EXPENSE'}.contains(type) ||
+        !{'CONFIRMED', 'PENDING'}.contains(status) ||
         category.trim().isEmpty ||
         description.trim().isEmpty ||
         amountCents <= 0) {
       throw ArgumentError('Revise os dados do lançamento.');
+    }
+    if (type == 'INCOME' && status == 'PENDING') {
+      throw ArgumentError('Apenas contas a pagar podem ficar pendentes.');
+    }
+    if (status == 'PENDING' && dueDate == null) {
+      throw ArgumentError('Informe a data de vencimento.');
     }
     final id = _uuid.v4();
     await transaction(() async {
@@ -3555,6 +3591,8 @@ extension OperationsRepository on AppDatabase {
           description: description.trim(),
           amountCents: amountCents,
           paymentMethod: Value(_cleanValue(paymentMethod)),
+          status: Value(status),
+          dueDate: Value(dueDate == null ? null : _dateOnly(dueDate)),
           notes: Value(_cleanValue(notes)),
           createdBy: actorId,
           createdAt: DateTime.now(),
@@ -3566,6 +3604,116 @@ extension OperationsRepository on AppDatabase {
         entityType: 'finance_transaction',
         entityId: id,
         description: 'Lançamento financeiro registrado.',
+      );
+    });
+  }
+
+  Future<void> payFinance({
+    required String id,
+    DateTime? date,
+    String? paymentMethod,
+    String? notes,
+    required String actorId,
+  }) async {
+    await _assertActorCanUseRecord(
+      tableName: 'finance_transactions',
+      recordId: id,
+      actorId: actorId,
+    );
+    await transaction(() async {
+      final item = await (select(
+        financeTransactions,
+      )..where((f) => f.id.equals(id))).getSingle();
+      if (item.referenceType != null) {
+        throw StateError(
+          'Lançamentos automáticos devem ser pagos no módulo de origem.',
+        );
+      }
+      if (item.status == 'CANCELLED') {
+        throw StateError('Não é possível pagar um lançamento cancelado.');
+      }
+      if (item.status == 'CONFIRMED') return;
+      await (update(financeTransactions)..where((f) => f.id.equals(id))).write(
+        FinanceTransactionsCompanion(
+          occurredAt: Value(date ?? DateTime.now()),
+          paymentMethod: Value(_cleanValue(paymentMethod)),
+          status: const Value('CONFIRMED'),
+          dueDate: const Value(null),
+          notes: Value(_mergeNotes(item.notes, notes)),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'finance.pay',
+        entityType: 'finance_transaction',
+        entityId: id,
+        description: 'Conta a pagar quitada.',
+      );
+    });
+  }
+
+  Future<void> updateFinance({
+    required String id,
+    required String type,
+    required String category,
+    required String description,
+    required int amountCents,
+    String? paymentMethod,
+    required String status,
+    DateTime? dueDate,
+    String? notes,
+    required String actorId,
+  }) async {
+    if (!{'INCOME', 'EXPENSE'}.contains(type) ||
+        !{'CONFIRMED', 'PENDING'}.contains(status) ||
+        category.trim().isEmpty ||
+        description.trim().isEmpty ||
+        amountCents <= 0) {
+      throw ArgumentError('Revise os dados do lançamento.');
+    }
+    if (type == 'INCOME' && status == 'PENDING') {
+      throw ArgumentError('Apenas contas a pagar podem ficar pendentes.');
+    }
+    if (status == 'PENDING' && dueDate == null) {
+      throw ArgumentError('Informe a data de vencimento.');
+    }
+    await _assertActorCanUseRecord(
+      tableName: 'finance_transactions',
+      recordId: id,
+      actorId: actorId,
+    );
+    await transaction(() async {
+      final item = await (select(
+        financeTransactions,
+      )..where((f) => f.id.equals(id))).getSingle();
+      if (item.referenceType != null) {
+        throw StateError(
+          'Lançamentos automáticos devem ser editados no módulo de origem.',
+        );
+      }
+      if (item.status == 'CANCELLED') {
+        throw StateError('Não é possível editar um lançamento cancelado.');
+      }
+      await (update(financeTransactions)..where((f) => f.id.equals(id))).write(
+        FinanceTransactionsCompanion(
+          type: Value(type),
+          category: Value(category.trim()),
+          description: Value(description.trim()),
+          amountCents: Value(amountCents),
+          paymentMethod: Value(_cleanValue(paymentMethod)),
+          status: Value(status),
+          dueDate: Value(status == 'PENDING' ? _dateOnly(dueDate!) : null),
+          notes: Value(_cleanValue(notes)),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'finance.update',
+        entityType: 'finance_transaction',
+        entityId: id,
+        description: 'Lançamento financeiro editado.',
       );
     });
   }
@@ -3587,7 +3735,10 @@ extension OperationsRepository on AppDatabase {
       }
       if (item.status == 'CANCELLED') return;
       await (update(financeTransactions)..where((f) => f.id.equals(id))).write(
-        const FinanceTransactionsCompanion(status: Value('CANCELLED')),
+        FinanceTransactionsCompanion(
+          status: const Value('CANCELLED'),
+          updatedAt: Value(DateTime.now()),
+        ),
       );
       await addAudit(
         userId: actorId,
@@ -3725,6 +3876,22 @@ extension OperationsRepository on AppDatabase {
     return query.watch();
   }
 
+  Future<List<PersonalFinanceTransaction>> pendingPersonalFinancePayables({
+    String? tenantId,
+  }) {
+    final query = select(personalFinanceTransactions)
+      ..where(
+        (f) =>
+            f.type.equals('EXPENSE') &
+            f.status.equals('PENDING') &
+            f.dueDate.isNotNull(),
+      );
+    if (tenantId != null) {
+      query.where((f) => _tenantExpression(f.createdBy, tenantId));
+    }
+    return query.get();
+  }
+
   Stream<PersonalFinanceMetrics> watchPersonalFinanceMetrics({
     String? tenantId,
   }) =>
@@ -3735,9 +3902,11 @@ extension OperationsRepository on AppDatabase {
     COALESCE((SELECT SUM(current_amount_cents) FROM financial_reserves WHERE ${_tenantSql('financial_reserves', tenantId)}),0) reserve,
     COALESCE((SELECT SUM(target_amount_cents) FROM financial_reserves WHERE ${_tenantSql('financial_reserves', tenantId)}),0) reserve_target,
     COALESCE((SELECT SUM(amount_cents) FROM personal_investments WHERE ${_tenantSql('personal_investments', tenantId)}),0) investment,
-    COALESCE((SELECT SUM(total_amount_cents - paid_amount_cents) FROM personal_debts WHERE status='OPEN' AND ${_tenantSql('personal_debts', tenantId)}),0) debt_open,
+    COALESCE((SELECT SUM(total_amount_cents - paid_amount_cents) FROM personal_debts WHERE status='OPEN' AND ${_tenantSql('personal_debts', tenantId)}),0)
+      + COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='EXPENSE' AND status='PENDING' AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) debt_open,
     COALESCE((SELECT COUNT(*) FROM personal_debts WHERE status='OPEN' AND alert_enabled=1 AND due_date<=? AND ${_tenantSql('personal_debts', tenantId)}),0) due_soon''',
         variables: [
+          ..._tenantVariables(tenantId),
           ..._tenantVariables(tenantId),
           ..._tenantVariables(tenantId),
           ..._tenantVariables(tenantId),
@@ -3773,16 +3942,25 @@ extension OperationsRepository on AppDatabase {
     DateTime? date,
     String? establishmentId,
     String? paymentMethod,
+    String status = 'CONFIRMED',
+    DateTime? dueDate,
     String? notes,
     String? referenceType,
     String? referenceId,
     required String actorId,
   }) async {
-    if (!{'INCOME', 'EXPENSE'}.contains(type) ||
-        category.trim().isEmpty ||
-        description.trim().isEmpty ||
-        amountCents <= 0) {
-      throw ArgumentError('Revise os dados do lançamento pessoal.');
+    _validatePersonalFinanceInput(
+      type: type,
+      status: status,
+      category: category,
+      description: description,
+      amountCents: amountCents,
+    );
+    if (type == 'INCOME' && status == 'PENDING') {
+      throw ArgumentError('Apenas contas a pagar podem ficar pendentes.');
+    }
+    if (status == 'PENDING' && dueDate == null) {
+      throw ArgumentError('Informe a data de vencimento.');
     }
     if (establishmentId != null) {
       await _assertActorCanUseRecord(
@@ -3803,6 +3981,8 @@ extension OperationsRepository on AppDatabase {
           amountCents: amountCents,
           establishmentId: Value(establishmentId),
           paymentMethod: Value(_cleanValue(paymentMethod)),
+          status: Value(status),
+          dueDate: Value(dueDate == null ? null : _dateOnly(dueDate)),
           notes: Value(_cleanValue(notes)),
           referenceType: Value(_cleanValue(referenceType)),
           referenceId: Value(_cleanValue(referenceId)),
@@ -3816,6 +3996,124 @@ extension OperationsRepository on AppDatabase {
         entityType: 'personal_finance_transaction',
         entityId: id,
         description: 'Lançamento financeiro pessoal registrado.',
+      );
+    });
+  }
+
+  Future<void> payPersonalFinance({
+    required String id,
+    DateTime? date,
+    String? paymentMethod,
+    String? notes,
+    required String actorId,
+  }) async {
+    await _assertActorCanUseRecord(
+      tableName: 'personal_finance_transactions',
+      recordId: id,
+      actorId: actorId,
+    );
+    await transaction(() async {
+      final item = await (select(
+        personalFinanceTransactions,
+      )..where((f) => f.id.equals(id))).getSingle();
+      if (item.status == 'CANCELLED') {
+        throw StateError('Não é possível pagar um lançamento cancelado.');
+      }
+      if (item.status == 'CONFIRMED') return;
+      await (update(
+        personalFinanceTransactions,
+      )..where((f) => f.id.equals(id))).write(
+        PersonalFinanceTransactionsCompanion(
+          occurredAt: Value(date ?? DateTime.now()),
+          paymentMethod: Value(_cleanValue(paymentMethod)),
+          status: const Value('CONFIRMED'),
+          dueDate: const Value(null),
+          notes: Value(_mergeNotes(item.notes, notes)),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'personal_finance.pay',
+        entityType: 'personal_finance_transaction',
+        entityId: id,
+        description: 'Conta a pagar pessoal quitada.',
+      );
+    });
+  }
+
+  Future<void> updatePersonalFinance({
+    required String id,
+    required String type,
+    required String category,
+    required String description,
+    required int amountCents,
+    String? establishmentId,
+    String? paymentMethod,
+    required String status,
+    DateTime? dueDate,
+    String? notes,
+    required String actorId,
+  }) async {
+    _validatePersonalFinanceInput(
+      type: type,
+      status: status,
+      category: category,
+      description: description,
+      amountCents: amountCents,
+    );
+    if (type == 'INCOME' && status == 'PENDING') {
+      throw ArgumentError('Apenas contas a pagar podem ficar pendentes.');
+    }
+    if (status == 'PENDING' && dueDate == null) {
+      throw ArgumentError('Informe a data de vencimento.');
+    }
+    if (establishmentId != null) {
+      await _assertActorCanUseRecord(
+        tableName: 'financial_establishments',
+        recordId: establishmentId,
+        actorId: actorId,
+      );
+    }
+    await _assertActorCanUseRecord(
+      tableName: 'personal_finance_transactions',
+      recordId: id,
+      actorId: actorId,
+    );
+    await transaction(() async {
+      final item = await (select(
+        personalFinanceTransactions,
+      )..where((f) => f.id.equals(id))).getSingle();
+      if (item.referenceType != null) {
+        throw StateError(
+          'Lançamentos automáticos devem ser editados no módulo de origem.',
+        );
+      }
+      if (item.status == 'CANCELLED') {
+        throw StateError('Não é possível editar um lançamento cancelado.');
+      }
+      await (update(
+        personalFinanceTransactions,
+      )..where((f) => f.id.equals(id))).write(
+        PersonalFinanceTransactionsCompanion(
+          type: Value(type),
+          category: Value(category.trim()),
+          description: Value(description.trim()),
+          amountCents: Value(amountCents),
+          establishmentId: Value(establishmentId),
+          paymentMethod: Value(_cleanValue(paymentMethod)),
+          status: Value(status),
+          dueDate: Value(status == 'PENDING' ? _dateOnly(dueDate!) : null),
+          notes: Value(_cleanValue(notes)),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      await addAudit(
+        userId: actorId,
+        action: 'personal_finance.update',
+        entityType: 'personal_finance_transaction',
+        entityId: id,
+        description: 'Lançamento financeiro pessoal editado.',
       );
     });
   }
@@ -3912,7 +4210,6 @@ extension OperationsRepository on AppDatabase {
         notes: Value(_cleanValue(notes)),
         createdBy: actorId,
         createdAt: now,
-        updatedAt: now,
       ),
     );
   }
@@ -4084,7 +4381,6 @@ extension OperationsRepository on AppDatabase {
     required String? base64Logo,
     required String actorId,
   }) async {
-    final now = DateTime.now();
     final value = _cleanValue(base64Logo);
     if (value == null) {
       await (delete(
@@ -4095,7 +4391,6 @@ extension OperationsRepository on AppDatabase {
         AppSettingsCompanion.insert(
           key: 'vaccination_report_logo_base64',
           value: value,
-          updatedAt: now,
           updatedBy: Value(actorId),
         ),
       );
@@ -4157,7 +4452,6 @@ extension OperationsRepository on AppDatabase {
           notes: Value(_cleanValue(notes)),
           createdBy: actorId,
           createdAt: now,
-          updatedAt: now,
         ),
       );
       await addAudit(
@@ -4351,6 +4645,7 @@ extension OperationsRepository on AppDatabase {
               notes: row.readNullable<String>('notes'),
               status: row.read<String>('status'),
               createdAt: row.read<DateTime>('created_at'),
+              updatedAt: row.read<DateTime>('updated_at'),
               createdBy: row.read<String>('created_by'),
             ),
             activeBirds: row.read<int>('active_birds'),
@@ -4522,7 +4817,6 @@ extension OperationsRepository on AppDatabase {
       AppSettingsCompanion.insert(
         key: key,
         value: value,
-        updatedAt: DateTime.now(),
         updatedBy: Value(actorId),
       ),
     );
@@ -4960,6 +5254,7 @@ extension OperationsRepository on AppDatabase {
                 notes: row.readNullable<String>('notes'),
                 createdBy: row.read<String>('created_by'),
                 createdAt: row.read<DateTime>('created_at'),
+                updatedAt: row.read<DateTime>('updated_at'),
               ),
               lotName: row.readNullable<String>('lot_name') ?? 'Lote removido',
               relatedLotName: row.readNullable<String>('related_lot_name'),
@@ -5465,10 +5760,43 @@ extension OperationsRepository on AppDatabase {
         'Arquivo de cópia de segurança SELETO inválido.',
       );
     }
+    Map<String, dynamic> normalizeUpdatedAt(Map<String, dynamic> row) {
+      if (row.containsKey('updatedAt')) return row;
+      Object? fallback;
+      for (final value in [
+        row['createdAt'],
+        row['timestamp'],
+        row['occurredAt'],
+        row['changedAt'],
+        row['assignedAt'],
+        row['capturedAt'],
+        row['scheduledAt'],
+        row['startsAt'],
+        row['soldAt'],
+        row['investmentDate'],
+        row['dueDate'],
+        row['purchasedAt'],
+        row['producedAt'],
+        row['feedingDate'],
+        row['collectedOn'],
+        row['effectiveDate'],
+        row['requestedDate'],
+      ]) {
+        if (value != null) {
+          fallback = value;
+          break;
+        }
+      }
+      return {
+        ...row,
+        'updatedAt': fallback ?? DateTime.now().toIso8601String(),
+      };
+    }
+
     List<Map<String, dynamic>> rows(String key) =>
         (raw[key] as List? ?? const [])
             .cast<Map>()
-            .map((e) => e.cast<String, dynamic>())
+            .map((e) => normalizeUpdatedAt(e.cast<String, dynamic>()))
             .toList();
     Map<String, dynamic> normalizeEggCollection(Map<String, dynamic> row) {
       if (row.containsKey('cleanEggs') &&
@@ -5486,6 +5814,11 @@ extension OperationsRepository on AppDatabase {
         'crackedEggs': discarded,
       };
     }
+
+    Map<String, dynamic> normalizeFinanceRow(Map<String, dynamic> row) => {
+      ...row,
+      'updatedAt': row['updatedAt'] ?? row['createdAt'] ?? row['occurredAt'],
+    };
 
     await transaction(() async {
       await delete(notificationSettings).go();
@@ -5618,7 +5951,9 @@ extension OperationsRepository on AppDatabase {
         await into(sales).insert(Sale.fromJson(_saleJson(e)));
       }
       for (final e in rows('finance')) {
-        await into(financeTransactions).insert(FinanceTransaction.fromJson(e));
+        await into(
+          financeTransactions,
+        ).insert(FinanceTransaction.fromJson(normalizeFinanceRow(e)));
       }
       for (final e in rows('investments')) {
         await into(investments).insert(Investment.fromJson(e));
@@ -5631,7 +5966,7 @@ extension OperationsRepository on AppDatabase {
       for (final e in rows('personalFinance')) {
         await into(
           personalFinanceTransactions,
-        ).insert(PersonalFinanceTransaction.fromJson(e));
+        ).insert(PersonalFinanceTransaction.fromJson(normalizeFinanceRow(e)));
       }
       for (final e in rows('financialReserves')) {
         await into(financialReserves).insert(FinancialReserve.fromJson(e));
@@ -5690,6 +6025,41 @@ extension OperationsRepository on AppDatabase {
 String? _cleanValue(String? value) {
   final result = value?.trim();
   return result == null || result.isEmpty ? null : result;
+}
+
+String? _mergeNotes(String? current, String? extra) {
+  final cleanCurrent = _cleanValue(current);
+  final cleanExtra = _cleanValue(extra);
+  if (cleanCurrent == null) return cleanExtra;
+  if (cleanExtra == null) return cleanCurrent;
+  return '$cleanCurrent\nPagamento: $cleanExtra';
+}
+
+DateTime _dateOnly(DateTime value) =>
+    DateTime(value.year, value.month, value.day);
+
+void _validatePersonalFinanceInput({
+  required String type,
+  required String status,
+  required String category,
+  required String description,
+  required int amountCents,
+}) {
+  if (!{'INCOME', 'EXPENSE'}.contains(type)) {
+    throw ArgumentError('Escolha se é entrada ou saída.');
+  }
+  if (!{'CONFIRMED', 'PENDING'}.contains(status)) {
+    throw ArgumentError('Status inválido para o lançamento pessoal.');
+  }
+  if (category.trim().isEmpty) {
+    throw ArgumentError('Escolha uma categoria.');
+  }
+  if (description.trim().isEmpty) {
+    throw ArgumentError('Informe uma descrição.');
+  }
+  if (amountCents <= 0) {
+    throw ArgumentError('Informe um valor maior que zero.');
+  }
 }
 
 String _normalizeVaccinationStatus(String value) {

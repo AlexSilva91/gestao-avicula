@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/operational_data_import.dart';
 import '../../../core/database/operations_repository.dart';
+import '../../../core/database/payables_import.dart';
 import '../../../core/platform/alert_scheduler.dart';
 import '../../../core/platform/notification_service.dart';
 import '../../auth/application/auth_controller.dart';
@@ -278,6 +279,10 @@ class OperationsController {
   final Ref ref;
 
   AppDatabase get _db => ref.read(databaseProvider);
+
+  Future<void> _reschedulePayableAlerts() =>
+      schedulePersistedAlerts(_db, tenantId: _tenantScope(ref));
+
   AuthSession _session() {
     final session = ref.read(authControllerProvider).session;
     if (session == null) {
@@ -632,18 +637,95 @@ class OperationsController {
     required String description,
     required int amount,
     String? payment,
+    String status = 'CONFIRMED',
+    DateTime? dueDate,
     String? notes,
-  }) => _db.addFinance(
-    type: type,
-    category: category,
-    description: description,
-    amountCents: amount,
-    paymentMethod: payment,
-    notes: notes,
-    actorId: _actor('finance.create'),
-  );
-  Future<void> cancelFinance(String id) =>
-      _db.cancelFinance(id, actorId: _actor('finance.update'));
+  }) async {
+    await _db.addFinance(
+      type: type,
+      category: category,
+      description: description,
+      amountCents: amount,
+      paymentMethod: payment,
+      status: status,
+      dueDate: dueDate,
+      notes: notes,
+      actorId: _actor('finance.create'),
+    );
+    await _reschedulePayableAlerts();
+  }
+
+  Future<int> importFinancePayables({
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    final entries = parsePayablesImport(filename: filename, bytes: bytes);
+    final actorId = _actor('finance.create');
+    for (final entry in entries) {
+      await _db.addFinance(
+        type: 'EXPENSE',
+        category: entry.category,
+        description: entry.description,
+        amountCents: entry.amountCents,
+        paymentMethod: entry.paymentMethod,
+        status: 'PENDING',
+        dueDate: entry.dueDate,
+        notes: entry.notes,
+        actorId: actorId,
+      );
+    }
+    await _reschedulePayableAlerts();
+    return entries.length;
+  }
+
+  Future<void> cancelFinance(String id) async {
+    await cancelPayableAlerts('finance_payable:$id');
+    await _db.cancelFinance(id, actorId: _actor('finance.update'));
+    await _reschedulePayableAlerts();
+  }
+
+  Future<void> payFinance({
+    required String id,
+    String? payment,
+    String? notes,
+  }) async {
+    await cancelPayableAlerts('finance_payable:$id');
+    await _db.payFinance(
+      id: id,
+      paymentMethod: payment,
+      notes: notes,
+      actorId: _actor('finance.update'),
+    );
+    await _reschedulePayableAlerts();
+  }
+
+  Future<void> updateFinance({
+    required String id,
+    required String type,
+    required String category,
+    required String description,
+    required int amount,
+    String? payment,
+    required String status,
+    DateTime? dueDate,
+    String? notes,
+  }) async {
+    await cancelPayableAlerts('finance_payable:$id');
+    await _db.updateFinance(
+      id: id,
+      type: type,
+      category: category,
+      description: description,
+      amountCents: amount,
+      paymentMethod: payment,
+      status: status,
+      dueDate: dueDate,
+      notes: notes,
+      actorId: _actor('finance.update'),
+    );
+    await _reschedulePayableAlerts();
+  }
+
   Future<void> addInvestment(
     String description,
     String category,
@@ -687,17 +769,92 @@ class OperationsController {
     required int amount,
     String? establishmentId,
     String? payment,
+    String status = 'CONFIRMED',
+    DateTime? dueDate,
     String? notes,
-  }) => _db.addPersonalFinance(
-    type: type,
-    category: category,
-    description: description,
-    amountCents: amount,
-    establishmentId: establishmentId,
-    paymentMethod: payment,
-    notes: notes,
-    actorId: _actor('finance.create'),
-  );
+  }) async {
+    await _db.addPersonalFinance(
+      type: type,
+      category: category,
+      description: description,
+      amountCents: amount,
+      establishmentId: establishmentId,
+      paymentMethod: payment,
+      status: status,
+      dueDate: dueDate,
+      notes: notes,
+      actorId: _actor('finance.create'),
+    );
+    await _reschedulePayableAlerts();
+  }
+
+  Future<int> importPersonalFinancePayables({
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    final entries = parsePayablesImport(filename: filename, bytes: bytes);
+    final actorId = _actor('finance.create');
+    for (final entry in entries) {
+      await _db.addPersonalFinance(
+        type: 'EXPENSE',
+        category: entry.category,
+        description: entry.description,
+        amountCents: entry.amountCents,
+        paymentMethod: entry.paymentMethod,
+        status: 'PENDING',
+        dueDate: entry.dueDate,
+        notes: entry.notes,
+        actorId: actorId,
+      );
+    }
+    await _reschedulePayableAlerts();
+    return entries.length;
+  }
+
+  Future<void> payPersonalFinance({
+    required String id,
+    String? payment,
+    String? notes,
+  }) async {
+    await cancelPayableAlerts('personal_payable:$id');
+    await _db.payPersonalFinance(
+      id: id,
+      paymentMethod: payment,
+      notes: notes,
+      actorId: _actor('finance.update'),
+    );
+    await _reschedulePayableAlerts();
+  }
+
+  Future<void> updatePersonalFinance({
+    required String id,
+    required String type,
+    required String category,
+    required String description,
+    required int amount,
+    String? establishmentId,
+    String? payment,
+    required String status,
+    DateTime? dueDate,
+    String? notes,
+  }) async {
+    await cancelPayableAlerts('personal_payable:$id');
+    await _db.updatePersonalFinance(
+      id: id,
+      type: type,
+      category: category,
+      description: description,
+      amountCents: amount,
+      establishmentId: establishmentId,
+      paymentMethod: payment,
+      status: status,
+      dueDate: dueDate,
+      notes: notes,
+      actorId: _actor('finance.update'),
+    );
+    await _reschedulePayableAlerts();
+  }
+
   Future<void> addFinancialReserve({
     required String name,
     required int targetAmount,

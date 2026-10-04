@@ -1,11 +1,107 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/database/app_database.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
 import '../../../lots/application/lots_controller.dart';
 import '../../application/operations_controller.dart';
+
+const _businessIncomeCategories = [
+  'Venda de ovos',
+  'Venda de aves',
+  'Serviços',
+  'Rendimentos',
+  'Reembolso',
+  'Bonificação',
+  'Outras receitas',
+];
+
+const _businessExpenseCategories = [
+  'Fatura de cartão',
+  'Boleto',
+  'Compra parcelada',
+  'Mensalidade de serviço',
+  'Ração',
+  'Insumos',
+  'Aves',
+  'Embalagem',
+  'Energia',
+  'Água',
+  'Medicamentos',
+  'Vacinas',
+  'Estrutura',
+  'Equipamentos',
+  'Manutenção',
+  'Impostos e taxas',
+  'Folha/pró-labore',
+  'Frete',
+  'Outras despesas',
+];
+
+const _personalIncomeCategories = [
+  'Salário',
+  'Pró-labore',
+  'Rendimentos',
+  'Renda extra',
+  'Aluguel recebido',
+  'Reembolso',
+  'Presente/doação',
+  'Outras entradas',
+];
+
+const _personalExpenseCategories = [
+  'Fatura de cartão',
+  'Boleto',
+  'Compra parcelada',
+  'Mensalidade de serviço',
+  'Faculdade/curso',
+  'Moradia',
+  'Mercado',
+  'Transporte',
+  'Saúde',
+  'Lazer',
+  'Educação',
+  'Impostos e taxas',
+  'Empréstimos',
+  'Outras saídas',
+];
+
+Future<void> importPayablesFile(
+  BuildContext context, {
+  required WidgetRef ref,
+  required bool personal,
+}) async {
+  try {
+    final picked = await FilePicker.pickFile(
+      dialogTitle: personal
+          ? 'Importar contas a pagar pessoais'
+          : 'Importar contas a pagar da granja',
+      type: FileType.custom,
+      allowedExtensions: ['csv', 'xml', 'xlsx', 'xls', 'xlsl'],
+    );
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    final controller = ref.read(operationsControllerProvider);
+    final count = personal
+        ? await controller.importPersonalFinancePayables(
+            filename: picked.name,
+            bytes: bytes,
+          )
+        : await controller.importFinancePayables(
+            filename: picked.name,
+            bytes: bytes,
+          );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$count conta(s) a pagar importada(s).')),
+    );
+  } catch (e) {
+    if (context.mounted) await showOperationError(context, e);
+  }
+}
 
 class FinancePage extends ConsumerWidget {
   const FinancePage({super.key});
@@ -14,7 +110,7 @@ class FinancePage extends ConsumerWidget {
     title: 'Financeiro da Granja',
     scrollable: false,
     child: DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -22,6 +118,7 @@ class FinancePage extends ConsumerWidget {
             isScrollable: true,
             tabs: [
               Tab(icon: Icon(Icons.receipt_long), text: 'Lançamentos'),
+              Tab(icon: Icon(Icons.event_available_outlined), text: 'Contas'),
               Tab(icon: Icon(Icons.foundation), text: 'Investimentos'),
               Tab(icon: Icon(Icons.calculate_outlined), text: 'Simulador'),
             ],
@@ -31,6 +128,7 @@ class FinancePage extends ConsumerWidget {
             child: TabBarView(
               children: [
                 _TransactionsTab(ref: ref),
+                _BusinessPayablesTab(ref: ref),
                 _InvestmentsTab(ref: ref),
                 _SimulatorTab(ref: ref),
               ],
@@ -49,7 +147,36 @@ class PersonalFinancePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) => AppShell(
     title: 'Finanças Pessoais',
     scrollable: false,
-    child: _PersonalFinanceTab(ref: ref),
+    child: DefaultTabController(
+      length: 5,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const TabBar(
+            isScrollable: true,
+            tabs: [
+              Tab(icon: Icon(Icons.dashboard_outlined), text: 'Resumo'),
+              Tab(icon: Icon(Icons.receipt_long), text: 'Lançamentos'),
+              Tab(icon: Icon(Icons.event_available_outlined), text: 'Contas'),
+              Tab(icon: Icon(Icons.savings_outlined), text: 'Patrimônio'),
+              Tab(icon: Icon(Icons.tune), text: 'Cadastros'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _PersonalOverviewTab(ref: ref),
+                _PersonalTransactionsTab(ref: ref),
+                _PersonalPayablesTab(ref: ref),
+                _PersonalAssetsTab(ref: ref),
+                _PersonalRecordsTab(ref: ref),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
   );
 }
 
@@ -62,6 +189,7 @@ class _TransactionsTab extends StatelessWidget {
     return SeletoTabList(
       children: [
         SeletoKpiGrid(
+          forceTwoColumns: true,
           children: [
             SeletoKpiCard(
               label: 'Faturamento',
@@ -116,6 +244,15 @@ class _TransactionsTab extends StatelessWidget {
                 icon: const Icon(Icons.add),
                 label: const Text('Novo lançamento'),
               ),
+              FilledButton.icon(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) =>
+                      _FinanceDialog(ref: ref, accountsPayable: true),
+                ),
+                icon: const Icon(Icons.event_available_outlined),
+                label: const Text('Conta a pagar'),
+              ),
             ],
           ),
         ),
@@ -139,86 +276,122 @@ class _TransactionsTab extends StatelessWidget {
                         itemCount: items.length,
                         separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (_, i) {
-                          final f = items[i];
-                          final income = f.type == 'INCOME';
-                          final cancelled = f.status == 'CANCELLED';
-                          final manual = f.referenceType == null;
-                          final amount =
-                              '${income ? '+' : '−'} ${money(f.amountCents)}';
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor:
-                                  (income ? Colors.green : Colors.red)
-                                      .withValues(alpha: .12),
-                              child: Icon(
-                                income ? Icons.south_west : Icons.north_east,
-                                color: income ? Colors.green : Colors.red,
-                              ),
-                            ),
-                            title: Text(
-                              '${f.description} · $amount',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Text(
-                              '${f.category} · ${shortDate.format(f.occurredAt)} · ${cancelled ? 'Cancelado' : 'Confirmado'}',
-                            ),
-                            trailing: cancelled
-                                ? const Chip(label: Text('Cancelado'))
-                                : manual
-                                ? PopupMenuButton<String>(
-                                    tooltip: 'Ações do lançamento',
-                                    onSelected: (_) async {
-                                      final confirm = await showDialog<bool>(
-                                        context: context,
-                                        builder: (dialogContext) => AlertDialog(
-                                          title: const Text(
-                                            'Cancelar lançamento',
-                                          ),
-                                          content: const Text(
-                                            'O lançamento continuará no histórico como cancelado e deixará de contar no resultado.',
-                                          ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () => Navigator.pop(
-                                                dialogContext,
-                                                false,
-                                              ),
-                                              child: const Text('Voltar'),
-                                            ),
-                                            FilledButton(
-                                              onPressed: () => Navigator.pop(
-                                                dialogContext,
-                                                true,
-                                              ),
-                                              child: const Text('Cancelar'),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                      if (confirm != true) return;
-                                      try {
-                                        await ref
-                                            .read(operationsControllerProvider)
-                                            .cancelFinance(f.id);
-                                      } catch (e) {
-                                        await showOperationError(context, e);
-                                      }
-                                    },
-                                    itemBuilder: (_) => const [
-                                      PopupMenuItem(
-                                        value: 'cancel',
-                                        child: Text('Cancelar lançamento'),
-                                      ),
-                                    ],
-                                  )
-                                : null,
-                          );
+                          return _BusinessFinanceTile(item: items[i], ref: ref);
                         },
                       ),
                     ),
             ),
       ],
+    );
+  }
+}
+
+class _BusinessFinanceTile extends StatelessWidget {
+  const _BusinessFinanceTile({required this.item, required this.ref});
+  final FinanceTransaction item;
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) {
+    final income = item.type == 'INCOME';
+    final cancelled = item.status == 'CANCELLED';
+    final pending = item.status == 'PENDING';
+    final manual = item.referenceType == null;
+    final amount = '${income ? '+' : '−'} ${money(item.amountCents)}';
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: (income ? Colors.green : Colors.red).withValues(
+          alpha: .12,
+        ),
+        child: Icon(
+          income ? Icons.south_west : Icons.north_east,
+          color: income ? Colors.green : Colors.red,
+        ),
+      ),
+      title: Text(
+        '${item.description} · $amount',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        '${item.category} · ${shortDate.format(item.occurredAt)} · ${_financeStatusLabel(item.status)}'
+        '${item.dueDate == null ? '' : ' · vence ${shortDate.format(item.dueDate!)}'}'
+        '${item.paymentMethod == null ? '' : ' · ${item.paymentMethod}'}',
+      ),
+      trailing: cancelled
+          ? const Chip(label: Text('Cancelado'))
+          : !manual
+          ? null
+          : PopupMenuButton<String>(
+              tooltip: 'Ações do lançamento',
+              onSelected: (action) async {
+                if (action == 'pay') {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (_) => _PaymentDialog(
+                      title: 'Efetuar pagamento',
+                      onPay: (payment, notes) => ref
+                          .read(operationsControllerProvider)
+                          .payFinance(
+                            id: item.id,
+                            payment: payment,
+                            notes: notes,
+                          ),
+                    ),
+                  );
+                  return;
+                }
+                if (action == 'edit') {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (_) => _FinanceDialog(ref: ref, editing: item),
+                  );
+                  return;
+                }
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: const Text('Cancelar lançamento'),
+                    content: const Text(
+                      'O lançamento continuará no histórico como cancelado e deixará de contar no resultado.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext, false),
+                        child: const Text('Voltar'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(dialogContext, true),
+                        child: const Text('Cancelar'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm != true) return;
+                try {
+                  await ref
+                      .read(operationsControllerProvider)
+                      .cancelFinance(item.id);
+                } catch (e) {
+                  await showOperationError(context, e);
+                }
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: Text('Editar lançamento'),
+                ),
+                if (pending)
+                  const PopupMenuItem(
+                    value: 'pay',
+                    child: Text('Efetuar pagamento'),
+                  ),
+                const PopupMenuItem(
+                  value: 'cancel',
+                  child: Text('Cancelar lançamento'),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -290,8 +463,68 @@ class _InvestmentsTab extends StatelessWidget {
       );
 }
 
-class _PersonalFinanceTab extends StatelessWidget {
-  const _PersonalFinanceTab({required this.ref});
+class _BusinessPayablesTab extends StatelessWidget {
+  const _BusinessPayablesTab({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) => SeletoTabList(
+    children: [
+      Align(
+        alignment: Alignment.centerRight,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => _importPayables(context, personal: false),
+              icon: const Icon(Icons.upload_file_outlined),
+              label: const Text('Importar'),
+            ),
+            FilledButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => _FinanceDialog(ref: ref, accountsPayable: true),
+              ),
+              icon: const Icon(Icons.add),
+              label: const Text('Nova conta'),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      ref
+          .watch(financeProvider)
+          .when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, _) => const SeletoAsyncError(),
+            data: (items) {
+              final pending = items
+                  .where((item) => item.status == 'PENDING')
+                  .toList();
+              return _SectionCard(
+                title: 'Contas a pagar da granja',
+                emptyIcon: Icons.event_available_outlined,
+                emptyTitle: 'Nenhuma conta pendente',
+                itemCount: pending.length,
+                itemBuilder: (_, i) =>
+                    _BusinessFinanceTile(item: pending[i], ref: ref),
+              );
+            },
+          ),
+    ],
+  );
+
+  Future<void> _importPayables(
+    BuildContext context, {
+    required bool personal,
+  }) async {
+    await importPayablesFile(context, ref: ref, personal: personal);
+  }
+}
+
+class _PersonalOverviewTab extends StatelessWidget {
+  const _PersonalOverviewTab({required this.ref});
   final WidgetRef ref;
 
   @override
@@ -300,6 +533,7 @@ class _PersonalFinanceTab extends StatelessWidget {
     return SeletoTabList(
       children: [
         SeletoKpiGrid(
+          forceTwoColumns: true,
           children: [
             SeletoKpiCard(
               label: 'Entradas pessoais',
@@ -355,81 +589,268 @@ class _PersonalFinanceTab extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 16),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => _EstablishmentDialog(ref: ref),
-                ),
-                icon: const Icon(Icons.storefront_outlined),
-                label: const Text('Estabelecimento'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => _ReserveDialog(ref: ref),
-                ),
-                icon: const Icon(Icons.savings_outlined),
-                label: const Text('Reserva'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => _PersonalInvestmentDialog(ref: ref),
-                ),
-                icon: const Icon(Icons.trending_up),
-                label: const Text('Investimento'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => _DebtDialog(ref: ref),
-                ),
-                icon: const Icon(Icons.credit_card),
-                label: const Text('Dívida'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => _ProLaboreTransferDialog(ref: ref),
-                ),
-                icon: const Icon(Icons.sync_alt),
-                label: const Text('Transferência'),
-              ),
-              FilledButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => _PersonalFinanceDialog(ref: ref),
-                ),
-                icon: const Icon(Icons.add),
-                label: const Text('Lançamento pessoal'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        _PersonalTransactions(ref: ref),
-        const SizedBox(height: 12),
-        _DebtList(ref: ref),
-        const SizedBox(height: 12),
-        _ReserveList(ref: ref),
-        const SizedBox(height: 12),
-        _PersonalInvestmentList(ref: ref),
-        const SizedBox(height: 12),
-        _EstablishmentList(ref: ref),
+        _PersonalActionGrid(ref: ref),
       ],
     );
   }
 }
 
-class _PersonalTransactions extends StatelessWidget {
-  const _PersonalTransactions({required this.ref});
+class _PersonalActionGrid extends StatelessWidget {
+  const _PersonalActionGrid({required this.ref});
   final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) => SeletoCompactGrid(
+    minTileHeight: 72,
+    spacing: 8,
+    children: [
+      _ActionCard(
+        icon: Icons.add,
+        title: 'Lançamento',
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (_) => _PersonalFinanceDialog(ref: ref),
+        ),
+      ),
+      _ActionCard(
+        icon: Icons.event_available_outlined,
+        title: 'Conta a pagar',
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (_) =>
+              _PersonalFinanceDialog(ref: ref, accountsPayable: true),
+        ),
+      ),
+      _ActionCard(
+        icon: Icons.savings_outlined,
+        title: 'Reserva',
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (_) => _ReserveDialog(ref: ref),
+        ),
+      ),
+      _ActionCard(
+        icon: Icons.trending_up,
+        title: 'Investimento',
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (_) => _PersonalInvestmentDialog(ref: ref),
+        ),
+      ),
+    ],
+  );
+}
+
+class _ActionCard extends StatelessWidget {
+  const _ActionCard({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Icon(icon, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _PersonalTransactionsTab extends StatelessWidget {
+  const _PersonalTransactionsTab({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) => SeletoTabList(
+    children: [
+      Align(
+        alignment: Alignment.centerRight,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => _ProLaboreTransferDialog(ref: ref),
+              ),
+              icon: const Icon(Icons.sync_alt),
+              label: const Text('Transferência'),
+            ),
+            FilledButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => _PersonalFinanceDialog(ref: ref),
+              ),
+              icon: const Icon(Icons.add),
+              label: const Text('Novo lançamento'),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      _PersonalTransactions(ref: ref, hidePending: true),
+    ],
+  );
+}
+
+class _PersonalPayablesTab extends StatelessWidget {
+  const _PersonalPayablesTab({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) => SeletoTabList(
+    children: [
+      Align(
+        alignment: Alignment.centerRight,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () =>
+                  importPayablesFile(context, ref: ref, personal: true),
+              icon: const Icon(Icons.upload_file_outlined),
+              label: const Text('Importar'),
+            ),
+            FilledButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) =>
+                    _PersonalFinanceDialog(ref: ref, accountsPayable: true),
+              ),
+              icon: const Icon(Icons.add),
+              label: const Text('Nova conta'),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      _PersonalTransactions(
+        ref: ref,
+        pendingOnly: true,
+        title: 'Contas a pagar pessoais',
+        emptyTitle: 'Nenhuma conta pendente',
+      ),
+    ],
+  );
+}
+
+class _PersonalAssetsTab extends StatelessWidget {
+  const _PersonalAssetsTab({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) => SeletoTabList(
+    children: [
+      Align(
+        alignment: Alignment.centerRight,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => _ReserveDialog(ref: ref),
+              ),
+              icon: const Icon(Icons.savings_outlined),
+              label: const Text('Reserva'),
+            ),
+            FilledButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => _PersonalInvestmentDialog(ref: ref),
+              ),
+              icon: const Icon(Icons.trending_up),
+              label: const Text('Investimento'),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      _ReserveList(ref: ref),
+      const SizedBox(height: 12),
+      _PersonalInvestmentList(ref: ref),
+    ],
+  );
+}
+
+class _PersonalRecordsTab extends StatelessWidget {
+  const _PersonalRecordsTab({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) => SeletoTabList(
+    children: [
+      Align(
+        alignment: Alignment.centerRight,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => _EstablishmentDialog(ref: ref),
+              ),
+              icon: const Icon(Icons.storefront_outlined),
+              label: const Text('Estabelecimento'),
+            ),
+            FilledButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => _DebtDialog(ref: ref),
+              ),
+              icon: const Icon(Icons.credit_card),
+              label: const Text('Dívida'),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      _DebtList(ref: ref),
+      const SizedBox(height: 12),
+      _EstablishmentList(ref: ref),
+    ],
+  );
+}
+
+class _PersonalTransactions extends StatelessWidget {
+  const _PersonalTransactions({
+    required this.ref,
+    this.pendingOnly = false,
+    this.hidePending = false,
+    this.title = 'Entradas e saídas pessoais',
+    this.emptyTitle = 'Sem lançamentos pessoais',
+  });
+  final WidgetRef ref;
+  final bool pendingOnly;
+  final bool hidePending;
+  final String title;
+  final String emptyTitle;
 
   @override
   Widget build(BuildContext context) => ref
@@ -437,31 +858,100 @@ class _PersonalTransactions extends StatelessWidget {
       .when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => const SeletoAsyncError(),
-        data: (items) => _SectionCard(
-          title: 'Entradas e saídas pessoais',
-          emptyIcon: Icons.account_balance_wallet_outlined,
-          emptyTitle: 'Sem lançamentos pessoais',
-          itemCount: items.length,
-          itemBuilder: (_, i) {
-            final item = items[i];
-            final income = item.type == 'INCOME';
-            return ListTile(
-              leading: Icon(
-                income ? Icons.south_west : Icons.north_east,
-                color: income ? Colors.green : Colors.red,
-              ),
-              title: Text(item.description),
-              subtitle: Text(
-                '${item.category} · ${shortDate.format(item.occurredAt)}'
-                '${item.paymentMethod == null ? '' : ' · ${item.paymentMethod}'}',
-              ),
-              trailing: Text(
-                '${income ? '+' : '−'} ${money(item.amountCents)}',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            );
-          },
-        ),
+        data: (items) {
+          final visible = items.where((item) {
+            if (pendingOnly) return item.status == 'PENDING';
+            if (hidePending) return item.status != 'PENDING';
+            return true;
+          }).toList();
+          return _SectionCard(
+            title: title,
+            emptyIcon: pendingOnly
+                ? Icons.event_available_outlined
+                : Icons.account_balance_wallet_outlined,
+            emptyTitle: emptyTitle,
+            itemCount: visible.length,
+            itemBuilder: (_, i) {
+              final item = visible[i];
+              final income = item.type == 'INCOME';
+              final pending = item.status == 'PENDING';
+              return ListTile(
+                leading: Icon(
+                  pending
+                      ? Icons.event_available_outlined
+                      : income
+                      ? Icons.south_west
+                      : Icons.north_east,
+                  color: pending
+                      ? Colors.deepOrange
+                      : income
+                      ? Colors.green
+                      : Colors.red,
+                ),
+                title: Text(item.description),
+                subtitle: Text(
+                  '${item.category} · ${shortDate.format(item.occurredAt)}'
+                  ' · ${_financeStatusLabel(item.status)}'
+                  '${item.dueDate == null ? '' : ' · vence ${shortDate.format(item.dueDate!)}'}'
+                  '${item.paymentMethod == null ? '' : ' · ${item.paymentMethod}'}',
+                ),
+                trailing: item.referenceType != null
+                    ? Text(
+                        '${income ? '+' : '−'} ${money(item.amountCents)}',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${income ? '+' : '−'} ${money(item.amountCents)}',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          PopupMenuButton<String>(
+                            tooltip: 'Ações do lançamento pessoal',
+                            onSelected: (action) async {
+                              if (action == 'edit') {
+                                await showDialog<void>(
+                                  context: context,
+                                  builder: (_) => _PersonalFinanceDialog(
+                                    ref: ref,
+                                    editing: item,
+                                  ),
+                                );
+                                return;
+                              }
+                              await showDialog<void>(
+                                context: context,
+                                builder: (_) => _PaymentDialog(
+                                  title: 'Efetuar pagamento pessoal',
+                                  onPay: (payment, notes) => ref
+                                      .read(operationsControllerProvider)
+                                      .payPersonalFinance(
+                                        id: item.id,
+                                        payment: payment,
+                                        notes: notes,
+                                      ),
+                                ),
+                              );
+                            },
+                            itemBuilder: (_) => [
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Text('Editar lançamento'),
+                              ),
+                              if (pending)
+                                const PopupMenuItem(
+                                  value: 'pay',
+                                  child: Text('Efetuar pagamento'),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+              );
+            },
+          );
+        },
       );
 }
 
@@ -648,6 +1138,69 @@ class _SectionCard extends StatelessWidget {
   );
 }
 
+class _PaymentDialog extends StatefulWidget {
+  const _PaymentDialog({required this.title, required this.onPay});
+
+  final String title;
+  final Future<void> Function(String payment, String notes) onPay;
+
+  @override
+  State<_PaymentDialog> createState() => _PaymentDialogState();
+}
+
+class _PaymentDialogState extends State<_PaymentDialog> {
+  final payment = TextEditingController();
+  final notes = TextEditingController();
+  bool saving = false;
+
+  @override
+  void dispose() {
+    payment.dispose();
+    notes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: _DialogFields(
+      children: [
+        TextField(
+          controller: payment,
+          decoration: const InputDecoration(labelText: 'Forma/conta usada'),
+        ),
+        TextField(
+          controller: notes,
+          decoration: const InputDecoration(
+            labelText: 'Observação do pagamento',
+          ),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: saving ? null : () => Navigator.pop(context),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton(
+        onPressed: saving
+            ? null
+            : () async {
+                setState(() => saving = true);
+                try {
+                  await widget.onPay(payment.text, notes.text);
+                  if (context.mounted) Navigator.pop(context);
+                } catch (e) {
+                  await showOperationError(context, e);
+                  if (mounted) setState(() => saving = false);
+                }
+              },
+        child: const Text('Pagar'),
+      ),
+    ],
+  );
+}
+
 class _SimulatorTab extends StatefulWidget {
   const _SimulatorTab({required this.ref});
   final WidgetRef ref;
@@ -745,121 +1298,195 @@ class _SimulatorTabState extends State<_SimulatorTab> {
 }
 
 class _FinanceDialog extends StatefulWidget {
-  const _FinanceDialog({required this.ref});
+  const _FinanceDialog({
+    required this.ref,
+    this.accountsPayable = false,
+    this.editing,
+  });
   final WidgetRef ref;
+  final bool accountsPayable;
+  final FinanceTransaction? editing;
   @override
   State<_FinanceDialog> createState() => _FinanceDialogState();
 }
 
 class _FinanceDialogState extends State<_FinanceDialog> {
   String type = 'EXPENSE';
-  String category = 'Outros';
+  String category = _businessExpenseCategories.first;
   final description = TextEditingController();
   final amount = TextEditingController();
+  final payment = TextEditingController();
   final notes = TextEditingController();
+  DateTime dueDate = DateTime.now();
   bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final item = widget.editing;
+    if (item == null) return;
+    type = item.type;
+    category = item.category;
+    description.text = item.description;
+    amount.text = _moneyInput(item.amountCents);
+    payment.text = item.paymentMethod ?? '';
+    notes.text = item.notes ?? '';
+    dueDate = item.dueDate ?? DateTime.now();
+  }
+
   @override
   void dispose() {
     description.dispose();
     amount.dispose();
+    payment.dispose();
     notes.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Novo lançamento'),
-    content: SizedBox(
-      width: 460,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'INCOME', label: Text('Receita')),
-              ButtonSegment(value: 'EXPENSE', label: Text('Despesa')),
+  Widget build(BuildContext context) {
+    final categories = type == 'INCOME'
+        ? _businessIncomeCategories
+        : _businessExpenseCategories;
+    final isEditing = widget.editing != null;
+    final payableMode =
+        widget.accountsPayable || widget.editing?.status == 'PENDING';
+    if (!categories.contains(category)) category = categories.first;
+    return AlertDialog(
+      title: Text(
+        isEditing
+            ? 'Editar lançamento'
+            : payableMode
+            ? 'Conta a pagar'
+            : 'Novo lançamento',
+      ),
+      content: SizedBox(
+        width: 460,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!payableMode) ...[
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'INCOME', label: Text('Entrada')),
+                  ButtonSegment(value: 'EXPENSE', label: Text('Saída')),
+                ],
+                selected: {type},
+                onSelectionChanged: (v) => setState(() => type = v.first),
+              ),
+              const SizedBox(height: 12),
             ],
-            selected: {type},
-            onSelectionChanged: (v) => setState(() => type = v.first),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: category,
-            decoration: const InputDecoration(labelText: 'Categoria'),
-            items: [
-              for (final c
-                  in type == 'INCOME'
-                      ? ['Venda de ovos', 'Venda de aves', 'Outras']
-                      : [
-                          'Ração',
-                          'Insumos',
-                          'Aves',
-                          'Embalagem',
-                          'Energia',
-                          'Água',
-                          'Medicamentos',
-                          'Vacinas',
-                          'Estrutura',
-                          'Equipamentos',
-                          'Manutenção',
-                          'Outros',
-                        ])
-                DropdownMenuItem(value: c, child: Text(c)),
-            ],
-            onChanged: (v) => setState(() => category = v!),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: description,
-            decoration: const InputDecoration(labelText: 'Descrição'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: amount,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Valor',
-              prefixText: 'R\$ ',
+            DropdownButtonFormField<String>(
+              initialValue: category,
+              decoration: const InputDecoration(labelText: 'Categoria'),
+              items: [
+                for (final c in categories)
+                  DropdownMenuItem(value: c, child: Text(c)),
+              ],
+              onChanged: (v) => setState(() => category = v!),
             ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: notes,
-            decoration: const InputDecoration(labelText: 'Observações'),
-          ),
-        ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: description,
+              decoration: const InputDecoration(labelText: 'Descrição'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: amount,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Valor',
+                prefixText: 'R\$ ',
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (!payableMode) ...[
+              TextField(
+                controller: payment,
+                decoration: const InputDecoration(labelText: 'Forma/conta'),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (payableMode) ...[
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.event_outlined),
+                title: const Text('Data de vencimento'),
+                subtitle: Text(shortDate.format(dueDate)),
+                trailing: const Icon(Icons.edit_calendar_outlined),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: dueDate,
+                    firstDate: DateTime.now().subtract(
+                      const Duration(days: 365),
+                    ),
+                    lastDate: DateTime.now().add(const Duration(days: 3650)),
+                  );
+                  if (picked != null) setState(() => dueDate = picked);
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+            TextField(
+              controller: notes,
+              decoration: const InputDecoration(labelText: 'Observações'),
+            ),
+          ],
+        ),
       ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Cancelar'),
-      ),
-      FilledButton(
-        onPressed: saving
-            ? null
-            : () async {
-                setState(() => saving = true);
-                try {
-                  await widget.ref
-                      .read(operationsControllerProvider)
-                      .addFinance(
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: saving
+              ? null
+              : () async {
+                  setState(() => saving = true);
+                  try {
+                    final controller = widget.ref.read(
+                      operationsControllerProvider,
+                    );
+                    final status = payableMode ? 'PENDING' : 'CONFIRMED';
+                    if (isEditing) {
+                      await controller.updateFinance(
+                        id: widget.editing!.id,
                         type: type,
                         category: category,
                         description: description.text,
                         amount: parseMoneyToCents(amount.text),
+                        payment: payment.text,
+                        status: status,
+                        dueDate: payableMode ? dueDate : null,
                         notes: notes.text,
                       );
-                  if (context.mounted) Navigator.pop(context);
-                } catch (e) {
-                  await showOperationError(context, e);
-                  if (mounted) setState(() => saving = false);
-                }
-              },
-        child: const Text('Registrar'),
-      ),
-    ],
-  );
+                    } else {
+                      await controller.addFinance(
+                        type: type,
+                        category: category,
+                        description: description.text,
+                        amount: parseMoneyToCents(amount.text),
+                        payment: payment.text,
+                        status: status,
+                        dueDate: payableMode ? dueDate : null,
+                        notes: notes.text,
+                      );
+                    }
+                    if (context.mounted) Navigator.pop(context);
+                  } catch (e) {
+                    await showOperationError(context, e);
+                    if (mounted) setState(() => saving = false);
+                  }
+                },
+          child: Text(isEditing ? 'Salvar' : 'Registrar'),
+        ),
+      ],
+    );
+  }
 }
 
 class _ProLaboreDialog extends StatefulWidget {
@@ -941,20 +1568,43 @@ class _ProLaboreDialogState extends State<_ProLaboreDialog> {
 }
 
 class _PersonalFinanceDialog extends StatefulWidget {
-  const _PersonalFinanceDialog({required this.ref});
+  const _PersonalFinanceDialog({
+    required this.ref,
+    this.accountsPayable = false,
+    this.editing,
+  });
   final WidgetRef ref;
+  final bool accountsPayable;
+  final PersonalFinanceTransaction? editing;
   @override
   State<_PersonalFinanceDialog> createState() => _PersonalFinanceDialogState();
 }
 
 class _PersonalFinanceDialogState extends State<_PersonalFinanceDialog> {
   String type = 'EXPENSE';
-  String category = 'Cartão';
+  String category = _personalExpenseCategories.first;
   String? establishmentId;
   final description = TextEditingController();
   final amount = TextEditingController();
   final payment = TextEditingController();
   final notes = TextEditingController();
+  DateTime dueDate = DateTime.now();
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final item = widget.editing;
+    if (item == null) return;
+    type = item.type;
+    category = item.category;
+    establishmentId = item.establishmentId;
+    description.text = item.description;
+    amount.text = _moneyInput(item.amountCents);
+    payment.text = item.paymentMethod ?? '';
+    notes.text = item.notes ?? '';
+    dueDate = item.dueDate ?? DateTime.now();
+  }
 
   @override
   void dispose() {
@@ -970,29 +1620,31 @@ class _PersonalFinanceDialogState extends State<_PersonalFinanceDialog> {
     final establishments =
         widget.ref.watch(financialEstablishmentsProvider).asData?.value ?? [];
     final categories = type == 'INCOME'
-        ? ['Pró-labore', 'Renda extra', 'Reembolso', 'Outras']
-        : [
-            'Cartão',
-            'Mercado',
-            'Casa',
-            'Transporte',
-            'Saúde',
-            'Lazer',
-            'Outras',
-          ];
+        ? _personalIncomeCategories
+        : _personalExpenseCategories;
+    final isEditing = widget.editing != null;
+    final payableMode =
+        widget.accountsPayable || widget.editing?.status == 'PENDING';
     if (!categories.contains(category)) category = categories.first;
     return AlertDialog(
-      title: const Text('Lançamento pessoal'),
+      title: Text(
+        isEditing
+            ? 'Editar lançamento pessoal'
+            : payableMode
+            ? 'Conta a pagar pessoal'
+            : 'Lançamento pessoal',
+      ),
       content: _DialogFields(
         children: [
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'INCOME', label: Text('Entrada')),
-              ButtonSegment(value: 'EXPENSE', label: Text('Saída')),
-            ],
-            selected: {type},
-            onSelectionChanged: (v) => setState(() => type = v.first),
-          ),
+          if (!payableMode)
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'INCOME', label: Text('Entrada')),
+                ButtonSegment(value: 'EXPENSE', label: Text('Saída')),
+              ],
+              selected: {type},
+              onSelectionChanged: (v) => setState(() => type = v.first),
+            ),
           DropdownButtonFormField<String>(
             initialValue: category,
             decoration: const InputDecoration(labelText: 'Categoria'),
@@ -1028,6 +1680,23 @@ class _PersonalFinanceDialogState extends State<_PersonalFinanceDialog> {
             controller: payment,
             decoration: const InputDecoration(labelText: 'Cartão/conta/forma'),
           ),
+          if (payableMode)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.event_outlined),
+              title: const Text('Data de vencimento'),
+              subtitle: Text(shortDate.format(dueDate)),
+              trailing: const Icon(Icons.edit_calendar_outlined),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: dueDate,
+                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                  lastDate: DateTime.now().add(const Duration(days: 3650)),
+                );
+                if (picked != null) setState(() => dueDate = picked);
+              },
+            ),
           TextField(
             controller: notes,
             decoration: const InputDecoration(labelText: 'Observações'),
@@ -1036,29 +1705,59 @@ class _PersonalFinanceDialogState extends State<_PersonalFinanceDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: saving ? null : () => Navigator.pop(context),
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          onPressed: () async {
-            try {
-              await widget.ref
-                  .read(operationsControllerProvider)
-                  .addPersonalFinance(
-                    type: type,
-                    category: category,
-                    description: description.text,
-                    amount: parseMoneyToCents(amount.text),
-                    establishmentId: establishmentId,
-                    payment: payment.text,
-                    notes: notes.text,
-                  );
-              if (context.mounted) Navigator.pop(context);
-            } catch (e) {
-              await showOperationError(context, e);
-            }
-          },
-          child: const Text('Registrar'),
+          onPressed: saving
+              ? null
+              : () async {
+                  setState(() => saving = true);
+                  try {
+                    final controller = widget.ref.read(
+                      operationsControllerProvider,
+                    );
+                    final status = payableMode ? 'PENDING' : 'CONFIRMED';
+                    final amountCents = parseMoneyToCents(amount.text);
+                    if (amountCents <= 0) {
+                      throw ArgumentError('Informe um valor maior que zero.');
+                    }
+                    final cleanDescription = description.text.trim().isEmpty
+                        ? category
+                        : description.text.trim();
+                    if (isEditing) {
+                      await controller.updatePersonalFinance(
+                        id: widget.editing!.id,
+                        type: type,
+                        category: category,
+                        description: cleanDescription,
+                        amount: amountCents,
+                        establishmentId: establishmentId,
+                        payment: payment.text,
+                        status: status,
+                        dueDate: payableMode ? dueDate : null,
+                        notes: notes.text,
+                      );
+                    } else {
+                      await controller.addPersonalFinance(
+                        type: type,
+                        category: category,
+                        description: cleanDescription,
+                        amount: amountCents,
+                        establishmentId: establishmentId,
+                        payment: payment.text,
+                        status: status,
+                        dueDate: payableMode ? dueDate : null,
+                        notes: notes.text,
+                      );
+                    }
+                    if (context.mounted) Navigator.pop(context);
+                  } catch (e) {
+                    await showOperationError(context, e);
+                    if (mounted) setState(() => saving = false);
+                  }
+                },
+          child: Text(isEditing ? 'Salvar' : 'Registrar'),
         ),
       ],
     );
@@ -1132,6 +1831,10 @@ class _ProLaboreTransferDialogState extends State<_ProLaboreTransferDialog> {
         onPressed: () async {
           try {
             final name = beneficiary.text.trim();
+            final amountCents = parseMoneyToCents(amount.text);
+            if (amountCents <= 0) {
+              throw ArgumentError('Informe um valor maior que zero.');
+            }
             await widget.ref
                 .read(operationsControllerProvider)
                 .addPersonalFinance(
@@ -1140,7 +1843,7 @@ class _ProLaboreTransferDialogState extends State<_ProLaboreTransferDialog> {
                   description: name.isEmpty
                       ? 'Transferência de pró-labore'
                       : 'Transferência de pró-labore para $name',
-                  amount: parseMoneyToCents(amount.text),
+                  amount: amountCents,
                   payment: origin.text,
                   notes: [
                     if (destination.text.trim().isNotEmpty)
@@ -1682,6 +2385,14 @@ class _DebtDialogState extends State<_DebtDialog> {
     ],
   );
 }
+
+String _financeStatusLabel(String status) => switch (status) {
+  'PENDING' => 'Pendente',
+  'CANCELLED' => 'Cancelado',
+  _ => 'Confirmado',
+};
+
+String _moneyInput(int cents) => (cents / 100).toStringAsFixed(2);
 
 class _DialogFields extends StatelessWidget {
   const _DialogFields({required this.children});

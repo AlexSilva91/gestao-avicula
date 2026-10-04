@@ -128,6 +128,8 @@ class Tenants extends Table {
   TextColumn get name => text().unique()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   TextColumn get createdBy => text().nullable()();
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -143,7 +145,8 @@ class Users extends Table {
   BoolColumn get isSuperuser => boolean().withDefault(const Constant(false))();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime()();
-  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   DateTimeColumn get lastLoginAt => dateTime().nullable()();
   DateTimeColumn get lastSeenAt => dateTime().nullable()();
   @override
@@ -155,6 +158,8 @@ class UserPermissions extends Table {
   TextColumn get userId => text()();
   TextColumn get permission => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
   @override
@@ -172,6 +177,8 @@ class AuditLogs extends Table {
   DateTimeColumn get timestamp => dateTime()();
   TextColumn get description => text()();
   TextColumn get metadata => text().nullable()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -190,6 +197,8 @@ class Lots extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get status => text().withDefault(const Constant('ACTIVE'))();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   TextColumn get createdBy => text()();
 
   @override
@@ -209,6 +218,8 @@ class BirdMovements extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -227,6 +238,8 @@ class EggCollections extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -242,6 +255,8 @@ class EggStockMovements extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -392,15 +407,36 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 21;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
+      await _createUpdatedAtTriggers();
       await _createPerformanceIndexes();
     },
     onUpgrade: (m, from, to) async {
+      const nowSql = "CAST(strftime('%s','now') AS INTEGER)";
+      Future<void> addUpdatedAtColumn(
+        String tableName,
+        String fallbackSql,
+      ) async {
+        final columns = await customSelect(
+          'PRAGMA table_info($tableName)',
+        ).get();
+        final alreadyExists = columns.any(
+          (column) => column.read<String>('name') == 'updated_at',
+        );
+        if (alreadyExists) return;
+        await customStatement(
+          'ALTER TABLE $tableName ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0',
+        );
+        await customStatement(
+          'UPDATE $tableName SET updated_at = COALESCE(NULLIF($fallbackSql, 0), $nowSql) WHERE updated_at = 0',
+        );
+      }
+
       if (from < 2) {
         await m.createTable(lots);
         await m.createTable(birdMovements);
@@ -519,6 +555,86 @@ class AppDatabase extends _$AppDatabase {
           'UPDATE calendar_events SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = 0',
         );
       }
+      if (from < 19) {
+        if (from >= 5) {
+          await m.addColumn(financeTransactions, financeTransactions.dueDate);
+        }
+        if (from >= 17) {
+          await m.addColumn(
+            personalFinanceTransactions,
+            personalFinanceTransactions.dueDate,
+          );
+        }
+      }
+      if (from < 20) {
+        if (from >= 5) {
+          await customStatement(
+            'ALTER TABLE finance_transactions ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0',
+          );
+          await customStatement(
+            'UPDATE finance_transactions SET updated_at = created_at WHERE updated_at = 0',
+          );
+        }
+        if (from >= 17) {
+          await customStatement(
+            'ALTER TABLE personal_finance_transactions ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0',
+          );
+          await customStatement(
+            'UPDATE personal_finance_transactions SET updated_at = created_at WHERE updated_at = 0',
+          );
+        }
+      }
+      if (from < 21) {
+        await addUpdatedAtColumn('tenants', 'created_at');
+        await addUpdatedAtColumn('users', 'created_at');
+        await addUpdatedAtColumn('user_permissions', 'created_at');
+        await addUpdatedAtColumn('audit_logs', 'timestamp');
+        await addUpdatedAtColumn('lots', 'created_at');
+        await addUpdatedAtColumn('bird_movements', 'created_at');
+        await addUpdatedAtColumn('egg_collections', 'created_at');
+        await addUpdatedAtColumn('egg_stock_movements', 'created_at');
+        await addUpdatedAtColumn('ingredients', 'created_at');
+        await addUpdatedAtColumn('ingredient_price_history', 'created_at');
+        await addUpdatedAtColumn('ingredient_lots', 'created_at');
+        await addUpdatedAtColumn('ingredient_stock_movements', 'created_at');
+        await addUpdatedAtColumn('feed_formulas', 'created_at');
+        await addUpdatedAtColumn('feed_formula_items', nowSql);
+        await addUpdatedAtColumn('feed_batches', 'created_at');
+        await addUpdatedAtColumn('feed_batch_items', nowSql);
+        await addUpdatedAtColumn('feed_stock_movements', 'created_at');
+        await addUpdatedAtColumn('daily_feedings', 'created_at');
+        await addUpdatedAtColumn(
+          'feed_consumption_recommendations',
+          'created_at',
+        );
+        await addUpdatedAtColumn('customers', 'created_at');
+        await addUpdatedAtColumn('orders', 'created_at');
+        await addUpdatedAtColumn('order_items', nowSql);
+        await addUpdatedAtColumn('order_status_history', 'changed_at');
+        await addUpdatedAtColumn('packaging_items', 'created_at');
+        await addUpdatedAtColumn('packaging_lots', 'created_at');
+        await addUpdatedAtColumn('packaging_stock_movements', 'created_at');
+        await addUpdatedAtColumn('egg_tray_batches', 'created_at');
+        await addUpdatedAtColumn('egg_tray_stock_movements', 'created_at');
+        await addUpdatedAtColumn('sales', 'created_at');
+        await addUpdatedAtColumn('finance_transactions', 'created_at');
+        await addUpdatedAtColumn('investments', 'created_at');
+        await addUpdatedAtColumn('financial_establishments', 'created_at');
+        await addUpdatedAtColumn('personal_finance_transactions', 'created_at');
+        await addUpdatedAtColumn('financial_reserves', 'created_at');
+        await addUpdatedAtColumn('personal_investments', 'created_at');
+        await addUpdatedAtColumn('personal_debts', 'created_at');
+        await addUpdatedAtColumn('lighting_programs', 'created_at');
+        await addUpdatedAtColumn('lighting_program_steps', nowSql);
+        await addUpdatedAtColumn('lot_lighting_programs', 'assigned_at');
+        await addUpdatedAtColumn('calendar_events', 'created_at');
+        await addUpdatedAtColumn('notification_settings', nowSql);
+        await addUpdatedAtColumn('app_settings', 'updated_at');
+        await addUpdatedAtColumn('sensor_readings', 'created_at');
+        await addUpdatedAtColumn('automation_events', 'created_at');
+        await addUpdatedAtColumn('vaccination_records', 'created_at');
+      }
+      await _createUpdatedAtTriggers();
       await _createPerformanceIndexes();
     },
     beforeOpen: (_) async {
@@ -526,6 +642,69 @@ class AppDatabase extends _$AppDatabase {
       await _ensureInitialSuperAdminPermission();
     },
   );
+
+  Future<void> _createUpdatedAtTriggers() async {
+    const tableNames = [
+      'tenants',
+      'users',
+      'user_permissions',
+      'audit_logs',
+      'lots',
+      'bird_movements',
+      'egg_collections',
+      'egg_stock_movements',
+      'ingredients',
+      'ingredient_price_history',
+      'ingredient_lots',
+      'ingredient_stock_movements',
+      'feed_formulas',
+      'feed_formula_items',
+      'feed_batches',
+      'feed_batch_items',
+      'feed_stock_movements',
+      'daily_feedings',
+      'feed_consumption_recommendations',
+      'customers',
+      'orders',
+      'order_items',
+      'order_status_history',
+      'packaging_items',
+      'packaging_lots',
+      'packaging_stock_movements',
+      'egg_tray_batches',
+      'egg_tray_stock_movements',
+      'sales',
+      'finance_transactions',
+      'investments',
+      'financial_establishments',
+      'personal_finance_transactions',
+      'financial_reserves',
+      'personal_investments',
+      'personal_debts',
+      'lighting_programs',
+      'lighting_program_steps',
+      'lot_lighting_programs',
+      'calendar_events',
+      'notification_settings',
+      'app_settings',
+      'sensor_readings',
+      'automation_events',
+      'vaccination_records',
+    ];
+    for (final tableName in tableNames) {
+      await customStatement('''
+        CREATE TRIGGER IF NOT EXISTS ${tableName}_touch_updated_at
+        AFTER UPDATE ON $tableName
+        FOR EACH ROW
+        WHEN NEW.updated_at = OLD.updated_at
+        BEGIN
+          UPDATE $tableName
+          SET updated_at = CAST(strftime('%s','now') AS INTEGER)
+          WHERE rowid = NEW.rowid;
+        END
+      ''');
+    }
+  }
 
   Future<void> _createPerformanceIndexes() async {
     await customStatement(
@@ -718,7 +897,6 @@ class AppDatabase extends _$AppDatabase {
         AppSettingsCompanion.insert(
           key: 'formula_items_sanitized_2026_09_12',
           value: now.toIso8601String(),
-          updatedAt: now,
           updatedBy: Value(actorId),
         ),
       );
@@ -798,7 +976,6 @@ class AppDatabase extends _$AppDatabase {
           AppSettingsCompanion.insert(
             key: _requestedManufactureProposalFormulasSettingKey,
             value: now.toIso8601String(),
-            updatedAt: now,
             updatedBy: Value(actorId),
           ),
         );
@@ -1056,7 +1233,6 @@ class AppDatabase extends _$AppDatabase {
           AppSettingsCompanion.insert(
             key: _defaultFormulaStockRebuildSettingKey,
             value: now.toIso8601String(),
-            updatedAt: now,
             updatedBy: Value(actorId),
           ),
         );
@@ -1218,7 +1394,6 @@ class AppDatabase extends _$AppDatabase {
           AppSettingsCompanion.insert(
             key: _operationalDefaultsSeedSettingKey,
             value: now.toIso8601String(),
-            updatedAt: now,
             updatedBy: Value(actorId),
           ),
         );
@@ -1280,7 +1455,6 @@ class AppDatabase extends _$AppDatabase {
         AppSettingsCompanion.insert(
           key: 'production_feed_grams_per_bird',
           value: '115',
-          updatedAt: now,
           updatedBy: Value(actorId),
         ),
         mode: InsertMode.insertOrIgnore,
@@ -1289,7 +1463,6 @@ class AppDatabase extends _$AppDatabase {
         AppSettingsCompanion.insert(
           key: 'projected_laying_rate',
           value: '0.87',
-          updatedAt: now,
           updatedBy: Value(actorId),
         ),
         mode: InsertMode.insertOrIgnore,
@@ -1564,7 +1737,6 @@ class AppDatabase extends _$AppDatabase {
           passwordHash: PasswordHasher.hash(password),
           isSuperuser: Value(isSuperuser),
           createdAt: now,
-          updatedAt: now,
         ),
       );
       for (final permission in permissions.toSet()) {
@@ -1615,7 +1787,6 @@ class AppDatabase extends _$AppDatabase {
           passwordHash: PasswordHasher.hash(password),
           isSuperuser: const Value(true),
           createdAt: now,
-          updatedAt: now,
         ),
       );
       await into(userPermissions).insert(
@@ -1683,7 +1854,6 @@ class AppDatabase extends _$AppDatabase {
           isSuperuser: const Value(false),
           isActive: const Value(false),
           createdAt: now,
-          updatedAt: now,
         ),
       );
       await addAudit(
@@ -1917,6 +2087,7 @@ class AppDatabase extends _$AppDatabase {
                 notes: row.readNullable<String>('notes'),
                 status: row.read<String>('status'),
                 createdAt: row.read<DateTime>('created_at'),
+                updatedAt: row.read<DateTime>('updated_at'),
                 createdBy: row.read<String>('created_by'),
               ),
               activeBirds: row.read<int>('active_birds'),

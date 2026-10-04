@@ -18,4 +18,11 @@ void main() {
     expect(parseDecimal('540 g'), .54);
     expect(parseDecimal('540 gramas'), .54);
   });
+
+  test('money parser keeps cents for comma and dot decimal inputs', () {
+    expect(parseMoneyToCents('803,78'), 80378);
+    expect(parseMoneyToCents('803.78'), 80378);
+    expect(parseMoneyToCents('R\$ 803,78'), 80378);
+    expect(parseMoneyToCents('80.378,00'), 8037800);
+  });
 }

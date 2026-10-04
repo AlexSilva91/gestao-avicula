@@ -7,6 +7,8 @@ class Ingredients extends Table {
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   TextColumn get createdBy => text()();
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -21,6 +23,8 @@ class IngredientPriceHistory extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -40,6 +44,8 @@ class IngredientLots extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -58,6 +64,8 @@ class IngredientStockMovements extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -72,6 +80,8 @@ class FeedFormulas extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -81,6 +91,8 @@ class FeedFormulaItems extends Table {
   TextColumn get formulaId => text()();
   TextColumn get ingredientId => text()();
   RealColumn get baseQuantityKg => real()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -97,6 +109,8 @@ class FeedBatches extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -108,6 +122,8 @@ class FeedBatchItems extends Table {
   RealColumn get quantityKg => real()();
   IntColumn get pricePerKgCentsSnapshot => integer()();
   IntColumn get itemCostCents => integer()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -122,6 +138,8 @@ class FeedStockMovements extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -135,6 +153,8 @@ class DailyFeedings extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -149,6 +169,8 @@ class FeedConsumptionRecommendations extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -161,6 +183,8 @@ class Customers extends Table {
   TextColumn get notes => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   TextColumn get createdBy => text()();
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -180,7 +204,8 @@ class Orders extends Table {
   TextColumn get createdBy => text()();
   TextColumn get updatedBy => text()();
   DateTimeColumn get createdAt => dateTime()();
-  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -192,6 +217,8 @@ class OrderItems extends Table {
   RealColumn get quantity => real()();
   IntColumn get unitPriceCents => integer()();
   IntColumn get totalCents => integer()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -204,6 +231,8 @@ class OrderStatusHistory extends Table {
   DateTimeColumn get changedAt => dateTime()();
   TextColumn get changedBy => text()();
   TextColumn get notes => text().nullable()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -216,6 +245,8 @@ class PackagingItems extends Table {
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -232,6 +263,8 @@ class PackagingLots extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -247,6 +280,8 @@ class PackagingStockMovements extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -270,6 +305,8 @@ class EggTrayBatches extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -284,6 +321,8 @@ class EggTrayStockMovements extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -304,6 +343,8 @@ class Sales extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -319,9 +360,12 @@ class FinanceTransactions extends Table {
   TextColumn get referenceId => text().nullable()();
   TextColumn get paymentMethod => text().nullable()();
   TextColumn get status => text().withDefault(const Constant('CONFIRMED'))();
+  DateTimeColumn get dueDate => dateTime().nullable()();
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -335,6 +379,8 @@ class Investments extends Table {
   TextColumn get lotId => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -348,6 +394,8 @@ class FinancialEstablishments extends Table {
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -362,11 +410,14 @@ class PersonalFinanceTransactions extends Table {
   TextColumn get establishmentId => text().nullable()();
   TextColumn get paymentMethod => text().nullable()();
   TextColumn get status => text().withDefault(const Constant('CONFIRMED'))();
+  DateTimeColumn get dueDate => dateTime().nullable()();
   TextColumn get notes => text().nullable()();
   TextColumn get referenceType => text().nullable()();
   TextColumn get referenceId => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -380,7 +431,8 @@ class FinancialReserves extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
-  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -396,6 +448,8 @@ class PersonalInvestments extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -414,6 +468,8 @@ class PersonalDebts extends Table {
   TextColumn get status => text().withDefault(const Constant('OPEN'))();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -426,6 +482,8 @@ class LightingPrograms extends Table {
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -442,6 +500,8 @@ class LightingProgramSteps extends Table {
       integer().withDefault(const Constant(0))();
   TextColumn get relatedPhase => text().nullable()();
   TextColumn get notes => text().nullable()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -452,6 +512,8 @@ class LotLightingPrograms extends Table {
   TextColumn get programId => text()();
   DateTimeColumn get assignedAt => dateTime()();
   TextColumn get createdBy => text()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -474,7 +536,8 @@ class CalendarEvents extends Table {
   TextColumn get weekdays => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
-  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -489,6 +552,8 @@ class NotificationSettings extends Table {
   TextColumn get defaultMessage => text().nullable()();
   TextColumn get defaultRecurrence =>
       text().withDefault(const Constant('ONCE'))();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -496,7 +561,8 @@ class NotificationSettings extends Table {
 class AppSettings extends Table {
   TextColumn get key => text()();
   TextColumn get value => text()();
-  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   TextColumn get updatedBy => text().nullable()();
   @override
   Set<Column<Object>> get primaryKey => {key};
@@ -514,6 +580,8 @@ class SensorReadings extends Table {
   TextColumn get payloadJson => text().nullable()();
   TextColumn get createdBy => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -531,6 +599,8 @@ class AutomationEvents extends Table {
   TextColumn get payloadJson => text().nullable()();
   TextColumn get createdBy => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -551,7 +621,8 @@ class VaccinationRecords extends Table {
   TextColumn get notes => text().nullable()();
   TextColumn get createdBy => text()();
   DateTimeColumn get createdAt => dateTime()();
-  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
 
   @override
   Set<Column<Object>> get primaryKey => {id};

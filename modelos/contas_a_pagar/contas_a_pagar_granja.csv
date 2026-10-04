@@ -1,0 +1,4 @@
+descricao,categoria,valor,valor_total,vencimento,parcelas,forma_pagamento,observacao
+Fatura energia,Energia,"803,78",,10/04/2026,1,Boleto,Conta de energia da granja
+Compra de ração,Compra parcelada,,"3000,00",15/04/2026,3,Cartão,Compra parcelada em 3 vezes
+Boleto fornecedor,Boleto,"450,00",,20/04/2026,1,Boleto,Fornecedor de embalagens

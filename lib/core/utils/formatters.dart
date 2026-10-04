@@ -133,11 +133,18 @@ String auditEntityLabel(String value) => switch (value) {
 };
 
 int parseMoneyToCents(String value) {
-  final cleaned = value
-      .replaceAll(RegExp(r'[^0-9,.-]'), '')
-      .replaceAll('.', '')
-      .replaceAll(',', '.');
-  return ((double.tryParse(cleaned) ?? 0) * 100).round();
+  final cleaned = value.replaceAll(RegExp(r'[^0-9,.-]'), '');
+  if (cleaned.trim().isEmpty) return 0;
+  final lastComma = cleaned.lastIndexOf(',');
+  final lastDot = cleaned.lastIndexOf('.');
+  final decimalSeparator = lastComma > lastDot ? ',' : '.';
+  final decimalIndex = cleaned.lastIndexOf(decimalSeparator);
+  final hasDecimal =
+      decimalIndex >= 0 && cleaned.length - decimalIndex - 1 <= 2;
+  final normalized = hasDecimal
+      ? '${cleaned.substring(0, decimalIndex).replaceAll(RegExp(r'[^0-9-]'), '')}.${cleaned.substring(decimalIndex + 1).replaceAll(RegExp(r'[^0-9]'), '')}'
+      : cleaned.replaceAll(RegExp(r'[^0-9-]'), '');
+  return ((double.tryParse(normalized) ?? 0) * 100).round();
 }
 
 double parseDecimal(String value) {

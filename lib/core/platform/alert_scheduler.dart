@@ -57,6 +57,34 @@ Future<void> schedulePersistedAlerts(
     }
   }
 
+  final financePayables = await database.pendingFinancePayables(
+    tenantId: tenantId,
+  );
+  for (final item in financePayables) {
+    await schedulePayableAlerts(
+      idPrefix: 'finance_payable:${item.id}',
+      title: 'SELETO · Conta da granja',
+      description: item.description,
+      amountCents: item.amountCents,
+      dueDate: item.dueDate!,
+      now: now,
+    );
+  }
+
+  final personalPayables = await database.pendingPersonalFinancePayables(
+    tenantId: tenantId,
+  );
+  for (final item in personalPayables) {
+    await schedulePayableAlerts(
+      idPrefix: 'personal_payable:${item.id}',
+      title: 'SELETO · Conta pessoal',
+      description: item.description,
+      amountCents: item.amountCents,
+      dueDate: item.dueDate!,
+      now: now,
+    );
+  }
+
   final phaseSetting = await database.notificationSettingFor('PHASE_CHANGE');
   if (!(phaseSetting?.isEnabled ?? false)) return;
   final lots = await database.currentLotSummaries(tenantId: tenantId);
@@ -97,6 +125,58 @@ Future<void> schedulePersistedAlerts(
       }
     }
   }
+}
+
+Future<void> schedulePayableAlerts({
+  required String idPrefix,
+  required String title,
+  required String description,
+  required int amountCents,
+  required DateTime dueDate,
+  DateTime? now,
+}) async {
+  final service = NotificationService();
+  if (!service.nativeSupported) return;
+  if (!await service.prepareMessages()) return;
+  final current = now ?? DateTime.now();
+  final due = DateTime(dueDate.year, dueDate.month, dueDate.day);
+  final value = _money(amountCents);
+  final alerts = [
+    (
+      suffix: 'before',
+      at: due.subtract(const Duration(days: 1)).add(const Duration(hours: 8)),
+      body: '$description vence amanhã. Valor: $value.',
+    ),
+    (
+      suffix: 'due',
+      at: due.add(const Duration(hours: 8)),
+      body: '$description vence hoje. Valor: $value.',
+    ),
+  ];
+  for (final alert in alerts) {
+    final sameDueDay =
+        alert.suffix == 'due' &&
+        due.year == current.year &&
+        due.month == current.month &&
+        due.day == current.day;
+    final at = sameDueDay && !alert.at.isAfter(current)
+        ? current.add(const Duration(minutes: 1))
+        : alert.at;
+    if (!at.isAfter(current)) continue;
+    await service.scheduleMessage(
+      id: stableAlertId('$idPrefix:${alert.suffix}'),
+      title: title,
+      body: alert.body,
+      at: at,
+    );
+  }
+}
+
+Future<void> cancelPayableAlerts(String idPrefix) async {
+  final service = NotificationService();
+  if (!service.nativeSupported) return;
+  await service.cancel(stableAlertId('$idPrefix:before'));
+  await service.cancel(stableAlertId('$idPrefix:due'));
 }
 
 Future<void> cancelCalendarEventAlerts(CalendarEvent event) async {
@@ -205,6 +285,8 @@ int stableAlertId(String value) {
   }
   return hash == 0 ? 1 : hash;
 }
+
+String _money(int cents) => 'R\$ ${(cents / 100).toStringAsFixed(2)}';
 
 const phaseMilestones = [
   PhaseMilestone(49, 'RECRIA'),

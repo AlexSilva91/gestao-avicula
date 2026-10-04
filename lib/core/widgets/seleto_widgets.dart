@@ -151,12 +151,22 @@ class SeletoKpiCard extends StatelessWidget {
                             ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        value,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
+                      SizedBox(
+                        width: double.infinity,
+                        height: 28,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              value,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                          ),
                         ),
                       ),
                     ],

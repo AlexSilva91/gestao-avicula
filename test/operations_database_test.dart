@@ -242,6 +242,7 @@ void main() {
         notes: null,
         createdBy: actor,
         createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
       ),
       items: [
         FormulaIngredient(
@@ -1593,6 +1594,183 @@ void main() {
       expect(auditActions, contains('finance.cancel'));
     },
   );
+
+  test('pending payable only affects finance metrics after payment', () async {
+    await db.addFinance(
+      type: 'EXPENSE',
+      category: 'Boleto',
+      description: 'Boleto energia',
+      amountCents: 22000,
+      status: 'PENDING',
+      dueDate: DateTime(2026, 2, 10),
+      actorId: actor,
+    );
+
+    expect((await db.watchFinance().first).single.status, 'PENDING');
+    expect(
+      (await db.watchFinance().first).single.dueDate,
+      DateTime(2026, 2, 10),
+    );
+    expect((await db.watchFinanceMetrics().first).expenseCents, 0);
+
+    final entry = (await db.watchFinance().first).single;
+    await db.payFinance(
+      id: entry.id,
+      paymentMethod: 'PIX',
+      notes: 'Pago com desconto',
+      actorId: actor,
+    );
+
+    final paid = (await db.watchFinance().first).single;
+    expect(paid.status, 'CONFIRMED');
+    expect(paid.dueDate, isNull);
+    expect(paid.paymentMethod, 'PIX');
+    expect(paid.notes, contains('Pago com desconto'));
+    expect((await db.watchFinanceMetrics().first).expenseCents, 22000);
+  });
+
+  test(
+    'manual finance entry can be edited before or after confirmation',
+    () async {
+      await db.addFinance(
+        type: 'EXPENSE',
+        category: 'Boleto',
+        description: 'Conta original',
+        amountCents: 12000,
+        status: 'PENDING',
+        dueDate: DateTime(2026, 3, 5),
+        actorId: actor,
+      );
+
+      final entry = (await db.watchFinance().first).single;
+      await db.updateFinance(
+        id: entry.id,
+        type: 'EXPENSE',
+        category: 'Fatura de cartão',
+        description: 'Conta ajustada',
+        amountCents: 15000,
+        status: 'PENDING',
+        dueDate: DateTime(2026, 3, 8),
+        notes: 'Valor corrigido',
+        actorId: actor,
+      );
+
+      var edited = (await db.watchFinance().first).single;
+      expect(edited.category, 'Fatura de cartão');
+      expect(edited.description, 'Conta ajustada');
+      expect(edited.amountCents, 15000);
+      expect(edited.status, 'PENDING');
+      expect(edited.dueDate, DateTime(2026, 3, 8));
+      expect((await db.watchFinanceMetrics().first).expenseCents, 0);
+
+      await db.updateFinance(
+        id: entry.id,
+        type: 'EXPENSE',
+        category: 'Fatura de cartão',
+        description: 'Conta paga ajustada',
+        amountCents: 16000,
+        paymentMethod: 'PIX',
+        status: 'CONFIRMED',
+        actorId: actor,
+      );
+
+      edited = (await db.watchFinance().first).single;
+      expect(edited.status, 'CONFIRMED');
+      expect(edited.dueDate, isNull);
+      expect(edited.amountCents, 16000);
+      expect(edited.paymentMethod, 'PIX');
+      expect((await db.watchFinanceMetrics().first).expenseCents, 16000);
+    },
+  );
+
+  test('pending personal payable only affects metrics after payment', () async {
+    await db.addPersonalFinance(
+      type: 'EXPENSE',
+      category: 'Fatura de cartão',
+      description: 'Cartão pessoal',
+      amountCents: 18000,
+      status: 'PENDING',
+      dueDate: DateTime(2026, 4, 12),
+      actorId: actor,
+    );
+
+    expect((await db.watchPersonalFinance().first).single.status, 'PENDING');
+    expect(
+      (await db.watchPersonalFinance().first).single.dueDate,
+      DateTime(2026, 4, 12),
+    );
+    expect((await db.watchPersonalFinanceMetrics().first).expenseCents, 0);
+    expect((await db.watchPersonalFinanceMetrics().first).debtOpenCents, 18000);
+
+    final entry = (await db.watchPersonalFinance().first).single;
+    await db.payPersonalFinance(
+      id: entry.id,
+      paymentMethod: 'Débito',
+      notes: 'Conta corrente',
+      actorId: actor,
+    );
+
+    final paid = (await db.watchPersonalFinance().first).single;
+    expect(paid.status, 'CONFIRMED');
+    expect(paid.dueDate, isNull);
+    expect(paid.paymentMethod, 'Débito');
+    expect(paid.notes, contains('Conta corrente'));
+    expect((await db.watchPersonalFinanceMetrics().first).expenseCents, 18000);
+    expect((await db.watchPersonalFinanceMetrics().first).debtOpenCents, 0);
+  });
+
+  test('manual personal finance entry can be edited', () async {
+    await db.addPersonalFinance(
+      type: 'EXPENSE',
+      category: 'Boleto',
+      description: 'Conta pessoal',
+      amountCents: 9000,
+      status: 'PENDING',
+      dueDate: DateTime(2026, 5, 20),
+      actorId: actor,
+    );
+
+    final entry = (await db.watchPersonalFinance().first).single;
+    await db.updatePersonalFinance(
+      id: entry.id,
+      type: 'EXPENSE',
+      category: 'Faculdade/curso',
+      description: 'Mensalidade ajustada',
+      amountCents: 11000,
+      paymentMethod: 'Débito',
+      status: 'CONFIRMED',
+      notes: 'Pago antecipado',
+      actorId: actor,
+    );
+
+    final edited = (await db.watchPersonalFinance().first).single;
+    expect(edited.category, 'Faculdade/curso');
+    expect(edited.description, 'Mensalidade ajustada');
+    expect(edited.amountCents, 11000);
+    expect(edited.status, 'CONFIRMED');
+    expect(edited.dueDate, isNull);
+    expect(edited.paymentMethod, 'Débito');
+    expect((await db.watchPersonalFinanceMetrics().first).expenseCents, 11000);
+  });
+
+  test('personal finance validation returns specific value error', () async {
+    expect(
+      () => db.addPersonalFinance(
+        type: 'EXPENSE',
+        category: 'Mercado',
+        description: 'Compra',
+        amountCents: 0,
+        actorId: actor,
+      ),
+      throwsA(
+        isA<ArgumentError>().having(
+          (error) => error.message,
+          'message',
+          'Informe um valor maior que zero.',
+        ),
+      ),
+    );
+  });
 
   test(
     'personal finance tracks pro labore reserves investments and debts',
