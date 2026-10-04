@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/application/auth_controller.dart';
@@ -35,19 +36,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!auth.isAuthenticated) {
         return atLogin ? null : '/login';
       }
+      final firstAllowedRoute = _firstAllowedRoute(auth);
       if (atLogin) {
-        return '/dashboard';
+        return firstAllowedRoute ?? '/no-access';
       }
+      if (state.uri.path == '/no-access') return null;
       final destination = seletoDestinations
           .where((d) => d.route == state.uri.path)
           .firstOrNull;
       if (destination != null && !auth.allows(destination.permission)) {
-        return '/dashboard';
+        return firstAllowedRoute ?? '/no-access';
       }
       return null;
     },
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginPage()),
+      GoRoute(path: '/no-access', builder: (_, _) => const _NoAccessPage()),
       GoRoute(path: '/dashboard', builder: (_, _) => const DashboardPage()),
       GoRoute(path: '/lots', builder: (_, _) => const LotsPage()),
       GoRoute(
@@ -102,3 +106,40 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+String? _firstAllowedRoute(AuthController auth) {
+  for (final destination in seletoDestinations) {
+    if (auth.allows(destination.permission)) return destination.route;
+  }
+  return null;
+}
+
+class _NoAccessPage extends ConsumerWidget {
+  const _NoAccessPage();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
+    appBar: AppBar(
+      title: const Text('Sem acesso'),
+      actions: [
+        IconButton(
+          tooltip: 'Sair',
+          icon: const Icon(Icons.logout_rounded),
+          onPressed: () {
+            ref.read(authControllerProvider).signOut();
+            context.go('/login');
+          },
+        ),
+      ],
+    ),
+    body: const Center(
+      child: Padding(
+        padding: EdgeInsets.all(24),
+        child: Text(
+          'Nenhuma tela foi liberada para este usuário. Ajuste as permissões com um administrador.',
+          textAlign: TextAlign.center,
+        ),
+      ),
+    ),
+  );
+}

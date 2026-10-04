@@ -49,3 +49,5 @@ app.*.map.json
 
 # Firebase Admin SDK keys are server credentials and must never ship with the app.
 *firebase-adminsdk*.json
+modelos
+backups

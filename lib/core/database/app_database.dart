@@ -640,6 +640,7 @@ class AppDatabase extends _$AppDatabase {
     beforeOpen: (_) async {
       await _ensureDefaultTenant();
       await _ensureInitialSuperAdminPermission();
+      await _ensurePermissionCompatibilityGrants();
     },
   );
 
@@ -817,6 +818,50 @@ class AppDatabase extends _$AppDatabase {
       ),
       mode: InsertMode.insertOrIgnore,
     );
+  }
+
+  Future<void> _ensurePermissionCompatibilityGrants() async {
+    final grants = {
+      'dashboard.view': [
+        'home.production.view',
+        'home.finance.view',
+        'home.commercial.view',
+        'home.automation.view',
+        'home.sensors.view',
+        'home.charts.view',
+        'home.shortcuts.view',
+      ],
+      'finance.view': ['finance.business.view', 'finance.personal.view'],
+      'settings.view': [
+        'hardware.automation.view',
+        'hardware.lighting.view',
+        'hardware.environment.view',
+        'hardware.ventilation.view',
+        'hardware.water.view',
+        'hardware.cameras.view',
+      ],
+    };
+    for (final entry in grants.entries) {
+      for (final permission in entry.value) {
+        await customStatement(
+          '''
+          INSERT OR IGNORE INTO user_permissions (id, user_id, permission, created_at, updated_at)
+          SELECT lower(hex(randomblob(4))) || '-' ||
+                 lower(hex(randomblob(2))) || '-' ||
+                 lower(hex(randomblob(2))) || '-' ||
+                 lower(hex(randomblob(2))) || '-' ||
+                 lower(hex(randomblob(6))),
+                 user_id,
+                 ?,
+                 created_at,
+                 updated_at
+          FROM user_permissions
+          WHERE permission = ?
+          ''',
+          [permission, entry.key],
+        );
+      }
+    }
   }
 
   Future<void> seedInitialData() async {

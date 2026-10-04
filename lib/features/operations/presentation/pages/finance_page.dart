@@ -110,13 +110,14 @@ class FinancePage extends ConsumerWidget {
     title: 'Financeiro da Granja',
     scrollable: false,
     child: DefaultTabController(
-      length: 4,
+      length: 5,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const TabBar(
             isScrollable: true,
             tabs: [
+              Tab(icon: Icon(Icons.dashboard_outlined), text: 'Resumo'),
               Tab(icon: Icon(Icons.receipt_long), text: 'Lançamentos'),
               Tab(icon: Icon(Icons.event_available_outlined), text: 'Contas'),
               Tab(icon: Icon(Icons.foundation), text: 'Investimentos'),
@@ -127,6 +128,7 @@ class FinancePage extends ConsumerWidget {
           Expanded(
             child: TabBarView(
               children: [
+                _BusinessOverviewTab(ref: ref),
                 _TransactionsTab(ref: ref),
                 _BusinessPayablesTab(ref: ref),
                 _InvestmentsTab(ref: ref),
@@ -179,6 +181,180 @@ class PersonalFinancePage extends ConsumerWidget {
     ),
   );
 }
+
+class _BusinessOverviewTab extends StatelessWidget {
+  const _BusinessOverviewTab({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) {
+    final metrics = ref.watch(financeMetricsProvider).asData?.value;
+    final payoff = metrics == null
+        ? null
+        : _PayoffForecast.from(
+            debtCents: metrics.openPayablesCents,
+            currentMonthCapacityCents: metrics.currentMonthResultCents,
+            nextMonthCapacityCents: metrics.nextMonthResultCents,
+            lastDueDate: metrics.lastOpenPayableDueDate,
+          );
+    return SeletoTabList(
+      children: [
+        SeletoKpiGrid(
+          forceTwoColumns: true,
+          children: [
+            SeletoKpiCard(
+              label: 'Resultado geral',
+              value: metrics == null ? '—' : money(metrics.resultCents),
+              icon: Icons.account_balance_wallet_outlined,
+            ),
+            SeletoKpiCard(
+              label: 'Resultado mês atual',
+              value: metrics == null
+                  ? '—'
+                  : money(metrics.currentMonthResultCents),
+              icon: Icons.calendar_month_outlined,
+              color: Colors.blue,
+            ),
+            SeletoKpiCard(
+              label: 'Resultado próximo mês',
+              value: metrics == null
+                  ? '—'
+                  : money(metrics.nextMonthResultCents),
+              icon: Icons.next_plan_outlined,
+              color: Colors.indigo,
+            ),
+            SeletoKpiCard(
+              label: 'Contas abertas total',
+              value: metrics == null ? '—' : money(metrics.openPayablesCents),
+              icon: Icons.credit_card,
+              color: Colors.deepOrange,
+            ),
+            SeletoKpiCard(
+              label: 'Previsão de quitação',
+              value: payoff?.headline ?? '—',
+              icon: Icons.flag_circle_outlined,
+              color: Colors.teal,
+            ),
+            SeletoKpiCard(
+              label: 'Contas abertas mês atual',
+              value: metrics == null
+                  ? '—'
+                  : money(metrics.currentMonthOpenPayablesCents),
+              icon: Icons.event_available_outlined,
+              color: Colors.orange,
+            ),
+            SeletoKpiCard(
+              label: 'Contas abertas próximo mês',
+              value: metrics == null
+                  ? '—'
+                  : money(metrics.nextMonthOpenPayablesCents),
+              icon: Icons.event_repeat_outlined,
+              color: Colors.deepPurple,
+            ),
+          ],
+        ),
+        if (payoff != null) ...[
+          const SizedBox(height: 12),
+          _PayoffForecastStrip(forecast: payoff),
+        ],
+      ],
+    );
+  }
+}
+
+class _PayoffForecast {
+  const _PayoffForecast({
+    required this.debtCents,
+    required this.monthlyCapacityCents,
+    required this.capacitySource,
+    required this.lastDueDate,
+    required this.monthsByCapacity,
+    required this.capacityPayoffDate,
+  });
+
+  factory _PayoffForecast.from({
+    required int debtCents,
+    required int currentMonthCapacityCents,
+    required int nextMonthCapacityCents,
+    required DateTime? lastDueDate,
+  }) {
+    final monthlyCapacityCents = currentMonthCapacityCents > 0
+        ? currentMonthCapacityCents
+        : nextMonthCapacityCents > 0
+        ? nextMonthCapacityCents
+        : 0;
+    final capacitySource = currentMonthCapacityCents > 0
+        ? 'saldo do mês atual'
+        : nextMonthCapacityCents > 0
+        ? 'saldo do próximo mês'
+        : 'sem saldo mensal positivo';
+    final monthsByCapacity = debtCents <= 0 || monthlyCapacityCents <= 0
+        ? null
+        : (debtCents / monthlyCapacityCents).ceil();
+    final now = DateTime.now();
+    final capacityPayoffDate = monthsByCapacity == null
+        ? null
+        : DateTime(now.year, now.month + monthsByCapacity, now.day);
+    return _PayoffForecast(
+      debtCents: debtCents,
+      monthlyCapacityCents: monthlyCapacityCents,
+      capacitySource: capacitySource,
+      lastDueDate: lastDueDate,
+      monthsByCapacity: monthsByCapacity,
+      capacityPayoffDate: capacityPayoffDate,
+    );
+  }
+
+  final int debtCents;
+  final int monthlyCapacityCents;
+  final String capacitySource;
+  final DateTime? lastDueDate;
+  final int? monthsByCapacity;
+  final DateTime? capacityPayoffDate;
+
+  String get headline {
+    if (debtCents <= 0) return 'Quitado';
+    if (lastDueDate != null) return shortDate.format(lastDueDate!);
+    if (monthsByCapacity != null) return _monthsLabel(monthsByCapacity!);
+    return 'Sem previsão';
+  }
+
+  String get details {
+    if (debtCents <= 0) {
+      return 'Não há contas ou dívidas abertas para quitar.';
+    }
+    final parts = <String>[];
+    if (lastDueDate != null) {
+      parts.add(
+        'Pelo calendário das contas abertas, a última quitação prevista é ${shortDate.format(lastDueDate!)}.',
+      );
+    }
+    if (monthsByCapacity != null && capacityPayoffDate != null) {
+      parts.add(
+        'Pela sobra de ${money(monthlyCapacityCents)} baseada no $capacitySource, a estimativa é ${_monthsLabel(monthsByCapacity!)} (${shortDate.format(capacityPayoffDate!)}).',
+      );
+    } else {
+      parts.add(
+        'Cadastre entradas e despesas confirmadas do mês para calcular a estimativa por sobra mensal.',
+      );
+    }
+    return parts.join(' ');
+  }
+}
+
+class _PayoffForecastStrip extends StatelessWidget {
+  const _PayoffForecastStrip({required this.forecast});
+
+  final _PayoffForecast forecast;
+
+  @override
+  Widget build(BuildContext context) => SeletoInfoStrip(
+    icon: Icons.event_available_outlined,
+    text: forecast.details,
+  );
+}
+
+String _monthsLabel(int months) => months == 1 ? '1 mês' : '$months meses';
 
 class _TransactionsTab extends StatelessWidget {
   const _TransactionsTab({required this.ref});
@@ -530,6 +706,14 @@ class _PersonalOverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final metrics = ref.watch(personalFinanceMetricsProvider).asData?.value;
+    final payoff = metrics == null
+        ? null
+        : _PayoffForecast.from(
+            debtCents: metrics.debtOpenCents,
+            currentMonthCapacityCents: metrics.currentMonthBalanceCents,
+            nextMonthCapacityCents: metrics.nextMonthBalanceCents,
+            lastDueDate: metrics.lastDebtDueDate,
+          );
     return SeletoTabList(
       children: [
         SeletoKpiGrid(
@@ -567,13 +751,55 @@ class _PersonalOverviewTab extends StatelessWidget {
               color: Colors.indigo,
             ),
             SeletoKpiCard(
-              label: 'Dívidas abertas',
+              label: 'Dívidas abertas total',
               value: metrics == null ? '—' : money(metrics.debtOpenCents),
               icon: Icons.credit_card,
               color: Colors.deepOrange,
             ),
+            SeletoKpiCard(
+              label: 'Previsão de quitação',
+              value: payoff?.headline ?? '—',
+              icon: Icons.flag_circle_outlined,
+              color: Colors.teal,
+            ),
+            SeletoKpiCard(
+              label: 'Dívidas mês atual',
+              value: metrics == null
+                  ? '—'
+                  : money(metrics.currentMonthDebtOpenCents),
+              icon: Icons.calendar_month_outlined,
+              color: Colors.orange,
+            ),
+            SeletoKpiCard(
+              label: 'Dívidas próximo mês',
+              value: metrics == null
+                  ? '—'
+                  : money(metrics.nextMonthDebtOpenCents),
+              icon: Icons.event_repeat_outlined,
+              color: Colors.deepPurple,
+            ),
+            SeletoKpiCard(
+              label: 'Saldo mês atual',
+              value: metrics == null
+                  ? '—'
+                  : money(metrics.currentMonthBalanceCents),
+              icon: Icons.account_balance_wallet_outlined,
+              color: Colors.blue,
+            ),
+            SeletoKpiCard(
+              label: 'Saldo próximo mês',
+              value: metrics == null
+                  ? '—'
+                  : money(metrics.nextMonthBalanceCents),
+              icon: Icons.next_plan_outlined,
+              color: Colors.indigo,
+            ),
           ],
         ),
+        if (payoff != null) ...[
+          const SizedBox(height: 12),
+          _PayoffForecastStrip(forecast: payoff),
+        ],
         if ((metrics?.debtDueSoonCount ?? 0) > 0) ...[
           const SizedBox(height: 12),
           Card(

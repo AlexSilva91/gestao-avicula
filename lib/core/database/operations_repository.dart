@@ -121,12 +121,31 @@ class FinanceMetrics {
     required this.expenseCents,
     required this.investmentCents,
     required this.proLaboreCents,
+    required this.currentMonthIncomeCents,
+    required this.currentMonthExpenseCents,
+    required this.nextMonthIncomeCents,
+    required this.nextMonthExpenseCents,
+    required this.openPayablesCents,
+    required this.currentMonthOpenPayablesCents,
+    required this.nextMonthOpenPayablesCents,
+    required this.lastOpenPayableDueDate,
   });
   final int incomeCents;
   final int expenseCents;
   final int investmentCents;
   final int proLaboreCents;
+  final int currentMonthIncomeCents;
+  final int currentMonthExpenseCents;
+  final int nextMonthIncomeCents;
+  final int nextMonthExpenseCents;
+  final int openPayablesCents;
+  final int currentMonthOpenPayablesCents;
+  final int nextMonthOpenPayablesCents;
+  final DateTime? lastOpenPayableDueDate;
   int get resultCents => incomeCents - expenseCents;
+  int get currentMonthResultCents =>
+      currentMonthIncomeCents - currentMonthExpenseCents;
+  int get nextMonthResultCents => nextMonthIncomeCents - nextMonthExpenseCents;
   double get margin => incomeCents == 0 ? 0 : resultCents / incomeCents;
   double? get paybackMonths =>
       resultCents <= 0 ? null : investmentCents / resultCents;
@@ -140,7 +159,14 @@ class PersonalFinanceMetrics {
     required this.reserveTargetCents,
     required this.investmentCents,
     required this.debtOpenCents,
+    required this.currentMonthDebtOpenCents,
+    required this.nextMonthDebtOpenCents,
+    required this.currentMonthIncomeCents,
+    required this.currentMonthExpenseCents,
+    required this.nextMonthIncomeCents,
+    required this.nextMonthExpenseCents,
     required this.debtDueSoonCount,
+    required this.lastDebtDueDate,
   });
   final int incomeCents;
   final int expenseCents;
@@ -148,8 +174,18 @@ class PersonalFinanceMetrics {
   final int reserveTargetCents;
   final int investmentCents;
   final int debtOpenCents;
+  final int currentMonthDebtOpenCents;
+  final int nextMonthDebtOpenCents;
+  final int currentMonthIncomeCents;
+  final int currentMonthExpenseCents;
+  final int nextMonthIncomeCents;
+  final int nextMonthExpenseCents;
   final int debtDueSoonCount;
+  final DateTime? lastDebtDueDate;
   int get balanceCents => incomeCents - expenseCents;
+  int get currentMonthBalanceCents =>
+      currentMonthIncomeCents - currentMonthExpenseCents;
+  int get nextMonthBalanceCents => nextMonthIncomeCents - nextMonthExpenseCents;
   double get reservePercent =>
       reserveTargetCents == 0 ? 0 : reserveCents / reserveTargetCents;
 }
@@ -3532,28 +3568,63 @@ extension OperationsRepository on AppDatabase {
     return query.get();
   }
 
-  Stream<FinanceMetrics> watchFinanceMetrics({String? tenantId}) =>
-      customSelect(
-        '''SELECT
+  Stream<FinanceMetrics> watchFinanceMetrics({String? tenantId}) {
+    final now = DateTime.now();
+    final currentStart = DateTime(now.year, now.month);
+    final nextStart = DateTime(now.year, now.month + 1);
+    final afterNextStart = DateTime(now.year, now.month + 2);
+    return customSelect(
+      '''SELECT
     COALESCE(SUM(CASE WHEN type='INCOME' AND status='CONFIRMED' THEN amount_cents ELSE 0 END),0) income,
     COALESCE(SUM(CASE WHEN type='EXPENSE' AND status='CONFIRMED' THEN amount_cents ELSE 0 END),0) expense,
     COALESCE(SUM(CASE WHEN type='EXPENSE' AND category='Pró-labore' AND status='CONFIRMED' THEN amount_cents ELSE 0 END),0) pro_labore,
-    COALESCE((SELECT SUM(amount_cents) FROM investments WHERE ${_tenantSql('investments', tenantId)}),0) investment
+    COALESCE((SELECT SUM(amount_cents) FROM investments WHERE ${_tenantSql('investments', tenantId)}),0) investment,
+    COALESCE(SUM(CASE WHEN type='INCOME' AND status='CONFIRMED' AND occurred_at>=? AND occurred_at<? THEN amount_cents ELSE 0 END),0) current_income,
+    COALESCE(SUM(CASE WHEN type='EXPENSE' AND status='CONFIRMED' AND occurred_at>=? AND occurred_at<? THEN amount_cents ELSE 0 END),0) current_expense,
+    COALESCE(SUM(CASE WHEN type='INCOME' AND status='CONFIRMED' AND occurred_at>=? AND occurred_at<? THEN amount_cents ELSE 0 END),0) next_income,
+    COALESCE(SUM(CASE WHEN type='EXPENSE' AND status='CONFIRMED' AND occurred_at>=? AND occurred_at<? THEN amount_cents ELSE 0 END),0) next_expense,
+    COALESCE(SUM(CASE WHEN type='EXPENSE' AND status='PENDING' THEN amount_cents ELSE 0 END),0) open_payables,
+    COALESCE(SUM(CASE WHEN type='EXPENSE' AND status='PENDING' AND due_date>=? AND due_date<? THEN amount_cents ELSE 0 END),0) current_open_payables,
+    COALESCE(SUM(CASE WHEN type='EXPENSE' AND status='PENDING' AND due_date>=? AND due_date<? THEN amount_cents ELSE 0 END),0) next_open_payables,
+    MAX(CASE WHEN type='EXPENSE' AND status='PENDING' THEN due_date ELSE NULL END) last_open_payable_due_date
     FROM finance_transactions
     WHERE ${_tenantSql('finance_transactions', tenantId)}''',
-        variables: [
-          ..._tenantVariables(tenantId),
-          ..._tenantVariables(tenantId),
-        ],
-        readsFrom: {financeTransactions, investments},
-      ).watchSingle().map(
-        (r) => FinanceMetrics(
-          incomeCents: r.read<int>('income'),
-          expenseCents: r.read<int>('expense'),
-          investmentCents: r.read<int>('investment'),
-          proLaboreCents: r.read<int>('pro_labore'),
+      variables: [
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(currentStart),
+        Variable.withDateTime(nextStart),
+        Variable.withDateTime(currentStart),
+        Variable.withDateTime(nextStart),
+        Variable.withDateTime(nextStart),
+        Variable.withDateTime(afterNextStart),
+        Variable.withDateTime(nextStart),
+        Variable.withDateTime(afterNextStart),
+        Variable.withDateTime(currentStart),
+        Variable.withDateTime(nextStart),
+        Variable.withDateTime(nextStart),
+        Variable.withDateTime(afterNextStart),
+        ..._tenantVariables(tenantId),
+      ],
+      readsFrom: {financeTransactions, investments},
+    ).watchSingle().map(
+      (r) => FinanceMetrics(
+        incomeCents: r.read<int>('income'),
+        expenseCents: r.read<int>('expense'),
+        investmentCents: r.read<int>('investment'),
+        proLaboreCents: r.read<int>('pro_labore'),
+        currentMonthIncomeCents: r.read<int>('current_income'),
+        currentMonthExpenseCents: r.read<int>('current_expense'),
+        nextMonthIncomeCents: r.read<int>('next_income'),
+        nextMonthExpenseCents: r.read<int>('next_expense'),
+        openPayablesCents: r.read<int>('open_payables'),
+        currentMonthOpenPayablesCents: r.read<int>('current_open_payables'),
+        nextMonthOpenPayablesCents: r.read<int>('next_open_payables'),
+        lastOpenPayableDueDate: r.readNullable<DateTime>(
+          'last_open_payable_due_date',
         ),
-      );
+      ),
+    );
+  }
 
   Future<void> addFinance({
     required String type,
@@ -3894,45 +3965,96 @@ extension OperationsRepository on AppDatabase {
 
   Stream<PersonalFinanceMetrics> watchPersonalFinanceMetrics({
     String? tenantId,
-  }) =>
-      customSelect(
-        '''SELECT
+  }) {
+    final now = DateTime.now();
+    final currentStart = DateTime(now.year, now.month);
+    final nextStart = DateTime(now.year, now.month + 1);
+    final afterNextStart = DateTime(now.year, now.month + 2);
+    return customSelect(
+      '''SELECT
     COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='INCOME' AND status='CONFIRMED' AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) income,
     COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='EXPENSE' AND status='CONFIRMED' AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) expense,
+    COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='INCOME' AND status='CONFIRMED' AND occurred_at>=? AND occurred_at<? AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) current_income,
+    COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='EXPENSE' AND status='CONFIRMED' AND occurred_at>=? AND occurred_at<? AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) current_expense,
+    COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='INCOME' AND status='CONFIRMED' AND occurred_at>=? AND occurred_at<? AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) next_income,
+    COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='EXPENSE' AND status='CONFIRMED' AND occurred_at>=? AND occurred_at<? AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) next_expense,
     COALESCE((SELECT SUM(current_amount_cents) FROM financial_reserves WHERE ${_tenantSql('financial_reserves', tenantId)}),0) reserve,
     COALESCE((SELECT SUM(target_amount_cents) FROM financial_reserves WHERE ${_tenantSql('financial_reserves', tenantId)}),0) reserve_target,
     COALESCE((SELECT SUM(amount_cents) FROM personal_investments WHERE ${_tenantSql('personal_investments', tenantId)}),0) investment,
     COALESCE((SELECT SUM(total_amount_cents - paid_amount_cents) FROM personal_debts WHERE status='OPEN' AND ${_tenantSql('personal_debts', tenantId)}),0)
       + COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='EXPENSE' AND status='PENDING' AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) debt_open,
-    COALESCE((SELECT COUNT(*) FROM personal_debts WHERE status='OPEN' AND alert_enabled=1 AND due_date<=? AND ${_tenantSql('personal_debts', tenantId)}),0) due_soon''',
-        variables: [
-          ..._tenantVariables(tenantId),
-          ..._tenantVariables(tenantId),
-          ..._tenantVariables(tenantId),
-          ..._tenantVariables(tenantId),
-          ..._tenantVariables(tenantId),
-          ..._tenantVariables(tenantId),
-          ..._tenantVariables(tenantId),
-          Variable<DateTime>(DateTime.now().add(const Duration(days: 7))),
-          ..._tenantVariables(tenantId),
-        ],
-        readsFrom: {
-          personalFinanceTransactions,
-          financialReserves,
-          personalInvestments,
-          personalDebts,
-        },
-      ).watchSingle().map(
-        (r) => PersonalFinanceMetrics(
-          incomeCents: r.read<int>('income'),
-          expenseCents: r.read<int>('expense'),
-          reserveCents: r.read<int>('reserve'),
-          reserveTargetCents: r.read<int>('reserve_target'),
-          investmentCents: r.read<int>('investment'),
-          debtOpenCents: r.read<int>('debt_open'),
-          debtDueSoonCount: r.read<int>('due_soon'),
-        ),
-      );
+    COALESCE((SELECT SUM(total_amount_cents - paid_amount_cents) FROM personal_debts WHERE status='OPEN' AND due_date>=? AND due_date<? AND ${_tenantSql('personal_debts', tenantId)}),0)
+      + COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='EXPENSE' AND status='PENDING' AND due_date>=? AND due_date<? AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) current_debt_open,
+    COALESCE((SELECT SUM(total_amount_cents - paid_amount_cents) FROM personal_debts WHERE status='OPEN' AND due_date>=? AND due_date<? AND ${_tenantSql('personal_debts', tenantId)}),0)
+      + COALESCE((SELECT SUM(amount_cents) FROM personal_finance_transactions WHERE type='EXPENSE' AND status='PENDING' AND due_date>=? AND due_date<? AND ${_tenantSql('personal_finance_transactions', tenantId)}),0) next_debt_open,
+    COALESCE((SELECT COUNT(*) FROM personal_debts WHERE status='OPEN' AND alert_enabled=1 AND due_date<=? AND ${_tenantSql('personal_debts', tenantId)}),0) due_soon,
+    (SELECT MAX(due_date) FROM (
+      SELECT due_date FROM personal_debts WHERE status='OPEN' AND ${_tenantSql('personal_debts', tenantId)}
+      UNION ALL
+      SELECT due_date FROM personal_finance_transactions WHERE type='EXPENSE' AND status='PENDING' AND due_date IS NOT NULL AND ${_tenantSql('personal_finance_transactions', tenantId)}
+    )) last_debt_due_date''',
+      variables: [
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(currentStart),
+        Variable.withDateTime(nextStart),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(currentStart),
+        Variable.withDateTime(nextStart),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(nextStart),
+        Variable.withDateTime(afterNextStart),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(nextStart),
+        Variable.withDateTime(afterNextStart),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(currentStart),
+        Variable.withDateTime(nextStart),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(currentStart),
+        Variable.withDateTime(nextStart),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(nextStart),
+        Variable.withDateTime(afterNextStart),
+        ..._tenantVariables(tenantId),
+        Variable.withDateTime(nextStart),
+        Variable.withDateTime(afterNextStart),
+        ..._tenantVariables(tenantId),
+        Variable<DateTime>(DateTime.now().add(const Duration(days: 7))),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+        ..._tenantVariables(tenantId),
+      ],
+      readsFrom: {
+        personalFinanceTransactions,
+        financialReserves,
+        personalInvestments,
+        personalDebts,
+      },
+    ).watchSingle().map(
+      (r) => PersonalFinanceMetrics(
+        incomeCents: r.read<int>('income'),
+        expenseCents: r.read<int>('expense'),
+        reserveCents: r.read<int>('reserve'),
+        reserveTargetCents: r.read<int>('reserve_target'),
+        investmentCents: r.read<int>('investment'),
+        debtOpenCents: r.read<int>('debt_open'),
+        currentMonthDebtOpenCents: r.read<int>('current_debt_open'),
+        nextMonthDebtOpenCents: r.read<int>('next_debt_open'),
+        currentMonthIncomeCents: r.read<int>('current_income'),
+        currentMonthExpenseCents: r.read<int>('current_expense'),
+        nextMonthIncomeCents: r.read<int>('next_income'),
+        nextMonthExpenseCents: r.read<int>('next_expense'),
+        debtDueSoonCount: r.read<int>('due_soon'),
+        lastDebtDueDate: r.readNullable<DateTime>('last_debt_due_date'),
+      ),
+    );
+  }
 
   Future<void> addPersonalFinance({
     required String type,

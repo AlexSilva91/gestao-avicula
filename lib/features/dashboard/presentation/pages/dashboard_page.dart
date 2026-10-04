@@ -12,6 +12,7 @@ import '../../../../core/database/operations_repository.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../auth/application/auth_controller.dart';
+import '../../../auth/domain/entities/auth_session.dart';
 import '../../../egg_collection/application/egg_collection_controller.dart';
 import '../../../lots/application/lots_controller.dart';
 import '../../../lots/domain/value_objects/lot_lifecycle.dart';
@@ -31,17 +32,54 @@ class DashboardPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final metrics = ref.watch(dashboardMetricsProvider).asData?.value;
-    final eggs = ref.watch(eggMetricsProvider).asData?.value;
-    final lots = ref.watch(lotSummariesProvider).asData?.value ?? const [];
-    final lotPerformance =
-        ref.watch(dashboardLotPerformanceProvider).asData?.value ?? const [];
-    final dailySeries =
-        ref.watch(dashboardDailySeriesProvider).asData?.value ?? const [];
-    final appSettings =
-        ref.watch(appSettingsProvider).asData?.value ?? const [];
-    final sensorSnapshot = _HomeSensorSnapshot.fromSettings(appSettings);
-    final automation = ref.watch(automationOverviewProvider).asData?.value;
+    final session = ref.watch(authControllerProvider).session;
+    final canSeeFarmPulse =
+        (_allows(session, 'home.production.view') &&
+            (_allows(session, 'lots.view') ||
+                _allows(session, 'egg_collection.view') ||
+                _allows(session, 'egg_stock.view') ||
+                _allows(session, 'feed_stock.view'))) ||
+        (_allows(session, 'home.finance.view') &&
+            _allows(session, 'finance.business.view')) ||
+        (_allows(session, 'home.commercial.view') &&
+            _allows(session, 'orders.view'));
+    final canSeeAutomation =
+        _allows(session, 'home.automation.view') &&
+        _allows(session, 'hardware.automation.view');
+    final canSeeSensors =
+        _allows(session, 'home.sensors.view') &&
+        (_allows(session, 'hardware.lighting.view') ||
+            _allows(session, 'hardware.environment.view') ||
+            _allows(session, 'hardware.ventilation.view') ||
+            _allows(session, 'hardware.water.view'));
+    final canSeeCharts = _allows(session, 'home.charts.view');
+    final canSeeShortcuts = _allows(session, 'home.shortcuts.view');
+    final metrics = canSeeFarmPulse || canSeeCharts
+        ? ref.watch(dashboardMetricsProvider).asData?.value
+        : null;
+    final eggs = canSeeFarmPulse
+        ? ref.watch(eggMetricsProvider).asData?.value
+        : null;
+    final lots = canSeeCharts
+        ? ref.watch(lotSummariesProvider).asData?.value ?? const <LotSummary>[]
+        : const <LotSummary>[];
+    final lotPerformance = canSeeCharts
+        ? ref.watch(dashboardLotPerformanceProvider).asData?.value ??
+              const <LotPerformancePoint>[]
+        : const <LotPerformancePoint>[];
+    final dailySeries = canSeeCharts
+        ? ref.watch(dashboardDailySeriesProvider).asData?.value ??
+              const <DailyDashboardPoint>[]
+        : const <DailyDashboardPoint>[];
+    final appSettings = canSeeSensors
+        ? ref.watch(appSettingsProvider).asData?.value ?? const <AppSetting>[]
+        : const <AppSetting>[];
+    final sensorSnapshot = canSeeSensors
+        ? _HomeSensorSnapshot.fromSettings(appSettings)
+        : null;
+    final automation = canSeeAutomation
+        ? ref.watch(automationOverviewProvider).asData?.value
+        : null;
     if (metrics != null || eggs != null || automation != null) {
       unawaited(
         ref
@@ -63,40 +101,66 @@ class DashboardPage extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _FarmPulsePanel(metrics: metrics, eggs: eggs),
-          const SizedBox(height: 14),
+          if (canSeeFarmPulse) ...[
+            _FarmPulsePanel(metrics: metrics, eggs: eggs, session: session),
+            const SizedBox(height: 14),
+          ],
           if (automation != null) ...[
             _AutomationPulsePanel(overview: automation),
             const SizedBox(height: 14),
           ],
-          _HomeSensorDeck(snapshot: sensorSnapshot),
-          const SizedBox(height: 14),
-          _DashboardChartGrid(
-            children: [
-              _LotPerformanceChart(points: lotPerformance),
-              _DailyFeedChart(points: dailySeries),
-              _SalesChart(points: dailySeries),
-              _PostureRateChart(
-                points: dailySeries,
-                activeBirds: metrics?.activeBirds ?? 0,
-              ),
-              _LotPhaseAgeChart(lots: phaseLots),
-              _MortalityChart(points: lotPerformance),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _QuickActions(ref: ref),
+          if (sensorSnapshot != null) ...[
+            _HomeSensorDeck(snapshot: sensorSnapshot, session: session),
+            const SizedBox(height: 14),
+          ],
+          if (canSeeCharts) ...[
+            _DashboardChartGrid(
+              children: [
+                if (_allows(session, 'lots.view'))
+                  _LotPerformanceChart(points: lotPerformance),
+                if (_allows(session, 'feeding.view'))
+                  _DailyFeedChart(points: dailySeries),
+                if (_allows(session, 'sales.view'))
+                  _SalesChart(points: dailySeries),
+                if (_allows(session, 'egg_collection.view'))
+                  _PostureRateChart(
+                    points: dailySeries,
+                    activeBirds: metrics?.activeBirds ?? 0,
+                  ),
+                if (_allows(session, 'lots.view'))
+                  _LotPhaseAgeChart(lots: phaseLots),
+                if (_allows(session, 'birds.mortality'))
+                  _MortalityChart(points: lotPerformance),
+              ],
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (canSeeShortcuts) _QuickActions(ref: ref),
+          if (!canSeeFarmPulse &&
+              automation == null &&
+              sensorSnapshot == null &&
+              !canSeeCharts &&
+              !canSeeShortcuts)
+            const _DashboardEmptyState(),
         ],
       ),
     );
   }
 }
 
+bool _allows(AuthSession? session, String permission) =>
+    session?.allows(permission) ?? false;
+
 class _FarmPulsePanel extends StatelessWidget {
-  const _FarmPulsePanel({required this.metrics, required this.eggs});
+  const _FarmPulsePanel({
+    required this.metrics,
+    required this.eggs,
+    required this.session,
+  });
 
   final DashboardMetrics? metrics;
   final EggMetrics? eggs;
+  final AuthSession? session;
 
   @override
   Widget build(BuildContext context) {
@@ -130,45 +194,94 @@ class _FarmPulsePanel extends StatelessWidget {
           const SizedBox(height: 14),
           _MetricGrid(
             children: [
-              _MetricPill(
-                icon: Icons.egg_alt_outlined,
-                label: 'Aves ativas',
-                value: metrics?.activeBirds.toString() ?? '-',
-                color: _chartColors[0],
-              ),
-              _MetricPill(
-                icon: Icons.inventory_2_outlined,
-                label: 'Ovos hoje',
-                value: eggs?.eggsToday.toString() ?? '-',
-                color: _chartColors[1],
-              ),
-              _MetricPill(
-                icon: Icons.egg_outlined,
-                label: 'Estoque de ovos',
-                value: metrics?.eggStock.toString() ?? '-',
-                color: _chartColors[2],
-              ),
-              _MetricPill(
-                icon: Icons.agriculture_outlined,
-                label: 'Ração',
-                value: metrics == null ? '-' : kg(metrics!.feedStockKg),
-                color: _chartColors[4],
-              ),
-              _MetricPill(
-                icon: Icons.point_of_sale,
-                label: 'Resultado mês',
-                value: result == null ? '-' : money(result),
-                color: result == null || result >= 0
-                    ? _chartColors[0]
-                    : _chartColors[3],
-              ),
-              _MetricPill(
-                icon: Icons.receipt_long_outlined,
-                label: 'Pedidos pendentes',
-                value: metrics?.pendingOrders.toString() ?? '-',
-                color: _chartColors[5],
-              ),
+              if (_allows(session, 'home.production.view') &&
+                  _allows(session, 'lots.view'))
+                _MetricPill(
+                  icon: Icons.egg_alt_outlined,
+                  label: 'Aves ativas',
+                  value: metrics?.activeBirds.toString() ?? '-',
+                  color: _chartColors[0],
+                ),
+              if (_allows(session, 'home.production.view') &&
+                  _allows(session, 'egg_collection.view'))
+                _MetricPill(
+                  icon: Icons.inventory_2_outlined,
+                  label: 'Ovos hoje',
+                  value: eggs?.eggsToday.toString() ?? '-',
+                  color: _chartColors[1],
+                ),
+              if (_allows(session, 'home.production.view') &&
+                  _allows(session, 'egg_stock.view'))
+                _MetricPill(
+                  icon: Icons.egg_outlined,
+                  label: 'Estoque de ovos',
+                  value: metrics?.eggStock.toString() ?? '-',
+                  color: _chartColors[2],
+                ),
+              if (_allows(session, 'home.production.view') &&
+                  _allows(session, 'feed_stock.view'))
+                _MetricPill(
+                  icon: Icons.agriculture_outlined,
+                  label: 'Ração',
+                  value: metrics == null ? '-' : kg(metrics!.feedStockKg),
+                  color: _chartColors[4],
+                ),
+              if (_allows(session, 'home.finance.view') &&
+                  _allows(session, 'finance.business.view'))
+                _MetricPill(
+                  icon: Icons.point_of_sale,
+                  label: 'Resultado mês',
+                  value: result == null ? '-' : money(result),
+                  color: result == null || result >= 0
+                      ? _chartColors[0]
+                      : _chartColors[3],
+                ),
+              if (_allows(session, 'home.commercial.view') &&
+                  _allows(session, 'orders.view'))
+                _MetricPill(
+                  icon: Icons.receipt_long_outlined,
+                  label: 'Pedidos pendentes',
+                  value: metrics?.pendingOrders.toString() ?? '-',
+                  color: _chartColors[5],
+                ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardEmptyState extends StatelessWidget {
+  const _DashboardEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest.withValues(alpha: .94),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .72)),
+        borderRadius: BorderRadius.circular(SeletoTokens.radiusMd),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.lock_outline, color: scheme.onSurfaceVariant),
+          const SizedBox(height: 8),
+          Text(
+            'Nenhum bloco liberado na home',
+            style: Theme.of(context).textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Peça a um administrador para ajustar as permissões deste usuário.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -466,9 +579,10 @@ double? _settingDouble(Map<String, String> values, String key) {
 }
 
 class _HomeSensorDeck extends StatelessWidget {
-  const _HomeSensorDeck({required this.snapshot});
+  const _HomeSensorDeck({required this.snapshot, required this.session});
 
   final _HomeSensorSnapshot snapshot;
+  final AuthSession? session;
 
   @override
   Widget build(BuildContext context) {
@@ -509,62 +623,66 @@ class _HomeSensorDeck extends StatelessWidget {
                 spacing: gap,
                 runSpacing: gap,
                 children: [
-                  SizedBox(
-                    width: width,
-                    child: _HomeSensorCard(
-                      title: 'Iluminação',
-                      subtitle: snapshot.lightingReady
-                          ? '${snapshot.lightingOnCount}/4 ligados'
-                          : 'Pendente',
-                      icon: Icons.lightbulb_outline,
-                      active: snapshot.lightingReady,
-                      route: '/integrations',
-                      child: _HomeLightingPreview(snapshot: snapshot),
+                  if (_allows(session, 'hardware.lighting.view'))
+                    SizedBox(
+                      width: width,
+                      child: _HomeSensorCard(
+                        title: 'Iluminação',
+                        subtitle: snapshot.lightingReady
+                            ? '${snapshot.lightingOnCount}/4 ligados'
+                            : 'Pendente',
+                        icon: Icons.lightbulb_outline,
+                        active: snapshot.lightingReady,
+                        route: '/integrations',
+                        child: _HomeLightingPreview(snapshot: snapshot),
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _HomeSensorCard(
-                      title: 'Ambiente',
-                      subtitle: snapshot.environmentTemperatureC == null
-                          ? 'Sem leitura'
-                          : '${decimal.format(snapshot.environmentTemperatureC!)} °C',
-                      icon: Icons.thermostat_outlined,
-                      active:
-                          snapshot.environmentTemperatureC != null ||
-                          snapshot.environmentHumidityPercent != null,
-                      route: '/hardware-environment',
-                      child: _HomeEnvironmentPreview(snapshot: snapshot),
+                  if (_allows(session, 'hardware.environment.view'))
+                    SizedBox(
+                      width: width,
+                      child: _HomeSensorCard(
+                        title: 'Ambiente',
+                        subtitle: snapshot.environmentTemperatureC == null
+                            ? 'Sem leitura'
+                            : '${decimal.format(snapshot.environmentTemperatureC!)} °C',
+                        icon: Icons.thermostat_outlined,
+                        active:
+                            snapshot.environmentTemperatureC != null ||
+                            snapshot.environmentHumidityPercent != null,
+                        route: '/hardware-environment',
+                        child: _HomeEnvironmentPreview(snapshot: snapshot),
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _HomeSensorCard(
-                      title: 'Ventilação',
-                      subtitle: snapshot.ventilationReady
-                          ? '${snapshot.ventilationOnCount}/8 ligados'
-                          : 'Pendente',
-                      icon: Icons.air_outlined,
-                      active: snapshot.ventilationReady,
-                      route: '/hardware-ventilation',
-                      child: _HomeVentilationPreview(snapshot: snapshot),
+                  if (_allows(session, 'hardware.ventilation.view'))
+                    SizedBox(
+                      width: width,
+                      child: _HomeSensorCard(
+                        title: 'Ventilação',
+                        subtitle: snapshot.ventilationReady
+                            ? '${snapshot.ventilationOnCount}/8 ligados'
+                            : 'Pendente',
+                        icon: Icons.air_outlined,
+                        active: snapshot.ventilationReady,
+                        route: '/hardware-ventilation',
+                        child: _HomeVentilationPreview(snapshot: snapshot),
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _HomeSensorCard(
-                      title: 'Água',
-                      subtitle: snapshot.waterLevelPercent == null
-                          ? 'Sem leitura'
-                          : '${decimal.format(snapshot.waterLevelPercent!)}%',
-                      icon: Icons.water_outlined,
-                      active:
-                          snapshot.waterLevelPercent != null ||
-                          snapshot.waterPh != null,
-                      route: '/hardware-water',
-                      child: _HomeWaterPreview(snapshot: snapshot),
+                  if (_allows(session, 'hardware.water.view'))
+                    SizedBox(
+                      width: width,
+                      child: _HomeSensorCard(
+                        title: 'Água',
+                        subtitle: snapshot.waterLevelPercent == null
+                            ? 'Sem leitura'
+                            : '${decimal.format(snapshot.waterLevelPercent!)}%',
+                        icon: Icons.water_outlined,
+                        active:
+                            snapshot.waterLevelPercent != null ||
+                            snapshot.waterPh != null,
+                        route: '/hardware-water',
+                        child: _HomeWaterPreview(snapshot: snapshot),
+                      ),
                     ),
-                  ),
                 ],
               );
             },

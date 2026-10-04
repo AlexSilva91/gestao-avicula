@@ -632,7 +632,16 @@ class _CreateUserDialogState extends State<_CreateUserDialog> {
   final _username = TextEditingController();
   final _password = TextEditingController();
   bool _admin = false;
-  final Set<String> _permissions = {'dashboard.view'};
+  final Set<String> _permissions = {
+    'dashboard.view',
+    'home.production.view',
+    'home.finance.view',
+    'home.commercial.view',
+    'home.automation.view',
+    'home.sensors.view',
+    'home.charts.view',
+    'home.shortcuts.view',
+  };
   late String? _tenantId;
   bool _loading = false;
 

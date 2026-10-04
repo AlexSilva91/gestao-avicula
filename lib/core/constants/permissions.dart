@@ -7,6 +7,17 @@ class SeletoPermission {
 
 const seletoPermissions = <SeletoPermission>[
   SeletoPermission('dashboard.view', 'Visualizar painel', 'Início'),
+  SeletoPermission('home.production.view', 'Ver produção na home', 'Início'),
+  SeletoPermission('home.finance.view', 'Ver financeiro na home', 'Início'),
+  SeletoPermission('home.commercial.view', 'Ver comercial na home', 'Início'),
+  SeletoPermission('home.automation.view', 'Ver automação na home', 'Início'),
+  SeletoPermission('home.sensors.view', 'Ver sensores na home', 'Início'),
+  SeletoPermission('home.charts.view', 'Ver gráficos na home', 'Início'),
+  SeletoPermission(
+    'home.shortcuts.view',
+    'Ver atalhos de ação na home',
+    'Início',
+  ),
   SeletoPermission('lots.view', 'Visualizar lotes', 'Produção'),
   SeletoPermission('lots.create', 'Criar lotes', 'Produção'),
   SeletoPermission('lots.update', 'Alterar lotes', 'Produção'),
@@ -37,7 +48,17 @@ const seletoPermissions = <SeletoPermission>[
   SeletoPermission('sales.view', 'Visualizar vendas', 'Comercial'),
   SeletoPermission('sales.create', 'Registrar vendas', 'Comercial'),
   SeletoPermission('sales.cancel', 'Cancelar vendas', 'Comercial'),
-  SeletoPermission('finance.view', 'Visualizar financeiro', 'Financeiro'),
+  SeletoPermission('finance.view', 'Visualizar financeiro geral', 'Financeiro'),
+  SeletoPermission(
+    'finance.business.view',
+    'Visualizar financeiro da granja',
+    'Financeiro',
+  ),
+  SeletoPermission(
+    'finance.personal.view',
+    'Visualizar financeiro pessoal',
+    'Financeiro',
+  ),
   SeletoPermission(
     'finance.create',
     'Criar lançamentos e investimentos',
@@ -52,6 +73,28 @@ const seletoPermissions = <SeletoPermission>[
   SeletoPermission('calendar.manage', 'Criar eventos', 'Calendário'),
   SeletoPermission('lighting.view', 'Visualizar iluminação', 'Calendário'),
   SeletoPermission('lighting.manage', 'Gerenciar iluminação', 'Calendário'),
+  SeletoPermission(
+    'hardware.automation.view',
+    'Visualizar central da automação',
+    'Sensores',
+  ),
+  SeletoPermission(
+    'hardware.lighting.view',
+    'Visualizar iluminação física',
+    'Sensores',
+  ),
+  SeletoPermission(
+    'hardware.environment.view',
+    'Visualizar ambiente',
+    'Sensores',
+  ),
+  SeletoPermission(
+    'hardware.ventilation.view',
+    'Visualizar ventilação',
+    'Sensores',
+  ),
+  SeletoPermission('hardware.water.view', 'Visualizar água', 'Sensores'),
+  SeletoPermission('hardware.cameras.view', 'Visualizar câmeras', 'Sensores'),
   SeletoPermission('reports.view', 'Visualizar relatórios', 'Gestão'),
   SeletoPermission('alerts.view', 'Visualizar alertas', 'Sistema'),
   SeletoPermission('settings.view', 'Visualizar configurações', 'Sistema'),
