@@ -29208,6 +29208,1708 @@ class VaccinationRecordsCompanion extends UpdateCompanion<VaccinationRecord> {
   }
 }
 
+class $SyncQueueItemsTable extends SyncQueueItems
+    with TableInfo<$SyncQueueItemsTable, SyncQueueItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncQueueItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _scopeKeyMeta = const VerificationMeta(
+    'scopeKey',
+  );
+  @override
+  late final GeneratedColumn<String> scopeKey = GeneratedColumn<String>(
+    'scope_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tenantIdMeta = const VerificationMeta(
+    'tenantId',
+  );
+  @override
+  late final GeneratedColumn<String> tenantId = GeneratedColumn<String>(
+    'tenant_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('PENDING'),
+  );
+  static const VerificationMeta _priorityMeta = const VerificationMeta(
+    'priority',
+  );
+  @override
+  late final GeneratedColumn<int> priority = GeneratedColumn<int>(
+    'priority',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(100),
+  );
+  static const VerificationMeta _attemptCountMeta = const VerificationMeta(
+    'attemptCount',
+  );
+  @override
+  late final GeneratedColumn<int> attemptCount = GeneratedColumn<int>(
+    'attempt_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _maxAttemptsMeta = const VerificationMeta(
+    'maxAttempts',
+  );
+  @override
+  late final GeneratedColumn<int> maxAttempts = GeneratedColumn<int>(
+    'max_attempts',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(3),
+  );
+  static const VerificationMeta _lastErrorMeta = const VerificationMeta(
+    'lastError',
+  );
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+    'last_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _availableAtMeta = const VerificationMeta(
+    'availableAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> availableAt = GeneratedColumn<DateTime>(
+    'available_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startedAtMeta = const VerificationMeta(
+    'startedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> startedAt = GeneratedColumn<DateTime>(
+    'started_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _finishedAtMeta = const VerificationMeta(
+    'finishedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> finishedAt = GeneratedColumn<DateTime>(
+    'finished_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now(),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    scopeKey,
+    tenantId,
+    userId,
+    reason,
+    status,
+    priority,
+    attemptCount,
+    maxAttempts,
+    lastError,
+    availableAt,
+    startedAt,
+    finishedAt,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_queue_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncQueueItem> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('scope_key')) {
+      context.handle(
+        _scopeKeyMeta,
+        scopeKey.isAcceptableOrUnknown(data['scope_key']!, _scopeKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_scopeKeyMeta);
+    }
+    if (data.containsKey('tenant_id')) {
+      context.handle(
+        _tenantIdMeta,
+        tenantId.isAcceptableOrUnknown(data['tenant_id']!, _tenantIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tenantIdMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_reasonMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('priority')) {
+      context.handle(
+        _priorityMeta,
+        priority.isAcceptableOrUnknown(data['priority']!, _priorityMeta),
+      );
+    }
+    if (data.containsKey('attempt_count')) {
+      context.handle(
+        _attemptCountMeta,
+        attemptCount.isAcceptableOrUnknown(
+          data['attempt_count']!,
+          _attemptCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('max_attempts')) {
+      context.handle(
+        _maxAttemptsMeta,
+        maxAttempts.isAcceptableOrUnknown(
+          data['max_attempts']!,
+          _maxAttemptsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(
+        _lastErrorMeta,
+        lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta),
+      );
+    }
+    if (data.containsKey('available_at')) {
+      context.handle(
+        _availableAtMeta,
+        availableAt.isAcceptableOrUnknown(
+          data['available_at']!,
+          _availableAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_availableAtMeta);
+    }
+    if (data.containsKey('started_at')) {
+      context.handle(
+        _startedAtMeta,
+        startedAt.isAcceptableOrUnknown(data['started_at']!, _startedAtMeta),
+      );
+    }
+    if (data.containsKey('finished_at')) {
+      context.handle(
+        _finishedAtMeta,
+        finishedAt.isAcceptableOrUnknown(data['finished_at']!, _finishedAtMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SyncQueueItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncQueueItem(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      scopeKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}scope_key'],
+      )!,
+      tenantId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tenant_id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      ),
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      priority: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}priority'],
+      )!,
+      attemptCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempt_count'],
+      )!,
+      maxAttempts: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}max_attempts'],
+      )!,
+      lastError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_error'],
+      ),
+      availableAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}available_at'],
+      )!,
+      startedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}started_at'],
+      ),
+      finishedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}finished_at'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncQueueItemsTable createAlias(String alias) {
+    return $SyncQueueItemsTable(attachedDatabase, alias);
+  }
+}
+
+class SyncQueueItem extends DataClass implements Insertable<SyncQueueItem> {
+  final String id;
+  final String scopeKey;
+  final String tenantId;
+  final String? userId;
+  final String reason;
+  final String status;
+  final int priority;
+  final int attemptCount;
+  final int maxAttempts;
+  final String? lastError;
+  final DateTime availableAt;
+  final DateTime? startedAt;
+  final DateTime? finishedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const SyncQueueItem({
+    required this.id,
+    required this.scopeKey,
+    required this.tenantId,
+    this.userId,
+    required this.reason,
+    required this.status,
+    required this.priority,
+    required this.attemptCount,
+    required this.maxAttempts,
+    this.lastError,
+    required this.availableAt,
+    this.startedAt,
+    this.finishedAt,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['scope_key'] = Variable<String>(scopeKey);
+    map['tenant_id'] = Variable<String>(tenantId);
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
+    }
+    map['reason'] = Variable<String>(reason);
+    map['status'] = Variable<String>(status);
+    map['priority'] = Variable<int>(priority);
+    map['attempt_count'] = Variable<int>(attemptCount);
+    map['max_attempts'] = Variable<int>(maxAttempts);
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
+    map['available_at'] = Variable<DateTime>(availableAt);
+    if (!nullToAbsent || startedAt != null) {
+      map['started_at'] = Variable<DateTime>(startedAt);
+    }
+    if (!nullToAbsent || finishedAt != null) {
+      map['finished_at'] = Variable<DateTime>(finishedAt);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  SyncQueueItemsCompanion toCompanion(bool nullToAbsent) {
+    return SyncQueueItemsCompanion(
+      id: Value(id),
+      scopeKey: Value(scopeKey),
+      tenantId: Value(tenantId),
+      userId: userId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(userId),
+      reason: Value(reason),
+      status: Value(status),
+      priority: Value(priority),
+      attemptCount: Value(attemptCount),
+      maxAttempts: Value(maxAttempts),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
+      availableAt: Value(availableAt),
+      startedAt: startedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(startedAt),
+      finishedAt: finishedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(finishedAt),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory SyncQueueItem.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncQueueItem(
+      id: serializer.fromJson<String>(json['id']),
+      scopeKey: serializer.fromJson<String>(json['scopeKey']),
+      tenantId: serializer.fromJson<String>(json['tenantId']),
+      userId: serializer.fromJson<String?>(json['userId']),
+      reason: serializer.fromJson<String>(json['reason']),
+      status: serializer.fromJson<String>(json['status']),
+      priority: serializer.fromJson<int>(json['priority']),
+      attemptCount: serializer.fromJson<int>(json['attemptCount']),
+      maxAttempts: serializer.fromJson<int>(json['maxAttempts']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
+      availableAt: serializer.fromJson<DateTime>(json['availableAt']),
+      startedAt: serializer.fromJson<DateTime?>(json['startedAt']),
+      finishedAt: serializer.fromJson<DateTime?>(json['finishedAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'scopeKey': serializer.toJson<String>(scopeKey),
+      'tenantId': serializer.toJson<String>(tenantId),
+      'userId': serializer.toJson<String?>(userId),
+      'reason': serializer.toJson<String>(reason),
+      'status': serializer.toJson<String>(status),
+      'priority': serializer.toJson<int>(priority),
+      'attemptCount': serializer.toJson<int>(attemptCount),
+      'maxAttempts': serializer.toJson<int>(maxAttempts),
+      'lastError': serializer.toJson<String?>(lastError),
+      'availableAt': serializer.toJson<DateTime>(availableAt),
+      'startedAt': serializer.toJson<DateTime?>(startedAt),
+      'finishedAt': serializer.toJson<DateTime?>(finishedAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  SyncQueueItem copyWith({
+    String? id,
+    String? scopeKey,
+    String? tenantId,
+    Value<String?> userId = const Value.absent(),
+    String? reason,
+    String? status,
+    int? priority,
+    int? attemptCount,
+    int? maxAttempts,
+    Value<String?> lastError = const Value.absent(),
+    DateTime? availableAt,
+    Value<DateTime?> startedAt = const Value.absent(),
+    Value<DateTime?> finishedAt = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => SyncQueueItem(
+    id: id ?? this.id,
+    scopeKey: scopeKey ?? this.scopeKey,
+    tenantId: tenantId ?? this.tenantId,
+    userId: userId.present ? userId.value : this.userId,
+    reason: reason ?? this.reason,
+    status: status ?? this.status,
+    priority: priority ?? this.priority,
+    attemptCount: attemptCount ?? this.attemptCount,
+    maxAttempts: maxAttempts ?? this.maxAttempts,
+    lastError: lastError.present ? lastError.value : this.lastError,
+    availableAt: availableAt ?? this.availableAt,
+    startedAt: startedAt.present ? startedAt.value : this.startedAt,
+    finishedAt: finishedAt.present ? finishedAt.value : this.finishedAt,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  SyncQueueItem copyWithCompanion(SyncQueueItemsCompanion data) {
+    return SyncQueueItem(
+      id: data.id.present ? data.id.value : this.id,
+      scopeKey: data.scopeKey.present ? data.scopeKey.value : this.scopeKey,
+      tenantId: data.tenantId.present ? data.tenantId.value : this.tenantId,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      status: data.status.present ? data.status.value : this.status,
+      priority: data.priority.present ? data.priority.value : this.priority,
+      attemptCount: data.attemptCount.present
+          ? data.attemptCount.value
+          : this.attemptCount,
+      maxAttempts: data.maxAttempts.present
+          ? data.maxAttempts.value
+          : this.maxAttempts,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      availableAt: data.availableAt.present
+          ? data.availableAt.value
+          : this.availableAt,
+      startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
+      finishedAt: data.finishedAt.present
+          ? data.finishedAt.value
+          : this.finishedAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncQueueItem(')
+          ..write('id: $id, ')
+          ..write('scopeKey: $scopeKey, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('reason: $reason, ')
+          ..write('status: $status, ')
+          ..write('priority: $priority, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('maxAttempts: $maxAttempts, ')
+          ..write('lastError: $lastError, ')
+          ..write('availableAt: $availableAt, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('finishedAt: $finishedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    scopeKey,
+    tenantId,
+    userId,
+    reason,
+    status,
+    priority,
+    attemptCount,
+    maxAttempts,
+    lastError,
+    availableAt,
+    startedAt,
+    finishedAt,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncQueueItem &&
+          other.id == this.id &&
+          other.scopeKey == this.scopeKey &&
+          other.tenantId == this.tenantId &&
+          other.userId == this.userId &&
+          other.reason == this.reason &&
+          other.status == this.status &&
+          other.priority == this.priority &&
+          other.attemptCount == this.attemptCount &&
+          other.maxAttempts == this.maxAttempts &&
+          other.lastError == this.lastError &&
+          other.availableAt == this.availableAt &&
+          other.startedAt == this.startedAt &&
+          other.finishedAt == this.finishedAt &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class SyncQueueItemsCompanion extends UpdateCompanion<SyncQueueItem> {
+  final Value<String> id;
+  final Value<String> scopeKey;
+  final Value<String> tenantId;
+  final Value<String?> userId;
+  final Value<String> reason;
+  final Value<String> status;
+  final Value<int> priority;
+  final Value<int> attemptCount;
+  final Value<int> maxAttempts;
+  final Value<String?> lastError;
+  final Value<DateTime> availableAt;
+  final Value<DateTime?> startedAt;
+  final Value<DateTime?> finishedAt;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const SyncQueueItemsCompanion({
+    this.id = const Value.absent(),
+    this.scopeKey = const Value.absent(),
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.status = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.maxAttempts = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.availableAt = const Value.absent(),
+    this.startedAt = const Value.absent(),
+    this.finishedAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SyncQueueItemsCompanion.insert({
+    required String id,
+    required String scopeKey,
+    required String tenantId,
+    this.userId = const Value.absent(),
+    required String reason,
+    this.status = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.maxAttempts = const Value.absent(),
+    this.lastError = const Value.absent(),
+    required DateTime availableAt,
+    this.startedAt = const Value.absent(),
+    this.finishedAt = const Value.absent(),
+    required DateTime createdAt,
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       scopeKey = Value(scopeKey),
+       tenantId = Value(tenantId),
+       reason = Value(reason),
+       availableAt = Value(availableAt),
+       createdAt = Value(createdAt);
+  static Insertable<SyncQueueItem> custom({
+    Expression<String>? id,
+    Expression<String>? scopeKey,
+    Expression<String>? tenantId,
+    Expression<String>? userId,
+    Expression<String>? reason,
+    Expression<String>? status,
+    Expression<int>? priority,
+    Expression<int>? attemptCount,
+    Expression<int>? maxAttempts,
+    Expression<String>? lastError,
+    Expression<DateTime>? availableAt,
+    Expression<DateTime>? startedAt,
+    Expression<DateTime>? finishedAt,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (scopeKey != null) 'scope_key': scopeKey,
+      if (tenantId != null) 'tenant_id': tenantId,
+      if (userId != null) 'user_id': userId,
+      if (reason != null) 'reason': reason,
+      if (status != null) 'status': status,
+      if (priority != null) 'priority': priority,
+      if (attemptCount != null) 'attempt_count': attemptCount,
+      if (maxAttempts != null) 'max_attempts': maxAttempts,
+      if (lastError != null) 'last_error': lastError,
+      if (availableAt != null) 'available_at': availableAt,
+      if (startedAt != null) 'started_at': startedAt,
+      if (finishedAt != null) 'finished_at': finishedAt,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SyncQueueItemsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? scopeKey,
+    Value<String>? tenantId,
+    Value<String?>? userId,
+    Value<String>? reason,
+    Value<String>? status,
+    Value<int>? priority,
+    Value<int>? attemptCount,
+    Value<int>? maxAttempts,
+    Value<String?>? lastError,
+    Value<DateTime>? availableAt,
+    Value<DateTime?>? startedAt,
+    Value<DateTime?>? finishedAt,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return SyncQueueItemsCompanion(
+      id: id ?? this.id,
+      scopeKey: scopeKey ?? this.scopeKey,
+      tenantId: tenantId ?? this.tenantId,
+      userId: userId ?? this.userId,
+      reason: reason ?? this.reason,
+      status: status ?? this.status,
+      priority: priority ?? this.priority,
+      attemptCount: attemptCount ?? this.attemptCount,
+      maxAttempts: maxAttempts ?? this.maxAttempts,
+      lastError: lastError ?? this.lastError,
+      availableAt: availableAt ?? this.availableAt,
+      startedAt: startedAt ?? this.startedAt,
+      finishedAt: finishedAt ?? this.finishedAt,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (scopeKey.present) {
+      map['scope_key'] = Variable<String>(scopeKey.value);
+    }
+    if (tenantId.present) {
+      map['tenant_id'] = Variable<String>(tenantId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (priority.present) {
+      map['priority'] = Variable<int>(priority.value);
+    }
+    if (attemptCount.present) {
+      map['attempt_count'] = Variable<int>(attemptCount.value);
+    }
+    if (maxAttempts.present) {
+      map['max_attempts'] = Variable<int>(maxAttempts.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
+    if (availableAt.present) {
+      map['available_at'] = Variable<DateTime>(availableAt.value);
+    }
+    if (startedAt.present) {
+      map['started_at'] = Variable<DateTime>(startedAt.value);
+    }
+    if (finishedAt.present) {
+      map['finished_at'] = Variable<DateTime>(finishedAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncQueueItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('scopeKey: $scopeKey, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('reason: $reason, ')
+          ..write('status: $status, ')
+          ..write('priority: $priority, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('maxAttempts: $maxAttempts, ')
+          ..write('lastError: $lastError, ')
+          ..write('availableAt: $availableAt, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('finishedAt: $finishedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SyncHistoryItemsTable extends SyncHistoryItems
+    with TableInfo<$SyncHistoryItemsTable, SyncHistoryItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncHistoryItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _queueIdMeta = const VerificationMeta(
+    'queueId',
+  );
+  @override
+  late final GeneratedColumn<String> queueId = GeneratedColumn<String>(
+    'queue_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _scopeKeyMeta = const VerificationMeta(
+    'scopeKey',
+  );
+  @override
+  late final GeneratedColumn<String> scopeKey = GeneratedColumn<String>(
+    'scope_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tenantIdMeta = const VerificationMeta(
+    'tenantId',
+  );
+  @override
+  late final GeneratedColumn<String> tenantId = GeneratedColumn<String>(
+    'tenant_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _messageMeta = const VerificationMeta(
+    'message',
+  );
+  @override
+  late final GeneratedColumn<String> message = GeneratedColumn<String>(
+    'message',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _localHashMeta = const VerificationMeta(
+    'localHash',
+  );
+  @override
+  late final GeneratedColumn<String> localHash = GeneratedColumn<String>(
+    'local_hash',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _remoteHashMeta = const VerificationMeta(
+    'remoteHash',
+  );
+  @override
+  late final GeneratedColumn<String> remoteHash = GeneratedColumn<String>(
+    'remote_hash',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _durationMsMeta = const VerificationMeta(
+    'durationMs',
+  );
+  @override
+  late final GeneratedColumn<int> durationMs = GeneratedColumn<int>(
+    'duration_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _startedAtMeta = const VerificationMeta(
+    'startedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> startedAt = GeneratedColumn<DateTime>(
+    'started_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _finishedAtMeta = const VerificationMeta(
+    'finishedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> finishedAt = GeneratedColumn<DateTime>(
+    'finished_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now(),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    queueId,
+    scopeKey,
+    tenantId,
+    userId,
+    reason,
+    status,
+    message,
+    localHash,
+    remoteHash,
+    durationMs,
+    startedAt,
+    finishedAt,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_history_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncHistoryItem> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('queue_id')) {
+      context.handle(
+        _queueIdMeta,
+        queueId.isAcceptableOrUnknown(data['queue_id']!, _queueIdMeta),
+      );
+    }
+    if (data.containsKey('scope_key')) {
+      context.handle(
+        _scopeKeyMeta,
+        scopeKey.isAcceptableOrUnknown(data['scope_key']!, _scopeKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_scopeKeyMeta);
+    }
+    if (data.containsKey('tenant_id')) {
+      context.handle(
+        _tenantIdMeta,
+        tenantId.isAcceptableOrUnknown(data['tenant_id']!, _tenantIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tenantIdMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_reasonMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('message')) {
+      context.handle(
+        _messageMeta,
+        message.isAcceptableOrUnknown(data['message']!, _messageMeta),
+      );
+    }
+    if (data.containsKey('local_hash')) {
+      context.handle(
+        _localHashMeta,
+        localHash.isAcceptableOrUnknown(data['local_hash']!, _localHashMeta),
+      );
+    }
+    if (data.containsKey('remote_hash')) {
+      context.handle(
+        _remoteHashMeta,
+        remoteHash.isAcceptableOrUnknown(data['remote_hash']!, _remoteHashMeta),
+      );
+    }
+    if (data.containsKey('duration_ms')) {
+      context.handle(
+        _durationMsMeta,
+        durationMs.isAcceptableOrUnknown(data['duration_ms']!, _durationMsMeta),
+      );
+    }
+    if (data.containsKey('started_at')) {
+      context.handle(
+        _startedAtMeta,
+        startedAt.isAcceptableOrUnknown(data['started_at']!, _startedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startedAtMeta);
+    }
+    if (data.containsKey('finished_at')) {
+      context.handle(
+        _finishedAtMeta,
+        finishedAt.isAcceptableOrUnknown(data['finished_at']!, _finishedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_finishedAtMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SyncHistoryItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncHistoryItem(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      queueId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}queue_id'],
+      ),
+      scopeKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}scope_key'],
+      )!,
+      tenantId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tenant_id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      ),
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      message: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}message'],
+      ),
+      localHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_hash'],
+      ),
+      remoteHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remote_hash'],
+      ),
+      durationMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}duration_ms'],
+      )!,
+      startedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}started_at'],
+      )!,
+      finishedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}finished_at'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncHistoryItemsTable createAlias(String alias) {
+    return $SyncHistoryItemsTable(attachedDatabase, alias);
+  }
+}
+
+class SyncHistoryItem extends DataClass implements Insertable<SyncHistoryItem> {
+  final String id;
+  final String? queueId;
+  final String scopeKey;
+  final String tenantId;
+  final String? userId;
+  final String reason;
+  final String status;
+  final String? message;
+  final String? localHash;
+  final String? remoteHash;
+  final int durationMs;
+  final DateTime startedAt;
+  final DateTime finishedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const SyncHistoryItem({
+    required this.id,
+    this.queueId,
+    required this.scopeKey,
+    required this.tenantId,
+    this.userId,
+    required this.reason,
+    required this.status,
+    this.message,
+    this.localHash,
+    this.remoteHash,
+    required this.durationMs,
+    required this.startedAt,
+    required this.finishedAt,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    if (!nullToAbsent || queueId != null) {
+      map['queue_id'] = Variable<String>(queueId);
+    }
+    map['scope_key'] = Variable<String>(scopeKey);
+    map['tenant_id'] = Variable<String>(tenantId);
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
+    }
+    map['reason'] = Variable<String>(reason);
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || message != null) {
+      map['message'] = Variable<String>(message);
+    }
+    if (!nullToAbsent || localHash != null) {
+      map['local_hash'] = Variable<String>(localHash);
+    }
+    if (!nullToAbsent || remoteHash != null) {
+      map['remote_hash'] = Variable<String>(remoteHash);
+    }
+    map['duration_ms'] = Variable<int>(durationMs);
+    map['started_at'] = Variable<DateTime>(startedAt);
+    map['finished_at'] = Variable<DateTime>(finishedAt);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  SyncHistoryItemsCompanion toCompanion(bool nullToAbsent) {
+    return SyncHistoryItemsCompanion(
+      id: Value(id),
+      queueId: queueId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(queueId),
+      scopeKey: Value(scopeKey),
+      tenantId: Value(tenantId),
+      userId: userId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(userId),
+      reason: Value(reason),
+      status: Value(status),
+      message: message == null && nullToAbsent
+          ? const Value.absent()
+          : Value(message),
+      localHash: localHash == null && nullToAbsent
+          ? const Value.absent()
+          : Value(localHash),
+      remoteHash: remoteHash == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remoteHash),
+      durationMs: Value(durationMs),
+      startedAt: Value(startedAt),
+      finishedAt: Value(finishedAt),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory SyncHistoryItem.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncHistoryItem(
+      id: serializer.fromJson<String>(json['id']),
+      queueId: serializer.fromJson<String?>(json['queueId']),
+      scopeKey: serializer.fromJson<String>(json['scopeKey']),
+      tenantId: serializer.fromJson<String>(json['tenantId']),
+      userId: serializer.fromJson<String?>(json['userId']),
+      reason: serializer.fromJson<String>(json['reason']),
+      status: serializer.fromJson<String>(json['status']),
+      message: serializer.fromJson<String?>(json['message']),
+      localHash: serializer.fromJson<String?>(json['localHash']),
+      remoteHash: serializer.fromJson<String?>(json['remoteHash']),
+      durationMs: serializer.fromJson<int>(json['durationMs']),
+      startedAt: serializer.fromJson<DateTime>(json['startedAt']),
+      finishedAt: serializer.fromJson<DateTime>(json['finishedAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'queueId': serializer.toJson<String?>(queueId),
+      'scopeKey': serializer.toJson<String>(scopeKey),
+      'tenantId': serializer.toJson<String>(tenantId),
+      'userId': serializer.toJson<String?>(userId),
+      'reason': serializer.toJson<String>(reason),
+      'status': serializer.toJson<String>(status),
+      'message': serializer.toJson<String?>(message),
+      'localHash': serializer.toJson<String?>(localHash),
+      'remoteHash': serializer.toJson<String?>(remoteHash),
+      'durationMs': serializer.toJson<int>(durationMs),
+      'startedAt': serializer.toJson<DateTime>(startedAt),
+      'finishedAt': serializer.toJson<DateTime>(finishedAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  SyncHistoryItem copyWith({
+    String? id,
+    Value<String?> queueId = const Value.absent(),
+    String? scopeKey,
+    String? tenantId,
+    Value<String?> userId = const Value.absent(),
+    String? reason,
+    String? status,
+    Value<String?> message = const Value.absent(),
+    Value<String?> localHash = const Value.absent(),
+    Value<String?> remoteHash = const Value.absent(),
+    int? durationMs,
+    DateTime? startedAt,
+    DateTime? finishedAt,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => SyncHistoryItem(
+    id: id ?? this.id,
+    queueId: queueId.present ? queueId.value : this.queueId,
+    scopeKey: scopeKey ?? this.scopeKey,
+    tenantId: tenantId ?? this.tenantId,
+    userId: userId.present ? userId.value : this.userId,
+    reason: reason ?? this.reason,
+    status: status ?? this.status,
+    message: message.present ? message.value : this.message,
+    localHash: localHash.present ? localHash.value : this.localHash,
+    remoteHash: remoteHash.present ? remoteHash.value : this.remoteHash,
+    durationMs: durationMs ?? this.durationMs,
+    startedAt: startedAt ?? this.startedAt,
+    finishedAt: finishedAt ?? this.finishedAt,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  SyncHistoryItem copyWithCompanion(SyncHistoryItemsCompanion data) {
+    return SyncHistoryItem(
+      id: data.id.present ? data.id.value : this.id,
+      queueId: data.queueId.present ? data.queueId.value : this.queueId,
+      scopeKey: data.scopeKey.present ? data.scopeKey.value : this.scopeKey,
+      tenantId: data.tenantId.present ? data.tenantId.value : this.tenantId,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      status: data.status.present ? data.status.value : this.status,
+      message: data.message.present ? data.message.value : this.message,
+      localHash: data.localHash.present ? data.localHash.value : this.localHash,
+      remoteHash: data.remoteHash.present
+          ? data.remoteHash.value
+          : this.remoteHash,
+      durationMs: data.durationMs.present
+          ? data.durationMs.value
+          : this.durationMs,
+      startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
+      finishedAt: data.finishedAt.present
+          ? data.finishedAt.value
+          : this.finishedAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncHistoryItem(')
+          ..write('id: $id, ')
+          ..write('queueId: $queueId, ')
+          ..write('scopeKey: $scopeKey, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('reason: $reason, ')
+          ..write('status: $status, ')
+          ..write('message: $message, ')
+          ..write('localHash: $localHash, ')
+          ..write('remoteHash: $remoteHash, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('finishedAt: $finishedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    queueId,
+    scopeKey,
+    tenantId,
+    userId,
+    reason,
+    status,
+    message,
+    localHash,
+    remoteHash,
+    durationMs,
+    startedAt,
+    finishedAt,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncHistoryItem &&
+          other.id == this.id &&
+          other.queueId == this.queueId &&
+          other.scopeKey == this.scopeKey &&
+          other.tenantId == this.tenantId &&
+          other.userId == this.userId &&
+          other.reason == this.reason &&
+          other.status == this.status &&
+          other.message == this.message &&
+          other.localHash == this.localHash &&
+          other.remoteHash == this.remoteHash &&
+          other.durationMs == this.durationMs &&
+          other.startedAt == this.startedAt &&
+          other.finishedAt == this.finishedAt &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class SyncHistoryItemsCompanion extends UpdateCompanion<SyncHistoryItem> {
+  final Value<String> id;
+  final Value<String?> queueId;
+  final Value<String> scopeKey;
+  final Value<String> tenantId;
+  final Value<String?> userId;
+  final Value<String> reason;
+  final Value<String> status;
+  final Value<String?> message;
+  final Value<String?> localHash;
+  final Value<String?> remoteHash;
+  final Value<int> durationMs;
+  final Value<DateTime> startedAt;
+  final Value<DateTime> finishedAt;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const SyncHistoryItemsCompanion({
+    this.id = const Value.absent(),
+    this.queueId = const Value.absent(),
+    this.scopeKey = const Value.absent(),
+    this.tenantId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.status = const Value.absent(),
+    this.message = const Value.absent(),
+    this.localHash = const Value.absent(),
+    this.remoteHash = const Value.absent(),
+    this.durationMs = const Value.absent(),
+    this.startedAt = const Value.absent(),
+    this.finishedAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SyncHistoryItemsCompanion.insert({
+    required String id,
+    this.queueId = const Value.absent(),
+    required String scopeKey,
+    required String tenantId,
+    this.userId = const Value.absent(),
+    required String reason,
+    required String status,
+    this.message = const Value.absent(),
+    this.localHash = const Value.absent(),
+    this.remoteHash = const Value.absent(),
+    this.durationMs = const Value.absent(),
+    required DateTime startedAt,
+    required DateTime finishedAt,
+    required DateTime createdAt,
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       scopeKey = Value(scopeKey),
+       tenantId = Value(tenantId),
+       reason = Value(reason),
+       status = Value(status),
+       startedAt = Value(startedAt),
+       finishedAt = Value(finishedAt),
+       createdAt = Value(createdAt);
+  static Insertable<SyncHistoryItem> custom({
+    Expression<String>? id,
+    Expression<String>? queueId,
+    Expression<String>? scopeKey,
+    Expression<String>? tenantId,
+    Expression<String>? userId,
+    Expression<String>? reason,
+    Expression<String>? status,
+    Expression<String>? message,
+    Expression<String>? localHash,
+    Expression<String>? remoteHash,
+    Expression<int>? durationMs,
+    Expression<DateTime>? startedAt,
+    Expression<DateTime>? finishedAt,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (queueId != null) 'queue_id': queueId,
+      if (scopeKey != null) 'scope_key': scopeKey,
+      if (tenantId != null) 'tenant_id': tenantId,
+      if (userId != null) 'user_id': userId,
+      if (reason != null) 'reason': reason,
+      if (status != null) 'status': status,
+      if (message != null) 'message': message,
+      if (localHash != null) 'local_hash': localHash,
+      if (remoteHash != null) 'remote_hash': remoteHash,
+      if (durationMs != null) 'duration_ms': durationMs,
+      if (startedAt != null) 'started_at': startedAt,
+      if (finishedAt != null) 'finished_at': finishedAt,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SyncHistoryItemsCompanion copyWith({
+    Value<String>? id,
+    Value<String?>? queueId,
+    Value<String>? scopeKey,
+    Value<String>? tenantId,
+    Value<String?>? userId,
+    Value<String>? reason,
+    Value<String>? status,
+    Value<String?>? message,
+    Value<String?>? localHash,
+    Value<String?>? remoteHash,
+    Value<int>? durationMs,
+    Value<DateTime>? startedAt,
+    Value<DateTime>? finishedAt,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return SyncHistoryItemsCompanion(
+      id: id ?? this.id,
+      queueId: queueId ?? this.queueId,
+      scopeKey: scopeKey ?? this.scopeKey,
+      tenantId: tenantId ?? this.tenantId,
+      userId: userId ?? this.userId,
+      reason: reason ?? this.reason,
+      status: status ?? this.status,
+      message: message ?? this.message,
+      localHash: localHash ?? this.localHash,
+      remoteHash: remoteHash ?? this.remoteHash,
+      durationMs: durationMs ?? this.durationMs,
+      startedAt: startedAt ?? this.startedAt,
+      finishedAt: finishedAt ?? this.finishedAt,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (queueId.present) {
+      map['queue_id'] = Variable<String>(queueId.value);
+    }
+    if (scopeKey.present) {
+      map['scope_key'] = Variable<String>(scopeKey.value);
+    }
+    if (tenantId.present) {
+      map['tenant_id'] = Variable<String>(tenantId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (message.present) {
+      map['message'] = Variable<String>(message.value);
+    }
+    if (localHash.present) {
+      map['local_hash'] = Variable<String>(localHash.value);
+    }
+    if (remoteHash.present) {
+      map['remote_hash'] = Variable<String>(remoteHash.value);
+    }
+    if (durationMs.present) {
+      map['duration_ms'] = Variable<int>(durationMs.value);
+    }
+    if (startedAt.present) {
+      map['started_at'] = Variable<DateTime>(startedAt.value);
+    }
+    if (finishedAt.present) {
+      map['finished_at'] = Variable<DateTime>(finishedAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncHistoryItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('queueId: $queueId, ')
+          ..write('scopeKey: $scopeKey, ')
+          ..write('tenantId: $tenantId, ')
+          ..write('userId: $userId, ')
+          ..write('reason: $reason, ')
+          ..write('status: $status, ')
+          ..write('message: $message, ')
+          ..write('localHash: $localHash, ')
+          ..write('remoteHash: $remoteHash, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('finishedAt: $finishedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -29281,6 +30983,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $VaccinationRecordsTable vaccinationRecords =
       $VaccinationRecordsTable(this);
+  late final $SyncQueueItemsTable syncQueueItems = $SyncQueueItemsTable(this);
+  late final $SyncHistoryItemsTable syncHistoryItems = $SyncHistoryItemsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -29331,6 +31037,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     sensorReadings,
     automationEvents,
     vaccinationRecords,
+    syncQueueItems,
+    syncHistoryItems,
   ];
 }
 
@@ -43688,6 +45396,808 @@ typedef $$VaccinationRecordsTableProcessedTableManager =
       VaccinationRecord,
       PrefetchHooks Function()
     >;
+typedef $$SyncQueueItemsTableCreateCompanionBuilder =
+    SyncQueueItemsCompanion Function({
+      required String id,
+      required String scopeKey,
+      required String tenantId,
+      Value<String?> userId,
+      required String reason,
+      Value<String> status,
+      Value<int> priority,
+      Value<int> attemptCount,
+      Value<int> maxAttempts,
+      Value<String?> lastError,
+      required DateTime availableAt,
+      Value<DateTime?> startedAt,
+      Value<DateTime?> finishedAt,
+      required DateTime createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$SyncQueueItemsTableUpdateCompanionBuilder =
+    SyncQueueItemsCompanion Function({
+      Value<String> id,
+      Value<String> scopeKey,
+      Value<String> tenantId,
+      Value<String?> userId,
+      Value<String> reason,
+      Value<String> status,
+      Value<int> priority,
+      Value<int> attemptCount,
+      Value<int> maxAttempts,
+      Value<String?> lastError,
+      Value<DateTime> availableAt,
+      Value<DateTime?> startedAt,
+      Value<DateTime?> finishedAt,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$SyncQueueItemsTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncQueueItemsTable> {
+  $$SyncQueueItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get scopeKey => $composableBuilder(
+    column: $table.scopeKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get maxAttempts => $composableBuilder(
+    column: $table.maxAttempts,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get availableAt => $composableBuilder(
+    column: $table.availableAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncQueueItemsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncQueueItemsTable> {
+  $$SyncQueueItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get scopeKey => $composableBuilder(
+    column: $table.scopeKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get maxAttempts => $composableBuilder(
+    column: $table.maxAttempts,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get availableAt => $composableBuilder(
+    column: $table.availableAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncQueueItemsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncQueueItemsTable> {
+  $$SyncQueueItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get scopeKey =>
+      $composableBuilder(column: $table.scopeKey, builder: (column) => column);
+
+  GeneratedColumn<String> get tenantId =>
+      $composableBuilder(column: $table.tenantId, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get priority =>
+      $composableBuilder(column: $table.priority, builder: (column) => column);
+
+  GeneratedColumn<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get maxAttempts => $composableBuilder(
+    column: $table.maxAttempts,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get availableAt => $composableBuilder(
+    column: $table.availableAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get startedAt =>
+      $composableBuilder(column: $table.startedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$SyncQueueItemsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyncQueueItemsTable,
+          SyncQueueItem,
+          $$SyncQueueItemsTableFilterComposer,
+          $$SyncQueueItemsTableOrderingComposer,
+          $$SyncQueueItemsTableAnnotationComposer,
+          $$SyncQueueItemsTableCreateCompanionBuilder,
+          $$SyncQueueItemsTableUpdateCompanionBuilder,
+          (
+            SyncQueueItem,
+            BaseReferences<_$AppDatabase, $SyncQueueItemsTable, SyncQueueItem>,
+          ),
+          SyncQueueItem,
+          PrefetchHooks Function()
+        > {
+  $$SyncQueueItemsTableTableManager(
+    _$AppDatabase db,
+    $SyncQueueItemsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncQueueItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncQueueItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncQueueItemsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> scopeKey = const Value.absent(),
+                Value<String> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String> reason = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int> priority = const Value.absent(),
+                Value<int> attemptCount = const Value.absent(),
+                Value<int> maxAttempts = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<DateTime> availableAt = const Value.absent(),
+                Value<DateTime?> startedAt = const Value.absent(),
+                Value<DateTime?> finishedAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SyncQueueItemsCompanion(
+                id: id,
+                scopeKey: scopeKey,
+                tenantId: tenantId,
+                userId: userId,
+                reason: reason,
+                status: status,
+                priority: priority,
+                attemptCount: attemptCount,
+                maxAttempts: maxAttempts,
+                lastError: lastError,
+                availableAt: availableAt,
+                startedAt: startedAt,
+                finishedAt: finishedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String scopeKey,
+                required String tenantId,
+                Value<String?> userId = const Value.absent(),
+                required String reason,
+                Value<String> status = const Value.absent(),
+                Value<int> priority = const Value.absent(),
+                Value<int> attemptCount = const Value.absent(),
+                Value<int> maxAttempts = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                required DateTime availableAt,
+                Value<DateTime?> startedAt = const Value.absent(),
+                Value<DateTime?> finishedAt = const Value.absent(),
+                required DateTime createdAt,
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SyncQueueItemsCompanion.insert(
+                id: id,
+                scopeKey: scopeKey,
+                tenantId: tenantId,
+                userId: userId,
+                reason: reason,
+                status: status,
+                priority: priority,
+                attemptCount: attemptCount,
+                maxAttempts: maxAttempts,
+                lastError: lastError,
+                availableAt: availableAt,
+                startedAt: startedAt,
+                finishedAt: finishedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncQueueItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyncQueueItemsTable,
+      SyncQueueItem,
+      $$SyncQueueItemsTableFilterComposer,
+      $$SyncQueueItemsTableOrderingComposer,
+      $$SyncQueueItemsTableAnnotationComposer,
+      $$SyncQueueItemsTableCreateCompanionBuilder,
+      $$SyncQueueItemsTableUpdateCompanionBuilder,
+      (
+        SyncQueueItem,
+        BaseReferences<_$AppDatabase, $SyncQueueItemsTable, SyncQueueItem>,
+      ),
+      SyncQueueItem,
+      PrefetchHooks Function()
+    >;
+typedef $$SyncHistoryItemsTableCreateCompanionBuilder =
+    SyncHistoryItemsCompanion Function({
+      required String id,
+      Value<String?> queueId,
+      required String scopeKey,
+      required String tenantId,
+      Value<String?> userId,
+      required String reason,
+      required String status,
+      Value<String?> message,
+      Value<String?> localHash,
+      Value<String?> remoteHash,
+      Value<int> durationMs,
+      required DateTime startedAt,
+      required DateTime finishedAt,
+      required DateTime createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$SyncHistoryItemsTableUpdateCompanionBuilder =
+    SyncHistoryItemsCompanion Function({
+      Value<String> id,
+      Value<String?> queueId,
+      Value<String> scopeKey,
+      Value<String> tenantId,
+      Value<String?> userId,
+      Value<String> reason,
+      Value<String> status,
+      Value<String?> message,
+      Value<String?> localHash,
+      Value<String?> remoteHash,
+      Value<int> durationMs,
+      Value<DateTime> startedAt,
+      Value<DateTime> finishedAt,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$SyncHistoryItemsTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncHistoryItemsTable> {
+  $$SyncHistoryItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get queueId => $composableBuilder(
+    column: $table.queueId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get scopeKey => $composableBuilder(
+    column: $table.scopeKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get message => $composableBuilder(
+    column: $table.message,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localHash => $composableBuilder(
+    column: $table.localHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get remoteHash => $composableBuilder(
+    column: $table.remoteHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncHistoryItemsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncHistoryItemsTable> {
+  $$SyncHistoryItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get queueId => $composableBuilder(
+    column: $table.queueId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get scopeKey => $composableBuilder(
+    column: $table.scopeKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tenantId => $composableBuilder(
+    column: $table.tenantId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get message => $composableBuilder(
+    column: $table.message,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localHash => $composableBuilder(
+    column: $table.localHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get remoteHash => $composableBuilder(
+    column: $table.remoteHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncHistoryItemsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncHistoryItemsTable> {
+  $$SyncHistoryItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get queueId =>
+      $composableBuilder(column: $table.queueId, builder: (column) => column);
+
+  GeneratedColumn<String> get scopeKey =>
+      $composableBuilder(column: $table.scopeKey, builder: (column) => column);
+
+  GeneratedColumn<String> get tenantId =>
+      $composableBuilder(column: $table.tenantId, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get message =>
+      $composableBuilder(column: $table.message, builder: (column) => column);
+
+  GeneratedColumn<String> get localHash =>
+      $composableBuilder(column: $table.localHash, builder: (column) => column);
+
+  GeneratedColumn<String> get remoteHash => $composableBuilder(
+    column: $table.remoteHash,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get startedAt =>
+      $composableBuilder(column: $table.startedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get finishedAt => $composableBuilder(
+    column: $table.finishedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$SyncHistoryItemsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyncHistoryItemsTable,
+          SyncHistoryItem,
+          $$SyncHistoryItemsTableFilterComposer,
+          $$SyncHistoryItemsTableOrderingComposer,
+          $$SyncHistoryItemsTableAnnotationComposer,
+          $$SyncHistoryItemsTableCreateCompanionBuilder,
+          $$SyncHistoryItemsTableUpdateCompanionBuilder,
+          (
+            SyncHistoryItem,
+            BaseReferences<
+              _$AppDatabase,
+              $SyncHistoryItemsTable,
+              SyncHistoryItem
+            >,
+          ),
+          SyncHistoryItem,
+          PrefetchHooks Function()
+        > {
+  $$SyncHistoryItemsTableTableManager(
+    _$AppDatabase db,
+    $SyncHistoryItemsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncHistoryItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncHistoryItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncHistoryItemsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String?> queueId = const Value.absent(),
+                Value<String> scopeKey = const Value.absent(),
+                Value<String> tenantId = const Value.absent(),
+                Value<String?> userId = const Value.absent(),
+                Value<String> reason = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> message = const Value.absent(),
+                Value<String?> localHash = const Value.absent(),
+                Value<String?> remoteHash = const Value.absent(),
+                Value<int> durationMs = const Value.absent(),
+                Value<DateTime> startedAt = const Value.absent(),
+                Value<DateTime> finishedAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SyncHistoryItemsCompanion(
+                id: id,
+                queueId: queueId,
+                scopeKey: scopeKey,
+                tenantId: tenantId,
+                userId: userId,
+                reason: reason,
+                status: status,
+                message: message,
+                localHash: localHash,
+                remoteHash: remoteHash,
+                durationMs: durationMs,
+                startedAt: startedAt,
+                finishedAt: finishedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                Value<String?> queueId = const Value.absent(),
+                required String scopeKey,
+                required String tenantId,
+                Value<String?> userId = const Value.absent(),
+                required String reason,
+                required String status,
+                Value<String?> message = const Value.absent(),
+                Value<String?> localHash = const Value.absent(),
+                Value<String?> remoteHash = const Value.absent(),
+                Value<int> durationMs = const Value.absent(),
+                required DateTime startedAt,
+                required DateTime finishedAt,
+                required DateTime createdAt,
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SyncHistoryItemsCompanion.insert(
+                id: id,
+                queueId: queueId,
+                scopeKey: scopeKey,
+                tenantId: tenantId,
+                userId: userId,
+                reason: reason,
+                status: status,
+                message: message,
+                localHash: localHash,
+                remoteHash: remoteHash,
+                durationMs: durationMs,
+                startedAt: startedAt,
+                finishedAt: finishedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncHistoryItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyncHistoryItemsTable,
+      SyncHistoryItem,
+      $$SyncHistoryItemsTableFilterComposer,
+      $$SyncHistoryItemsTableOrderingComposer,
+      $$SyncHistoryItemsTableAnnotationComposer,
+      $$SyncHistoryItemsTableCreateCompanionBuilder,
+      $$SyncHistoryItemsTableUpdateCompanionBuilder,
+      (
+        SyncHistoryItem,
+        BaseReferences<_$AppDatabase, $SyncHistoryItemsTable, SyncHistoryItem>,
+      ),
+      SyncHistoryItem,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -43801,4 +46311,8 @@ class $AppDatabaseManager {
       $$AutomationEventsTableTableManager(_db, _db.automationEvents);
   $$VaccinationRecordsTableTableManager get vaccinationRecords =>
       $$VaccinationRecordsTableTableManager(_db, _db.vaccinationRecords);
+  $$SyncQueueItemsTableTableManager get syncQueueItems =>
+      $$SyncQueueItemsTableTableManager(_db, _db.syncQueueItems);
+  $$SyncHistoryItemsTableTableManager get syncHistoryItems =>
+      $$SyncHistoryItemsTableTableManager(_db, _db.syncHistoryItems);
 }

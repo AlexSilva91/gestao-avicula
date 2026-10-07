@@ -390,6 +390,8 @@ class MonthlyPostureComparison {
     SensorReadings,
     AutomationEvents,
     VaccinationRecords,
+    SyncQueueItems,
+    SyncHistoryItems,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -407,7 +409,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -634,6 +636,10 @@ class AppDatabase extends _$AppDatabase {
         await addUpdatedAtColumn('automation_events', 'created_at');
         await addUpdatedAtColumn('vaccination_records', 'created_at');
       }
+      if (from < 22) {
+        await m.createTable(syncQueueItems);
+        await m.createTable(syncHistoryItems);
+      }
       await _createUpdatedAtTriggers();
       await _createPerformanceIndexes();
     },
@@ -691,6 +697,8 @@ class AppDatabase extends _$AppDatabase {
       'sensor_readings',
       'automation_events',
       'vaccination_records',
+      'sync_queue_items',
+      'sync_history_items',
     ];
     for (final tableName in tableNames) {
       await customStatement('''
@@ -785,6 +793,15 @@ class AppDatabase extends _$AppDatabase {
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_vaccination_records_lot_date ON vaccination_records (lot_id, scheduled_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_sync_queue_status_available ON sync_queue_items (status, available_at, priority, created_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_sync_queue_scope_status ON sync_queue_items (scope_key, status, created_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_sync_history_scope_time ON sync_history_items (scope_key, finished_at DESC)',
     );
   }
 
@@ -2052,6 +2069,200 @@ class AppDatabase extends _$AppDatabase {
       metadata: Value(metadata),
     ),
   );
+
+  Stream<List<SyncQueueItem>> watchSyncQueue({
+    String? scopeKey,
+    int limit = 50,
+  }) {
+    final query = select(syncQueueItems)
+      ..orderBy([
+        (row) => OrderingTerm.asc(row.status),
+        (row) => OrderingTerm.asc(row.priority),
+        (row) => OrderingTerm.asc(row.availableAt),
+        (row) => OrderingTerm.desc(row.createdAt),
+      ])
+      ..limit(limit);
+    if (scopeKey != null) {
+      query.where((row) => row.scopeKey.equals(scopeKey));
+    }
+    return query.watch();
+  }
+
+  Stream<List<SyncHistoryItem>> watchSyncHistory({
+    String? scopeKey,
+    int limit = 80,
+  }) {
+    final query = select(syncHistoryItems)
+      ..orderBy([(row) => OrderingTerm.desc(row.finishedAt)])
+      ..limit(limit);
+    if (scopeKey != null) {
+      query.where((row) => row.scopeKey.equals(scopeKey));
+    }
+    return query.watch();
+  }
+
+  Future<String> enqueueSync({
+    required String scopeKey,
+    required String tenantId,
+    required String reason,
+    String? userId,
+    int priority = 100,
+    int maxAttempts = 3,
+    bool coalescePending = true,
+  }) async {
+    final normalizedReason = reason.trim().isEmpty ? 'manual' : reason.trim();
+    if (coalescePending) {
+      final existing =
+          await (select(syncQueueItems)
+                ..where(
+                  (row) =>
+                      row.scopeKey.equals(scopeKey) &
+                      row.reason.equals(normalizedReason) &
+                      row.status.isIn(['PENDING', 'RUNNING']),
+                )
+                ..orderBy([(row) => OrderingTerm.asc(row.createdAt)])
+                ..limit(1))
+              .getSingleOrNull();
+      if (existing != null) return existing.id;
+    }
+    final id = const Uuid().v4();
+    final now = DateTime.now();
+    await into(syncQueueItems).insert(
+      SyncQueueItemsCompanion.insert(
+        id: id,
+        scopeKey: scopeKey,
+        tenantId: tenantId,
+        userId: Value(userId),
+        reason: normalizedReason,
+        priority: Value(priority),
+        maxAttempts: Value(maxAttempts),
+        availableAt: now,
+        createdAt: now,
+      ),
+    );
+    return id;
+  }
+
+  Future<SyncQueueItem?> claimNextSyncQueueItem({
+    required String scopeKey,
+  }) async {
+    final now = DateTime.now();
+    return transaction(() async {
+      final item =
+          await (select(syncQueueItems)
+                ..where(
+                  (row) =>
+                      row.status.equals('PENDING') &
+                      row.scopeKey.equals(scopeKey) &
+                      row.availableAt.isSmallerOrEqualValue(now),
+                )
+                ..orderBy([
+                  (row) => OrderingTerm.asc(row.priority),
+                  (row) => OrderingTerm.asc(row.availableAt),
+                  (row) => OrderingTerm.asc(row.createdAt),
+                ])
+                ..limit(1))
+              .getSingleOrNull();
+      if (item == null) return null;
+      await (update(
+        syncQueueItems,
+      )..where((row) => row.id.equals(item.id))).write(
+        SyncQueueItemsCompanion(
+          status: const Value('RUNNING'),
+          attemptCount: Value(item.attemptCount + 1),
+          startedAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+      return (select(
+        syncQueueItems,
+      )..where((row) => row.id.equals(item.id))).getSingle();
+    });
+  }
+
+  Future<void> completeSyncQueueItem({
+    required SyncQueueItem item,
+    required String status,
+    String? message,
+    String? localHash,
+    String? remoteHash,
+    required DateTime startedAt,
+  }) async {
+    final now = DateTime.now();
+    await transaction(() async {
+      await (delete(
+        syncQueueItems,
+      )..where((row) => row.id.equals(item.id))).go();
+      await into(syncHistoryItems).insert(
+        SyncHistoryItemsCompanion.insert(
+          id: const Uuid().v4(),
+          queueId: Value(item.id),
+          scopeKey: item.scopeKey,
+          tenantId: item.tenantId,
+          userId: Value(item.userId),
+          reason: item.reason,
+          status: status,
+          message: Value(message),
+          localHash: Value(localHash),
+          remoteHash: Value(remoteHash),
+          durationMs: Value(now.difference(startedAt).inMilliseconds),
+          startedAt: startedAt,
+          finishedAt: now,
+          createdAt: now,
+        ),
+      );
+    });
+  }
+
+  Future<void> failSyncQueueItem({
+    required SyncQueueItem item,
+    required String message,
+    required DateTime startedAt,
+  }) async {
+    final now = DateTime.now();
+    final willRetry = item.attemptCount < item.maxAttempts;
+    final delaySeconds = switch (item.attemptCount) {
+      <= 1 => 10,
+      2 => 30,
+      3 => 90,
+      _ => 180,
+    };
+    await transaction(() async {
+      if (willRetry) {
+        await (update(
+          syncQueueItems,
+        )..where((row) => row.id.equals(item.id))).write(
+          SyncQueueItemsCompanion(
+            status: const Value('PENDING'),
+            lastError: Value(message),
+            availableAt: Value(now.add(Duration(seconds: delaySeconds))),
+            finishedAt: Value(now),
+            updatedAt: Value(now),
+          ),
+        );
+      } else {
+        await (delete(
+          syncQueueItems,
+        )..where((row) => row.id.equals(item.id))).go();
+      }
+      await into(syncHistoryItems).insert(
+        SyncHistoryItemsCompanion.insert(
+          id: const Uuid().v4(),
+          queueId: Value(item.id),
+          scopeKey: item.scopeKey,
+          tenantId: item.tenantId,
+          userId: Value(item.userId),
+          reason: item.reason,
+          status: willRetry ? 'RETRY' : 'FAILED',
+          message: Value(message),
+          durationMs: Value(now.difference(startedAt).inMilliseconds),
+          startedAt: startedAt,
+          finishedAt: now,
+          createdAt: now,
+        ),
+      );
+    });
+  }
 
   String _tenantSql(String alias, String? tenantId) => tenantId == null
       ? '1=1'

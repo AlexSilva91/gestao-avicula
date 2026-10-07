@@ -98,7 +98,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   static const _presenceTimeout = Duration(seconds: 4);
   static const _defaultBaseUrl = String.fromEnvironment(
     'SELETO_SYNC_BASE_URL',
-    defaultValue: 'http://solveontecnology.com.br:5005',
+    defaultValue: 'http://131.221.236.34:5005',
   );
   static const _defaultSyncToken = String.fromEnvironment('SELETO_SYNC_TOKEN');
 
@@ -213,8 +213,6 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         ),
       );
     }
-    final activeSync = _activeSync;
-    if (activeSync != null) return activeSync;
     final now = DateTime.now();
     if (!force &&
         _lastAttemptAt != null &&
@@ -222,8 +220,18 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       return Future.value(const SyncResult(SyncStatus.skipped));
     }
     _lastAttemptAt = now;
+    await _database.enqueueSync(
+      scopeKey: scope.key,
+      tenantId: scope.tenantId,
+      userId: scope.userId,
+      reason: reason,
+      priority: force ? 10 : 100,
+      coalescePending: !force,
+    );
+    final activeSync = _activeSync;
+    if (activeSync != null) return activeSync;
     _setResult(const SyncResult(SyncStatus.syncing));
-    final sync = _sync(reason, scope)
+    final sync = _drainQueue(scope.key)
         .then((result) {
           _setResult(result);
           return result;
@@ -231,6 +239,48 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         .whenComplete(() => _activeSync = null);
     _activeSync = sync;
     return sync;
+  }
+
+  Future<SyncResult> _drainQueue(String scopeKey) async {
+    SyncResult lastResult = const SyncResult(SyncStatus.idle);
+    while (true) {
+      final item = await _database.claimNextSyncQueueItem(scopeKey: scopeKey);
+      if (item == null) return lastResult;
+      final startedAt = DateTime.now();
+      final scope = _SyncScope(
+        userId: item.userId ?? _scope?.userId ?? '',
+        tenantId: item.tenantId,
+        isSuperAdmin: item.scopeKey == 'super_admin',
+      );
+      try {
+        final result = await _sync(item.reason, scope);
+        lastResult = result;
+        final failed =
+            result.status == SyncStatus.failed ||
+            result.status == SyncStatus.offline;
+        if (failed) {
+          await _database.failSyncQueueItem(
+            item: item,
+            message: result.message ?? _statusLabel(result.status),
+            startedAt: startedAt,
+          );
+        } else {
+          await _database.completeSyncQueueItem(
+            item: item,
+            status: _statusLabel(result.status),
+            message: result.message,
+            startedAt: startedAt,
+          );
+        }
+      } catch (error) {
+        lastResult = SyncResult(SyncStatus.failed, message: error.toString());
+        await _database.failSyncQueueItem(
+          item: item,
+          message: error.toString(),
+          startedAt: startedAt,
+        );
+      }
+    }
   }
 
   Future<SyncResult> syncForLoginUsername(String username) async {
@@ -525,8 +575,13 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     Map<String, dynamic> body,
   ) async {
     await _loadStoredConfiguration();
+    final encoded = jsonEncode(body);
     final response = await _httpClient
-        .post(_endpoint(path), headers: _headers(), body: jsonEncode(body))
+        .post(
+          _endpoint(path),
+          headers: _headers('POST', path, encoded),
+          body: encoded,
+        )
         .timeout(_networkTimeout);
     return _decodeResponse(response);
   }
@@ -536,8 +591,13 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     Map<String, dynamic> body,
   ) async {
     await _loadStoredConfiguration();
+    final encoded = jsonEncode(body);
     final response = await _httpClient
-        .post(_endpoint(path), headers: _headers(), body: jsonEncode(body))
+        .post(
+          _endpoint(path),
+          headers: _headers('POST', path, encoded),
+          body: encoded,
+        )
         .timeout(_presenceTimeout);
     return _decodeResponse(response);
   }
@@ -550,11 +610,36 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     return _baseUri.replace(path: '$normalizedBasePath$normalizedPath');
   }
 
-  Map<String, String> _headers() => {
-    'accept': 'application/json',
-    'content-type': 'application/json; charset=utf-8',
-    if (_syncToken.isNotEmpty) 'authorization': 'Bearer $_syncToken',
-  };
+  Map<String, String> _headers([
+    String method = 'GET',
+    String path = '/health',
+    String body = '',
+  ]) {
+    final headers = {
+      'accept': 'application/json',
+      'content-type': 'application/json; charset=utf-8',
+      if (_syncToken.isNotEmpty) 'authorization': 'Bearer $_syncToken',
+    };
+    if (_syncToken.isEmpty || method.toUpperCase() != 'POST') return headers;
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+    final nonce = const Uuid().v4();
+    final signed = [
+      method.toUpperCase(),
+      path.startsWith('/') ? path : '/$path',
+      timestamp,
+      nonce,
+      body,
+    ].join('\n');
+    final signature = Hmac(
+      sha256,
+      utf8.encode(_syncToken),
+    ).convert(utf8.encode(signed)).toString();
+    headers
+      ..['x-seleto-sync-timestamp'] = timestamp
+      ..['x-seleto-sync-nonce'] = nonce
+      ..['x-seleto-sync-signature'] = signature;
+    return headers;
+  }
 
   Map<String, dynamic> _decodeResponse(http.Response response) {
     final decoded = response.body.isEmpty
@@ -583,6 +668,17 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     'skipped' => SyncStatus.skipped,
     'failed' || 'erro' || 'error' => SyncStatus.failed,
     _ => SyncStatus.idle,
+  };
+
+  String _statusLabel(SyncStatus status) => switch (status) {
+    SyncStatus.idle => 'IDLE',
+    SyncStatus.syncing => 'RUNNING',
+    SyncStatus.skipped => 'SKIPPED',
+    SyncStatus.uploaded => 'UPLOADED',
+    SyncStatus.downloaded => 'DOWNLOADED',
+    SyncStatus.merged => 'MERGED',
+    SyncStatus.offline => 'OFFLINE',
+    SyncStatus.failed => 'FAILED',
   };
 
   void _startPresenceHeartbeat() {

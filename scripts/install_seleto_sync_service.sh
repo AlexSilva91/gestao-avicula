@@ -17,6 +17,7 @@ POSTGRES_SSLMODE_VALUE="${POSTGRES_SSLMODE_VALUE:-prefer}"
 POSTGRES_CONN_MAX_AGE_VALUE="${POSTGRES_CONN_MAX_AGE_VALUE:-600}"
 POSTGRES_PASSWORD_VALUE="${POSTGRES_PASSWORD_VALUE:-}"
 SELETO_SYNC_TOKEN_VALUE="${SELETO_SYNC_TOKEN_VALUE:-}"
+SELETO_SYNC_REQUIRE_SIGNATURE_VALUE="${SELETO_SYNC_REQUIRE_SIGNATURE_VALUE:-true}"
 SELETO_SYNC_PRESENCE_ONLINE_SECONDS_VALUE="${SELETO_SYNC_PRESENCE_ONLINE_SECONDS_VALUE:-25}"
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -30,9 +31,21 @@ if [[ ! -f "${SOURCE_SCRIPT}" ]]; then
   exit 1
 fi
 
+prompt_required_secret() {
+  local prompt="$1"
+  local value=""
+  while [[ -z "${value}" ]]; do
+    read -rsp "${prompt}" value
+    echo
+    if [[ -z "${value}" ]]; then
+      echo "Valor obrigatorio. Informe uma senha."
+    fi
+  done
+  printf '%s' "${value}"
+}
+
 if [[ -z "${POSTGRES_PASSWORD_VALUE}" ]]; then
-  read -rsp "Senha do PostgreSQL para ${POSTGRES_USER_VALUE}: " POSTGRES_PASSWORD_VALUE
-  echo
+  POSTGRES_PASSWORD_VALUE="$(prompt_required_secret "Senha PostgreSQL (${POSTGRES_DB_VALUE}/${POSTGRES_USER_VALUE}@${POSTGRES_HOST_VALUE}): ")"
 fi
 
 if [[ -z "${SELETO_SYNC_TOKEN_VALUE}" ]]; then
@@ -59,7 +72,6 @@ install_packages() {
 configure_firewall() {
   if command -v ufw >/dev/null 2>&1; then
     ufw allow "${PORT}/tcp"
-    ufw --force enable
     return
   fi
   if command -v firewall-cmd >/dev/null 2>&1; then
@@ -101,6 +113,7 @@ chown -R "${APP_USER}:${APP_GROUP}" "${INSTALL_DIR}"
 cat > "${ENV_FILE}" <<EOF
 SELETO_SYNC_HOST=$(env_quote "0.0.0.0")
 SELETO_SYNC_TOKEN=$(env_quote "${SELETO_SYNC_TOKEN_VALUE}")
+SELETO_SYNC_REQUIRE_SIGNATURE=$(env_quote "${SELETO_SYNC_REQUIRE_SIGNATURE_VALUE}")
 SELETO_SYNC_MAX_BODY_BYTES=$(env_quote "67108864")
 SELETO_SYNC_TIMEOUT_SECONDS=$(env_quote "30")
 SELETO_SYNC_PRESENCE_ONLINE_SECONDS=$(env_quote "${SELETO_SYNC_PRESENCE_ONLINE_SECONDS_VALUE}")
@@ -147,9 +160,9 @@ systemctl --no-pager status "${SERVICE_NAME}" || true
 
 echo
 echo "Servico instalado: ${SERVICE_NAME}"
-echo "Endpoint: http://solveontecnology.com.br:${PORT}"
+echo "Endpoint: http://131.221.236.34:${PORT}"
 echo "Token do app:"
 echo "${SELETO_SYNC_TOKEN_VALUE}"
 echo
 echo "Build Flutter sugerido:"
-echo "flutter build apk --dart-define=SELETO_SYNC_BASE_URL=http://solveontecnology.com.br:${PORT} --dart-define=SELETO_SYNC_TOKEN=${SELETO_SYNC_TOKEN_VALUE}"
+echo "flutter build apk --dart-define=SELETO_SYNC_BASE_URL=http://131.221.236.34:${PORT} --dart-define=SELETO_SYNC_TOKEN=${SELETO_SYNC_TOKEN_VALUE}"

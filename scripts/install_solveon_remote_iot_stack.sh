@@ -85,13 +85,7 @@ configure_firewall() {
   fi
   if bool_enabled "${ENABLE_PLAIN_MQTT}"; then
     ufw allow 1883/tcp
-  else
-    ufw delete allow 1883/tcp >/dev/null 2>&1 || true
   fi
-  if bool_enabled "${ENABLE_SYNC_PROXY}"; then
-    ufw delete allow 5005/tcp >/dev/null 2>&1 || true
-  fi
-  ufw --force enable
 }
 
 issue_certificate() {

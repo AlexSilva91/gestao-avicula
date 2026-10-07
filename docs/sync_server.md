@@ -3,7 +3,7 @@
 O app nao usa mais Firebase para sincronizacao. O ponto remoto agora e:
 
 ```text
-http://solveontecnology.com.br:5005
+http://131.221.236.34:5005
 http://191.252.208.132:5005
 ```
 
@@ -52,13 +52,38 @@ Build exemplo:
 
 ```bash
 flutter build apk \
-  --dart-define=SELETO_SYNC_BASE_URL=http://solveontecnology.com.br:5005 \
+  --dart-define=SELETO_SYNC_BASE_URL=http://131.221.236.34:5005 \
   --dart-define=SELETO_SYNC_TOKEN=<token-gerado-no-servidor>
 ```
 
-Sem `SELETO_SYNC_BASE_URL`, o app usa `http://solveontecnology.com.br:5005`.
+Sem `SELETO_SYNC_BASE_URL`, o app usa `http://131.221.236.34:5005`.
 
-## Stack remota ESP32 + APP
+## Deploy Sync + MQTT no IP 131.221.236.34
+
+O deploy unificado envia o servidor de sincronizacao, instala o servico systemd,
+configura Mosquitto para MQTT autenticado e libera apenas as portas necessarias,
+sem remover regras existentes do firewall:
+
+```bash
+POSTGRES_PASSWORD='<senha-postgres>' \
+SELETO_SYNC_TOKEN='<token-sync>' \
+MQTT_USER='seleto' \
+MQTT_PASSWORD='<senha-mqtt>' \
+scripts/deploy_seleto_sync_mqtt.sh
+```
+
+Padroes do script:
+
+- Servidor remoto: `131.221.236.34`
+- Sync: `http://131.221.236.34:5005`
+- MQTT: `131.221.236.34:1883`
+- Assinatura HMAC obrigatoria nos endpoints `POST` do Sync
+
+Se houver um dominio apontando para o servidor, `TLS_DOMAIN=<dominio>` habilita
+HTTPS via Caddy. Sem dominio, o app usa IP com token e assinatura HMAC por
+requisicao.
+
+## Stack remota ESP32 + APP legada
 
 Para comunicacao remota entre app e ESP32, use MQTT na VPS. O script abaixo
 instala Mosquitto, cria usuarios separados para app e ESP, aplica ACL por
@@ -91,7 +116,7 @@ O resumo com credenciais fica em:
 Configuracao sugerida no app e no ESP32:
 
 ```text
-Broker MQTT: solveontecnology.com.br
+Broker MQTT: 131.221.236.34
 Porta: 8883 com TLS, ou 1883 apenas em teste
 Topico base: seleto/esp32
 Device ID: SELETO-RELE-01
@@ -126,7 +151,19 @@ Todos os `POST` exigem:
 
 ```text
 Authorization: Bearer <SELETO_SYNC_TOKEN>
+X-Seleto-Sync-Timestamp: <UTC ISO-8601>
+X-Seleto-Sync-Nonce: <uuid>
+X-Seleto-Sync-Signature: <hmac-sha256>
 ```
+
+A assinatura e calculada com o token como segredo sobre:
+
+```text
+METHOD + "\n" + PATH + "\n" + TIMESTAMP + "\n" + NONCE + "\n" + BODY
+```
+
+O servidor rejeita assinaturas ausentes quando
+`SELETO_SYNC_REQUIRE_SIGNATURE=true`, que e o padrao do deploy novo.
 
 `GET /health` e `POST /sync/v1/health` retornam estado do PostgreSQL, latencia,
 uptime, total de usuarios, escopos sincronizados e usuarios online.
@@ -153,7 +190,7 @@ o menor atraso possivel.
 Teste manual:
 
 ```bash
-curl -s http://solveontecnology.com.br:5005/sync/v1/presence \
+curl -s http://131.221.236.34:5005/sync/v1/presence \
   -H "Authorization: Bearer $SELETO_SYNC_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"userId":"<id-do-usuario>","tenantId":"tenant-default","state":"online"}'
@@ -163,18 +200,18 @@ curl -s http://solveontecnology.com.br:5005/sync/v1/presence \
 
 ```bash
 curl -s http://127.0.0.1:5005/health
-curl -s http://solveontecnology.com.br:5005/health
+curl -s http://131.221.236.34:5005/health
 ```
 
 ```bash
-curl -s http://solveontecnology.com.br:5005/sync/v1/health \
+curl -s http://131.221.236.34:5005/sync/v1/health \
   -H "Authorization: Bearer $SELETO_SYNC_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
 
 ```bash
-curl -s http://solveontecnology.com.br:5005/sync/v1/status \
+curl -s http://131.221.236.34:5005/sync/v1/status \
   -H "Authorization: Bearer $SELETO_SYNC_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"tenantId":"tenant-default","isSuperAdmin":false}'
@@ -185,8 +222,8 @@ curl -s http://solveontecnology.com.br:5005/sync/v1/status \
 Do seu computador, a partir da raiz do projeto:
 
 ```bash
-scp scripts/seleto_sync_server.py scripts/install_seleto_sync_service.sh root@solveontecnology.com.br:/tmp/
-ssh root@solveontecnology.com.br
+scp scripts/seleto_sync_server.py scripts/install_seleto_sync_service.sh root@131.221.236.34:/tmp/
+ssh root@131.221.236.34
 ```
 
 No servidor:

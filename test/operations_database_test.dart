@@ -38,6 +38,38 @@ void main() {
     },
   );
 
+  test('sync queue claims retries and stores history', () async {
+    final id = await db.enqueueSync(
+      scopeKey: 'tenant_tenant-default',
+      tenantId: defaultTenantId,
+      userId: actor,
+      reason: 'test',
+    );
+
+    final queued = await db.watchSyncQueue().first;
+    expect(queued.single.id, id);
+    expect(queued.single.status, 'PENDING');
+
+    final claimed = await db.claimNextSyncQueueItem(
+      scopeKey: 'tenant_tenant-default',
+    );
+    expect(claimed, isNotNull);
+    expect(claimed!.attemptCount, 1);
+    expect(claimed.status, 'RUNNING');
+
+    await db.failSyncQueueItem(
+      item: claimed,
+      message: 'offline',
+      startedAt: DateTime.now().subtract(const Duration(milliseconds: 25)),
+    );
+    final retry = await db.watchSyncQueue().first;
+    expect(retry.single.status, 'PENDING');
+    expect(retry.single.lastError, 'offline');
+
+    final history = await db.watchSyncHistory().first;
+    expect(history.single.status, 'RETRY');
+  });
+
   test('lot transfer can unify and be undone with history', () async {
     final fromId = await db.registerLotPurchase(
       name: 'Origem',

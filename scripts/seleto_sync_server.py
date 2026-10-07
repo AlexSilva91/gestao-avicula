@@ -19,6 +19,7 @@ tabela por tabela; JSON e usado apenas como corpo HTTP do protocolo de sync.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import signal
@@ -41,6 +42,11 @@ REQUEST_TIMEOUT_SECONDS = int(os.environ.get("SELETO_SYNC_TIMEOUT_SECONDS", "30"
 PRESENCE_ONLINE_WINDOW_SECONDS = int(os.environ.get("SELETO_SYNC_PRESENCE_ONLINE_SECONDS", "25"))
 DEFAULT_TENANT_ID = "tenant-default"
 SYNC_TOKEN = os.environ.get("SELETO_SYNC_TOKEN", "").strip()
+REQUIRE_SIGNED_REQUESTS = os.environ.get("SELETO_SYNC_REQUIRE_SIGNATURE", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 ALLOW_NO_TOKEN = os.environ.get("SELETO_SYNC_ALLOW_NO_TOKEN", "").lower() in {
     "1",
     "true",
@@ -347,6 +353,48 @@ def scope_from_body(body: dict[str, Any]) -> tuple[str, str, str | None, bool]:
     if scope_key is None:
         scope_key = "super_admin" if is_super_admin else f"tenant_{tenant_id}"
     return str(scope_key), tenant_id, user_id, is_super_admin
+
+
+def resolve_scope(
+    cur,
+    body: dict[str, Any],
+    payload: dict[str, Any] | None = None,
+) -> tuple[str, str, str | None, bool]:
+    _, requested_tenant_id, user_id, _ = scope_from_body(body)
+    if user_id:
+        cur.execute("select * from users where id = %s limit 1", (user_id,))
+        row = cur.fetchone()
+        if row is not None:
+            user = row_to_payload(TABLE_BY_COLLECTION["users"], row)
+            tenant_id = str(user.get("tenantId") or DEFAULT_TENANT_ID)
+            is_super_admin = user_is_super_admin(cur, user)
+            return (
+                "super_admin" if is_super_admin else f"tenant_{tenant_id}",
+                tenant_id,
+                user_id,
+                is_super_admin,
+            )
+
+    if payload is not None and user_id:
+        payload_users = rows(payload, "users")
+        user = next((item for item in payload_users if str(item.get("id") or "") == user_id), None)
+        if user is not None:
+            tenant_id = str(user.get("tenantId") or requested_tenant_id or DEFAULT_TENANT_ID)
+            permissions = {
+                str(item.get("permission") or "")
+                for item in rows(payload, "userPermissions")
+                if str(item.get("userId") or "") == user_id
+            }
+            is_super_admin = bool(user.get("isSuperuser")) or "*" in permissions or "system.super_admin" in permissions
+            return (
+                "super_admin" if is_super_admin else f"tenant_{tenant_id}",
+                tenant_id,
+                user_id,
+                is_super_admin,
+            )
+
+    tenant_id = requested_tenant_id or DEFAULT_TENANT_ID
+    return f"tenant_{tenant_id}", tenant_id, user_id, False
 
 
 def decode_payload(value: Any) -> dict[str, Any] | None:
@@ -805,23 +853,22 @@ def migrate_legacy_snapshots(cur) -> None:
 
 
 def pull_snapshot(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    scope_key, _, _, _ = scope_from_body(body)
     with get_db().connect() as conn:
         with conn.cursor() as cur:
+            scope_key, _, _, _ = resolve_scope(cur, body)
             response = scope_response(cur, scope_key, include_payload=True)
     return HTTPStatus.OK, {"status": "ok", "scopeKey": scope_key, **response}
 
 
 def status_snapshot(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    scope_key, _, _, _ = scope_from_body(body)
     with get_db().connect() as conn:
         with conn.cursor() as cur:
+            scope_key, _, _, _ = resolve_scope(cur, body)
             response = scope_response(cur, scope_key, include_payload=False)
     return HTTPStatus.OK, {"status": "ok", "scopeKey": scope_key, **response}
 
 
 def push_snapshot(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    scope_key, tenant_id, user_id, is_super_admin = scope_from_body(body)
     device_id = str(body.get("deviceId") or body.get("device_id") or "")
     reason = body.get("reason")
     force = bool(body.get("force", False))
@@ -831,6 +878,11 @@ def push_snapshot(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
 
     with get_db().connect() as conn:
         with conn.cursor() as cur:
+            scope_key, tenant_id, user_id, is_super_admin = resolve_scope(
+                cur,
+                body,
+                local_payload,
+            )
             cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (scope_key,))
             remote_payload = payload_from_tables(cur, scope_key)
             remote_hash_before = payload_hash(remote_payload) if has_rows(remote_payload) else None
@@ -872,7 +924,6 @@ def push_snapshot(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
 
 
 def sync_snapshot(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    scope_key, tenant_id, user_id, is_super_admin = scope_from_body(body)
     device_id = str(body.get("deviceId") or body.get("device_id") or "")
     reason = body.get("reason")
     last_remote_hash = body.get("lastRemoteHash") or body.get("last_remote_hash")
@@ -882,6 +933,11 @@ def sync_snapshot(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
 
     with get_db().connect() as conn:
         with conn.cursor() as cur:
+            scope_key, tenant_id, user_id, is_super_admin = resolve_scope(
+                cur,
+                body,
+                local_payload,
+            )
             cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (scope_key,))
             remote_payload = payload_from_tables(cur, scope_key)
             remote_hash = payload_hash(remote_payload) if has_rows(remote_payload) else None
@@ -1081,17 +1137,18 @@ def presence_payload(cur, *, scope_key: str, tenant_id: str, is_super_admin: boo
 
 
 def update_presence(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    scope_key, tenant_id, scoped_user_id, is_super_admin = scope_from_body(body)
-    user_id = str(body.get("userId") or body.get("user_id") or scoped_user_id or "").strip()
+    requested_user_id = str(body.get("userId") or body.get("user_id") or "").strip()
     device_id = str(body.get("deviceId") or body.get("device_id") or "").strip()
     state = str(body.get("state") or "online").strip().lower()
     app_state = str(body.get("appState") or body.get("app_state") or state).strip()[:40]
     is_online = state not in {"offline", "signed_out", "logout", "logged_out"}
-    if not user_id:
+    if not requested_user_id:
         return HTTPStatus.BAD_REQUEST, {"status": "erro", "message": "Informe userId para atualizar presenca."}
 
     with get_db().connect() as conn:
         with conn.cursor() as cur:
+            scope_key, tenant_id, user_id, is_super_admin = resolve_scope(cur, body)
+            user_id = str(user_id or requested_user_id)
             cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (f"presence:{user_id}",))
             if is_online:
                 cur.execute(
@@ -1203,11 +1260,16 @@ class SyncHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _authorized(self) -> bool:
+    def _authorized(self, body: bytes = b"") -> bool:
         if ALLOW_NO_TOKEN:
             return True
         if not SYNC_TOKEN:
             self._send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"status": "erro", "message": "SELETO_SYNC_TOKEN nao configurado no servidor."})
+            return False
+        if self._has_signature_headers():
+            return self._authorized_signature(body)
+        if REQUIRE_SIGNED_REQUESTS:
+            self._send_json(HTTPStatus.UNAUTHORIZED, {"status": "erro", "message": "Assinatura HMAC ausente na sincronizacao."})
             return False
         auth = self.headers.get("Authorization", "")
         token = self.headers.get("X-Seleto-Sync-Token", "")
@@ -1218,20 +1280,60 @@ class SyncHandler(BaseHTTPRequestHandler):
             return False
         return True
 
-    def _read_json(self) -> dict[str, Any]:
+    def _has_signature_headers(self) -> bool:
+        return bool(
+            self.headers.get("X-Seleto-Sync-Timestamp")
+            and self.headers.get("X-Seleto-Sync-Nonce")
+            and self.headers.get("X-Seleto-Sync-Signature")
+        )
+
+    def _authorized_signature(self, body: bytes) -> bool:
+        timestamp = self.headers.get("X-Seleto-Sync-Timestamp", "").strip()
+        nonce = self.headers.get("X-Seleto-Sync-Nonce", "").strip()
+        signature = self.headers.get("X-Seleto-Sync-Signature", "").strip()
+        try:
+            request_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            self._send_json(HTTPStatus.UNAUTHORIZED, {"status": "erro", "message": "Timestamp de assinatura invalido."})
+            return False
+        drift_seconds = abs((datetime.now(timezone.utc) - request_time.astimezone(timezone.utc)).total_seconds())
+        if drift_seconds > 300:
+            self._send_json(HTTPStatus.UNAUTHORIZED, {"status": "erro", "message": "Assinatura expirada."})
+            return False
+        parsed = urlparse(self.path)
+        signed = b"\n".join(
+            [
+                self.command.upper().encode("utf-8"),
+                parsed.path.encode("utf-8"),
+                timestamp.encode("utf-8"),
+                nonce.encode("utf-8"),
+                body,
+            ]
+        )
+        expected = hmac.new(SYNC_TOKEN.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            self._send_json(HTTPStatus.UNAUTHORIZED, {"status": "erro", "message": "Assinatura de sincronizacao invalida."})
+            return False
+        return True
+
+    def _read_body(self) -> bytes:
         length = int(self.headers.get("Content-Length", "0"))
         if length > MAX_BODY_BYTES:
             raise ValueError("Corpo da requisicao excede o limite configurado.")
         if length <= 0:
+            return b""
+        return self.rfile.read(length)
+
+    def _read_json(self, body: bytes) -> dict[str, Any]:
+        if not body:
             return {}
-        body = self.rfile.read(length)
         return json.loads(body.decode("utf-8"))
 
     def do_OPTIONS(self) -> None:
         self.send_response(HTTPStatus.NO_CONTENT)
         self.send_header("Allow", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "authorization, content-type, x-seleto-sync-token")
+        self.send_header("Access-Control-Allow-Headers", "authorization, content-type, x-seleto-sync-token, x-seleto-sync-timestamp, x-seleto-sync-nonce, x-seleto-sync-signature")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
 
@@ -1249,11 +1351,12 @@ class SyncHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"status": "erro", "database": "erro", "message": str(exc)})
 
     def do_POST(self) -> None:
-        if not self._authorized():
-            return
         parsed = urlparse(self.path)
         try:
-            body = self._read_json()
+            raw_body = self._read_body()
+            if not self._authorized(raw_body):
+                return
+            body = self._read_json(raw_body)
             if parsed.path == "/sync/v1/health":
                 status, payload = server_health_payload()
             elif parsed.path == "/sync/v1/pull":

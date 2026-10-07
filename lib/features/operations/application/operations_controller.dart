@@ -16,6 +16,12 @@ String? _tenantScope(Ref ref) {
   return session?.allows('tenant.view_all') == true ? null : session?.tenantId;
 }
 
+String? _syncScopeKey(Ref ref) {
+  final session = ref.watch(authControllerProvider).session;
+  if (session == null) return null;
+  return session.isSuperAdmin ? null : 'tenant_${session.tenantId}';
+}
+
 final ingredientsProvider =
     StreamProvider.family<List<IngredientOverview>, bool>(
       (ref, includeInactive) => ref
@@ -142,6 +148,15 @@ final notificationSettingsProvider = StreamProvider(
 );
 final appSettingsProvider = StreamProvider(
   (ref) => ref.watch(databaseProvider).watchAppSettings(),
+);
+final syncQueueProvider = StreamProvider(
+  (ref) =>
+      ref.watch(databaseProvider).watchSyncQueue(scopeKey: _syncScopeKey(ref)),
+);
+final syncHistoryProvider = StreamProvider(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchSyncHistory(scopeKey: _syncScopeKey(ref)),
 );
 final auditLogsProvider = StreamProvider(
   (ref) =>

@@ -365,33 +365,39 @@ class HardwareEspClient {
     required String state,
   }) async {
     Object? lastError;
-    var commandEndpoint = _normalizeEndpoint(endpoint);
-    if (state == 'off') {
-      final probe = await _tryProbe(commandEndpoint);
-      if (probe != null) {
-        commandEndpoint = probe.endpoint;
-      }
+    final candidates = <String>[
+      _normalizeEndpoint(endpoint),
+      _knownSetupEndpoint,
+    ];
+
+    final probe = await _tryProbe(candidates.first);
+    if (probe != null) {
+      candidates.insert(0, probe.endpoint);
     }
-    final maxAttempts = state == 'off' ? 1 : 3;
-    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        return await _sendRelayOnce(
-          endpoint: commandEndpoint,
-          channel: channel,
-          state: state,
-        );
-      } catch (error) {
-        lastError = error;
-        if (attempt == maxAttempts) break;
-        await Future<void>.delayed(Duration(milliseconds: 180 * attempt));
+
+    for (final commandEndpoint in candidates.toSet()) {
+      final maxAttempts = commandEndpoint == _knownSetupEndpoint ? 1 : 2;
+      for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          return await _sendRelayOnce(
+            endpoint: commandEndpoint,
+            channel: channel,
+            state: state,
+          );
+        } catch (error) {
+          lastError = error;
+          if (attempt == maxAttempts) break;
+          await Future<void>.delayed(Duration(milliseconds: 120 * attempt));
+        }
       }
     }
 
-    final probe = await discover(onLog: (_) {});
-    if (probe != null && probe.endpoint != commandEndpoint) {
+    final discovered = await discover(onLog: (_) {});
+    if (discovered != null &&
+        !candidates.toSet().contains(discovered.endpoint)) {
       try {
         return await _sendRelayOnce(
-          endpoint: probe.endpoint,
+          endpoint: discovered.endpoint,
           channel: channel,
           state: state,
         );

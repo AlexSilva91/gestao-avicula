@@ -627,3 +627,45 @@ class VaccinationRecords extends Table {
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
+
+class SyncQueueItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get scopeKey => text()();
+  TextColumn get tenantId => text()();
+  TextColumn get userId => text().nullable()();
+  TextColumn get reason => text()();
+  TextColumn get status => text().withDefault(const Constant('PENDING'))();
+  IntColumn get priority => integer().withDefault(const Constant(100))();
+  IntColumn get attemptCount => integer().withDefault(const Constant(0))();
+  IntColumn get maxAttempts => integer().withDefault(const Constant(3))();
+  TextColumn get lastError => text().nullable()();
+  DateTimeColumn get availableAt => dateTime()();
+  DateTimeColumn get startedAt => dateTime().nullable()();
+  DateTimeColumn get finishedAt => dateTime().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class SyncHistoryItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get queueId => text().nullable()();
+  TextColumn get scopeKey => text()();
+  TextColumn get tenantId => text()();
+  TextColumn get userId => text().nullable()();
+  TextColumn get reason => text()();
+  TextColumn get status => text()();
+  TextColumn get message => text().nullable()();
+  TextColumn get localHash => text().nullable()();
+  TextColumn get remoteHash => text().nullable()();
+  IntColumn get durationMs => integer().withDefault(const Constant(0))();
+  DateTimeColumn get startedAt => dateTime()();
+  DateTimeColumn get finishedAt => dateTime()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt =>
+      dateTime().clientDefault(() => DateTime.now())();
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}

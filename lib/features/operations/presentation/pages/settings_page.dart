@@ -16,6 +16,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
 import '../../application/camera_monitoring.dart';
+import '../../application/hardware_mqtt_client.dart';
 import '../../application/operations_controller.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -39,6 +40,7 @@ class SettingsPage extends ConsumerWidget {
           children: [
             _AppUpdateCard(ref: ref),
             _BackupCard(ref: ref),
+            _MqttSettingsCard(ref: ref),
             _CameraSettingsCard(ref: ref),
           ],
         );
@@ -662,6 +664,283 @@ class _CameraSettingsCard extends StatelessWidget {
   }
 }
 
+class _MqttSettingsCard extends ConsumerStatefulWidget {
+  const _MqttSettingsCard({required this.ref});
+
+  final WidgetRef ref;
+
+  @override
+  ConsumerState<_MqttSettingsCard> createState() => _MqttSettingsCardState();
+}
+
+class _MqttSettingsCardState extends ConsumerState<_MqttSettingsCard> {
+  final _host = TextEditingController();
+  final _port = TextEditingController(text: '1883');
+  final _topic = TextEditingController(text: 'seleto/esp32');
+  final _deviceId = TextEditingController(text: 'SELETO-RELE-01');
+  final _username = TextEditingController();
+  final _password = TextEditingController();
+  bool _enabled = false;
+  bool _hidePassword = true;
+  bool _testing = false;
+  bool _saving = false;
+  bool _hydrated = false;
+
+  @override
+  void dispose() {
+    _host.dispose();
+    _port.dispose();
+    _topic.dispose();
+    _deviceId.dispose();
+    _username.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.ref
+      .watch(appSettingsProvider)
+      .when(
+        loading: () => const Card(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: CircularProgressIndicator(),
+          ),
+        ),
+        error: (_, _) => const SeletoAsyncError(),
+        data: (settings) {
+          if (!_hydrated) {
+            final values = {for (final s in settings) s.key: s.value};
+            _enabled = values['hardware_esp_mqtt_enabled'] == 'true';
+            _host.text = values['hardware_esp_mqtt_host']?.trim() ?? '';
+            _port.text = values['hardware_esp_mqtt_port']?.trim() ?? '1883';
+            _topic.text =
+                values['hardware_esp_mqtt_base_topic']?.trim() ??
+                'seleto/esp32';
+            _deviceId.text =
+                values['hardware_esp_mqtt_device_id']?.trim() ??
+                'SELETO-RELE-01';
+            _username.text = values['hardware_esp_mqtt_username']?.trim() ?? '';
+            _password.text = values['hardware_esp_mqtt_password'] ?? '';
+            _hydrated = true;
+          }
+          final busy = _saving || _testing;
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.hub_outlined),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Servidor MQTT',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ),
+                      Switch(
+                        value: _enabled,
+                        onChanged: busy
+                            ? null
+                            : (value) => setState(() => _enabled = value),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  LayoutBuilder(
+                    builder: (context, box) {
+                      final compact = box.maxWidth < 640;
+                      final host = TextField(
+                        controller: _host,
+                        enabled: !busy,
+                        keyboardType: TextInputType.url,
+                        decoration: const InputDecoration(
+                          labelText: 'Broker MQTT',
+                          hintText: '131.221.236.34',
+                          prefixIcon: Icon(Icons.dns_outlined),
+                        ),
+                      );
+                      final port = TextField(
+                        controller: _port,
+                        enabled: !busy,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Porta',
+                          prefixIcon: Icon(Icons.tag_outlined),
+                        ),
+                      );
+                      return compact
+                          ? Column(
+                              children: [
+                                host,
+                                const SizedBox(height: 10),
+                                port,
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                Expanded(child: host),
+                                const SizedBox(width: 10),
+                                SizedBox(width: 120, child: port),
+                              ],
+                            );
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _topic,
+                    enabled: !busy,
+                    decoration: const InputDecoration(
+                      labelText: 'Tópico base',
+                      prefixIcon: Icon(Icons.account_tree_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _deviceId,
+                    enabled: !busy,
+                    decoration: const InputDecoration(
+                      labelText: 'Device ID',
+                      prefixIcon: Icon(Icons.memory_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _username,
+                    enabled: !busy,
+                    decoration: const InputDecoration(
+                      labelText: 'Usuário MQTT',
+                      prefixIcon: Icon(Icons.person_outline),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _password,
+                    enabled: !busy,
+                    obscureText: _hidePassword,
+                    decoration: InputDecoration(
+                      labelText: 'Senha MQTT',
+                      prefixIcon: const Icon(Icons.key_outlined),
+                      suffixIcon: IconButton(
+                        onPressed: busy
+                            ? null
+                            : () => setState(
+                                () => _hidePassword = !_hidePassword,
+                              ),
+                        icon: Icon(
+                          _hidePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: busy ? null : _save,
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.save_outlined),
+                        label: Text(_saving ? 'Salvando...' : 'Salvar MQTT'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: busy || !_enabled ? null : _test,
+                        icon: _testing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.network_check_outlined),
+                        label: Text(_testing ? 'Testando...' : 'Testar MQTT'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+
+  EspMqttConfig _config() => EspMqttConfig(
+    enabled: _enabled,
+    host: _host.text.trim(),
+    port: int.tryParse(_port.text.trim()) ?? 1883,
+    baseTopic: _topic.text.trim().isEmpty ? 'seleto/esp32' : _topic.text.trim(),
+    deviceId: _deviceId.text.trim().isEmpty
+        ? 'SELETO-RELE-01'
+        : _deviceId.text.trim(),
+    username: _username.text.trim(),
+    password: _password.text,
+  );
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final controller = widget.ref.read(operationsControllerProvider);
+      final updates = {
+        'hardware_esp_mqtt_enabled': _enabled.toString(),
+        'hardware_esp_mqtt_host': _host.text.trim(),
+        'hardware_esp_mqtt_port': _port.text.trim().isEmpty
+            ? '1883'
+            : _port.text.trim(),
+        'hardware_esp_mqtt_base_topic': _topic.text.trim().isEmpty
+            ? 'seleto/esp32'
+            : _topic.text.trim(),
+        'hardware_esp_mqtt_device_id': _deviceId.text.trim().isEmpty
+            ? 'SELETO-RELE-01'
+            : _deviceId.text.trim(),
+        'hardware_esp_mqtt_username': _username.text.trim(),
+        'hardware_esp_mqtt_password': _password.text,
+      };
+      for (final entry in updates.entries) {
+        await controller.saveSetting(entry.key, entry.value);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Configuração MQTT salva.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _test() async {
+    setState(() => _testing = true);
+    try {
+      final probe = await const HardwareMqttClient().test(_config());
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(probe.message)));
+      }
+    } catch (error) {
+      if (mounted) await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+}
+
 class _BackupCard extends StatelessWidget {
   const _BackupCard({required this.ref});
   final WidgetRef ref;
@@ -682,6 +961,8 @@ class _BackupCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _SyncServerPanel(ref: ref),
+          const SizedBox(height: 12),
+          _SyncTerminalCard(ref: ref),
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: () async {
@@ -1293,6 +1574,164 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
     SyncStatus.offline => 'Sem conexão',
     SyncStatus.failed => 'Falha',
   };
+}
+
+class _SyncTerminalCard extends StatelessWidget {
+  const _SyncTerminalCard({required this.ref});
+
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) {
+    final queue = ref.watch(syncQueueProvider);
+    final history = ref.watch(syncHistoryProvider);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF050807),
+        border: Border.all(
+          color: const Color(0xFF22C55E).withValues(alpha: .5),
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: DefaultTextStyle(
+          style: const TextStyle(
+            color: Color(0xFF86EFAC),
+            fontFamily: 'monospace',
+            fontSize: 12,
+            height: 1.35,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.terminal_outlined,
+                    color: Color(0xFF22C55E),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'SYNC QUEUE :: SQLITE/DRIFT',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: const Color(0xFFBBF7D0),
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFBBF7D0),
+                    ),
+                    onPressed: () async {
+                      final result = await ref
+                          .read(seletoSyncServiceProvider)
+                          .syncNow(reason: 'terminal_manual', force: true);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Sync: ${_terminalStatus(result.status)}',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Rodar'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              queue.when(
+                loading: () => const Text('> carregando fila...'),
+                error: (error, _) => Text('> erro na fila: $error'),
+                data: (items) => _TerminalBlock(
+                  title: 'FILA',
+                  empty: '> fila limpa',
+                  lines: [
+                    for (final item in items)
+                      '> ${_time(item.createdAt)} ${item.status.padRight(7)} '
+                          '${item.reason} scope=${item.scopeKey} '
+                          'tentativa=${item.attemptCount}/${item.maxAttempts}'
+                          '${item.lastError == null ? '' : ' erro="${item.lastError}"'}',
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              history.when(
+                loading: () => const Text('> carregando historico...'),
+                error: (error, _) => Text('> erro no historico: $error'),
+                data: (items) => _TerminalBlock(
+                  title: 'HISTORICO',
+                  empty: '> nenhum sync registrado',
+                  lines: [
+                    for (final item in items.take(24))
+                      '> ${_time(item.finishedAt)} ${item.status.padRight(10)} '
+                          '${item.reason} ${item.durationMs}ms '
+                          'scope=${item.scopeKey}'
+                          '${item.message == null ? '' : ' msg="${item.message}"'}',
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _terminalStatus(SyncStatus status) => switch (status) {
+    SyncStatus.idle => 'sem alterações',
+    SyncStatus.syncing => 'sincronizando',
+    SyncStatus.skipped => 'ignorado',
+    SyncStatus.uploaded => 'enviado',
+    SyncStatus.downloaded => 'baixado',
+    SyncStatus.merged => 'mesclado',
+    SyncStatus.offline => 'offline',
+    SyncStatus.failed => 'falhou',
+  };
+
+  static String _time(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:'
+      '${value.minute.toString().padLeft(2, '0')}:'
+      '${value.second.toString().padLeft(2, '0')}';
+}
+
+class _TerminalBlock extends StatelessWidget {
+  const _TerminalBlock({
+    required this.title,
+    required this.empty,
+    required this.lines,
+  });
+
+  final String title;
+  final String empty;
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: .38),
+      border: Border.all(color: const Color(0xFF166534).withValues(alpha: .64)),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(10),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 190),
+        child: SingleChildScrollView(
+          child: SelectableText(
+            ['# $title', if (lines.isEmpty) empty else ...lines].join('\n'),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 Future<void> _showExportPath(
