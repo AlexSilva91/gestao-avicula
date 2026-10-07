@@ -74,6 +74,700 @@ class LightingChannelConfig {
   final bool enabled;
 }
 
+class EspConfigurationSection extends ConsumerStatefulWidget {
+  const EspConfigurationSection({super.key});
+
+  @override
+  ConsumerState<EspConfigurationSection> createState() =>
+      _EspConfigurationSectionState();
+}
+
+class _EspConfigurationSectionState
+    extends ConsumerState<EspConfigurationSection> {
+  final espClient = const HardwareEspClient();
+  final mqttClient = const HardwareMqttClient();
+  final mqttRuntime = HardwareMqttRuntime();
+  final lightingEndpoint = TextEditingController();
+  final wifiProvisionEndpoint = TextEditingController(text: '192.168.4.1');
+  final wifiProvisionSsid = TextEditingController();
+  final wifiProvisionPassword = TextEditingController();
+  final mqttHost = TextEditingController();
+  final mqttPort = TextEditingController(text: '1883');
+  final mqttBaseTopic = TextEditingController(text: 'seleto/esp32');
+  final mqttDeviceId = TextEditingController(text: 'SELETO-RELE-01');
+  final mqttUsername = TextEditingController();
+  final mqttPassword = TextEditingController();
+  bool initialized = false;
+  bool saving = false;
+  bool espScanning = false;
+  bool espWifiConnected = false;
+  bool wifiProvisionPasswordHidden = true;
+  bool mqttPasswordHidden = true;
+  bool mqttEnabled = false;
+  bool mqttConnected = false;
+  bool mqttRuntimeStarted = false;
+  StreamSubscription<EspMqttUpdate>? mqttRuntimeSubscription;
+  String espTerminalTitle = 'SELETO ESP LINK';
+  List<String> espTerminalLines = const [
+    'SYS> configuracao do ESP centralizada nesta tela',
+    'SYS> use Wi-Fi do ESP para provisionar a rede local',
+    'SYS> use MQTT para comandos e status em tempo real',
+  ];
+
+  @override
+  void dispose() {
+    mqttRuntimeSubscription?.cancel();
+    unawaited(mqttRuntime.dispose());
+    lightingEndpoint.dispose();
+    wifiProvisionEndpoint.dispose();
+    wifiProvisionSsid.dispose();
+    wifiProvisionPassword.dispose();
+    mqttHost.dispose();
+    mqttPort.dispose();
+    mqttBaseTopic.dispose();
+    mqttDeviceId.dispose();
+    mqttUsername.dispose();
+    mqttPassword.dispose();
+    super.dispose();
+  }
+
+  void _hydrate(List<AppSetting> settings) {
+    if (initialized) return;
+    initialized = true;
+    final values = {for (final setting in settings) setting.key: setting.value};
+    lightingEndpoint.text = values['hardware_lighting_endpoint']?.trim() ?? '';
+    wifiProvisionEndpoint.text =
+        values['hardware_esp_setup_endpoint']?.trim() ?? '192.168.4.1';
+    wifiProvisionSsid.text = values['hardware_esp_wifi_ssid']?.trim() ?? '';
+    wifiProvisionPassword.text =
+        values['hardware_esp_wifi_password']?.trim() ?? '';
+    mqttEnabled = values['hardware_esp_mqtt_enabled'] == 'true';
+    mqttHost.text = values['hardware_esp_mqtt_host']?.trim() ?? '';
+    mqttPort.text = values['hardware_esp_mqtt_port']?.trim() ?? '1883';
+    final savedMqttBaseTopic = values['hardware_esp_mqtt_base_topic']?.trim();
+    mqttBaseTopic.text =
+        savedMqttBaseTopic == null || savedMqttBaseTopic == 'granja/esp32'
+        ? 'seleto/esp32'
+        : savedMqttBaseTopic;
+    final savedMqttDeviceId = values['hardware_esp_mqtt_device_id']?.trim();
+    mqttDeviceId.text =
+        savedMqttDeviceId == null ||
+            savedMqttDeviceId == 'GRANJA-SELETO-RELE-01'
+        ? 'SELETO-RELE-01'
+        : savedMqttDeviceId;
+    mqttUsername.text = values['hardware_esp_mqtt_username']?.trim() ?? '';
+    mqttPassword.text = values['hardware_esp_mqtt_password'] ?? '';
+  }
+
+  @override
+  Widget build(BuildContext context) => ref
+      .watch(appSettingsProvider)
+      .when(
+        loading: () => const Card(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+        error: (_, _) => const SeletoAsyncError(),
+        data: (settings) {
+          _hydrate(settings);
+          if (!mqttRuntimeStarted && _mqttConfig().isUsable) {
+            mqttRuntimeStarted = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) unawaited(_startMqttRuntime());
+            });
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _PanelHeader(
+                icon: Icons.settings_input_component_outlined,
+                title: 'Configuração do ESP32',
+                subtitle: 'Wi-Fi, MQTT e envio de credenciais ao controlador',
+              ),
+              const SizedBox(height: 12),
+              _EspTerminalPanel(
+                title: espTerminalTitle,
+                lines: espTerminalLines,
+                scanning: espScanning,
+                onDiscover: () => _discoverEsp(auto: false),
+                onTestEndpoint: _testSavedWifiEndpoint,
+              ),
+              const SizedBox(height: 12),
+              _EspWifiProvisionPanel(
+                endpointController: wifiProvisionEndpoint,
+                ssidController: wifiProvisionSsid,
+                passwordController: wifiProvisionPassword,
+                passwordHidden: wifiProvisionPasswordHidden,
+                connected: espWifiConnected,
+                busy: saving || espScanning,
+                onConfigure: _configureEspWifi,
+                onDisconnect: _disconnectEspWifi,
+                onTogglePassword: () => setState(
+                  () => wifiProvisionPasswordHidden =
+                      !wifiProvisionPasswordHidden,
+                ),
+                onHelp: _showEspWifiHelp,
+              ),
+              const SizedBox(height: 12),
+              _EspMqttPanel(
+                enabled: mqttEnabled,
+                connected: mqttConnected,
+                busy: saving || espScanning,
+                hostController: mqttHost,
+                portController: mqttPort,
+                baseTopicController: mqttBaseTopic,
+                deviceIdController: mqttDeviceId,
+                usernameController: mqttUsername,
+                passwordController: mqttPassword,
+                passwordHidden: mqttPasswordHidden,
+                onEnabledChanged: (value) =>
+                    setState(() => mqttEnabled = value),
+                onTogglePassword: () =>
+                    setState(() => mqttPasswordHidden = !mqttPasswordHidden),
+                onSave: _saveMqttSettings,
+                onTest: _testMqttConnection,
+                onPushToEsp: _configureEspMqtt,
+              ),
+            ],
+          );
+        },
+      );
+
+  EspMqttConfig _mqttConfig() => EspMqttConfig(
+    enabled: mqttEnabled,
+    host: mqttHost.text.trim(),
+    port: int.tryParse(mqttPort.text.trim()) ?? 1883,
+    baseTopic: mqttBaseTopic.text.trim().isEmpty
+        ? 'seleto/esp32'
+        : mqttBaseTopic.text.trim(),
+    deviceId: mqttDeviceId.text.trim().isEmpty
+        ? 'SELETO-RELE-01'
+        : mqttDeviceId.text.trim(),
+    username: mqttUsername.text.trim(),
+    password: mqttPassword.text,
+  );
+
+  Future<void> _saveMqttSettings() async {
+    setState(() => saving = true);
+    try {
+      final controller = ref.read(operationsControllerProvider);
+      final updates = {
+        'hardware_esp_mqtt_enabled': mqttEnabled.toString(),
+        'hardware_esp_mqtt_host': mqttHost.text.trim(),
+        'hardware_esp_mqtt_port': mqttPort.text.trim(),
+        'hardware_esp_mqtt_base_topic': mqttBaseTopic.text.trim(),
+        'hardware_esp_mqtt_device_id': mqttDeviceId.text.trim(),
+        'hardware_esp_mqtt_username': mqttUsername.text.trim(),
+        'hardware_esp_mqtt_password': mqttPassword.text,
+      };
+      for (final entry in updates.entries) {
+        await controller.saveSetting(entry.key, entry.value);
+      }
+      if (!mounted) return;
+      setState(() => espTerminalTitle = 'MQTT SALVO');
+      _appendEspLog('APP> MQTT salvo em ${mqttHost.text.trim()}');
+      _snack('MQTT salvo.');
+      if (mqttEnabled) {
+        unawaited(_startMqttRuntime());
+      } else {
+        await mqttRuntime.disconnect();
+        if (mounted) setState(() => mqttConnected = false);
+      }
+    } catch (error) {
+      if (mounted) await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _testMqttConnection() async {
+    final config = _mqttConfig();
+    if (!config.isUsable) {
+      setState(() => espTerminalTitle = 'MQTT INCOMPLETO');
+      _appendEspLog('ERR> informe broker, porta e topico MQTT');
+      return;
+    }
+    setState(() {
+      saving = true;
+      espTerminalTitle = 'MQTT HANDSHAKE';
+    });
+    try {
+      final probe = await mqttClient.test(config);
+      if (!mounted) return;
+      await _saveMqttSettings();
+      if (!mounted) return;
+      setState(() {
+        mqttConnected = probe.connected;
+        espTerminalTitle = probe.connected ? 'MQTT CONECTADO' : 'MQTT PENDENTE';
+      });
+      _appendEspLog('MQTT> ${probe.message}');
+      await _startMqttRuntime();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        mqttConnected = false;
+        espTerminalTitle = 'FALHA MQTT';
+      });
+      _appendEspLog('ERR> MQTT falhou: $error');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _configureEspMqtt() async {
+    final endpoint = _currentWifiEndpoint();
+    final config = _mqttConfig();
+    if (endpoint.isEmpty) {
+      _appendEspLog('ERR> endpoint Wi-Fi do ESP ausente');
+      _snack('Informe ou detecte o endpoint do ESP antes do MQTT.');
+      return;
+    }
+    if (!config.isUsable) {
+      _appendEspLog('ERR> configuração MQTT incompleta');
+      _snack('Informe broker, porta e tópico MQTT.');
+      return;
+    }
+    setState(() {
+      saving = true;
+      espTerminalTitle = 'CONFIG MQTT ESP';
+    });
+    try {
+      await _saveMqttSettings();
+      final payload = await espClient.configureMqtt(
+        endpoint: endpoint,
+        enabled: config.enabled,
+        host: config.host,
+        port: config.port,
+        baseTopic: config.baseTopic,
+        deviceId: config.deviceId,
+        username: config.username,
+        password: config.password,
+      );
+      if (!mounted) return;
+      _appendEspLog('ESP> configuração MQTT enviada');
+      _appendEspPayload(payload);
+      _snack('MQTT enviado para o ESP.');
+      unawaited(_startMqttRuntime());
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => espTerminalTitle = 'FALHA MQTT ESP');
+      _appendEspLog('ERR> configurar MQTT falhou: $error');
+      await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _startMqttRuntime() async {
+    final config = _mqttConfig();
+    if (!config.isUsable) return;
+    mqttRuntimeSubscription ??= mqttRuntime.updates.listen(_handleMqttUpdate);
+    try {
+      await mqttRuntime.connect(config);
+      if (!mounted) return;
+      setState(() {
+        mqttConnected = true;
+        espTerminalTitle = 'MQTT TEMPO REAL';
+      });
+      await ref
+          .read(databaseProvider)
+          .saveAppSetting(
+            'hardware_esp_last_seen_at',
+            DateTime.now().toIso8601String(),
+            'system',
+          );
+      _appendEspLog(
+        'MQTT> tempo real conectado em ${config.host}:${config.port}',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => mqttConnected = false);
+      _appendEspLog('WARN> tempo real MQTT indisponível: $error');
+    }
+  }
+
+  void _handleMqttUpdate(EspMqttUpdate update) {
+    if (!mounted) return;
+    if (update.topic == 'runtime/disconnected') {
+      setState(() => mqttConnected = false);
+      _appendEspLog('MQTT> desconectado');
+      return;
+    }
+    setState(() => mqttConnected = true);
+    unawaited(
+      ref
+          .read(databaseProvider)
+          .saveAppSetting(
+            'hardware_esp_last_seen_at',
+            update.receivedAt.toIso8601String(),
+            'system',
+          ),
+    );
+    if (update.topic == 'runtime/connected') {
+      _appendEspLog('MQTT> reconectado');
+      return;
+    }
+    final suffix = update.topic.split('/').isEmpty
+        ? update.topic
+        : update.topic.split('/').last;
+    if (suffix == 'status') {
+      final ip = (update.payload['ip'] ?? '').toString();
+      setState(
+        () => espWifiConnected = update.payload['wifiConnected'] == true,
+      );
+      _appendEspLog('MQTT> status recebido${ip.isEmpty ? '' : ' ($ip)'}');
+      return;
+    }
+    _appendEspLog('MQTT> mensagem recebida: $suffix');
+  }
+
+  Future<void> _configureEspWifi() async {
+    final endpoint = wifiProvisionEndpoint.text.trim().isEmpty
+        ? '192.168.4.1'
+        : wifiProvisionEndpoint.text.trim();
+    final ssid = wifiProvisionSsid.text.trim();
+    final password = wifiProvisionPassword.text;
+    if (ssid.isEmpty) {
+      setState(() => espTerminalTitle = 'WIFI DO ESP');
+      _appendEspLog('ERR> informe o nome da rede Wi-Fi');
+      _snack('Informe o nome da rede Wi-Fi.');
+      return;
+    }
+
+    setState(() {
+      saving = true;
+      espTerminalTitle = 'CONFIG WIFI ESP';
+    });
+    _appendEspLog('APP> enviando rede "$ssid" para $endpoint');
+
+    try {
+      var payload = await espClient.configureWifi(
+        endpoint: endpoint,
+        ssid: ssid,
+        password: password,
+      );
+      if (!mounted) return;
+
+      _appendEspPayload(payload);
+      for (
+        var attempt = 1;
+        attempt <= 12 && payload['wifiConnected'] != true;
+        attempt++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 2500));
+        if (!mounted) return;
+        try {
+          final probe = await espClient.ping(endpoint);
+          payload = probe.payload;
+          _appendEspLog('ESP> aguardando DHCP... tentativa $attempt/12');
+          _appendEspPayload(payload);
+        } catch (_) {
+          _appendEspLog(
+            'ESP> aguardando resposta do AP... tentativa $attempt/12',
+          );
+        }
+      }
+      final connected = payload['wifiConnected'] == true;
+      final ip = (payload['ip'] ?? '').toString().trim();
+      final setupApIp = (payload['setupApIp'] ?? '').toString().trim();
+      final normalizedIp = ip.isEmpty
+          ? ''
+          : ip.startsWith('http')
+          ? ip
+          : 'http://$ip';
+      final controller = ref.read(operationsControllerProvider);
+      await controller.saveSetting('hardware_esp_setup_endpoint', endpoint);
+      await controller.saveSetting('hardware_esp_wifi_ssid', ssid);
+      await controller.saveSetting('hardware_esp_wifi_password', password);
+      await controller.saveSetting('hardware_esp_remote_sync_enabled', 'false');
+
+      if (connected && normalizedIp.isNotEmpty) {
+        lightingEndpoint.text = normalizedIp;
+        await controller.saveSetting(
+          'hardware_lighting_endpoint',
+          normalizedIp,
+        );
+        await controller.saveSetting('hardware_lighting_connection', 'WIFI');
+        await controller.saveSetting('hardware_lighting_enabled', 'true');
+      }
+
+      if (!mounted) return;
+      setState(() {
+        espWifiConnected = connected;
+        espTerminalTitle = connected ? 'WIFI CONFIGURADO' : 'WIFI SALVO NO ESP';
+      });
+      _appendEspLog(
+        connected
+            ? 'ESP> Wi-Fi conectado em ${normalizedIp.isEmpty ? ip : normalizedIp}'
+            : 'ESP> credenciais salvas; conexao ainda nao confirmada',
+      );
+      if (setupApIp.isNotEmpty) {
+        _appendEspLog('ESP> AP backup continua em $setupApIp');
+      }
+      _snack(connected ? 'Wi-Fi do ESP configurado.' : 'Credenciais enviadas.');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => espTerminalTitle = 'FALHA WIFI ESP');
+      _appendEspLog('ERR> Wi-Fi do ESP falhou: $error');
+      await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _disconnectEspWifi() async {
+    final endpoint = _currentWifiEndpoint().isNotEmpty
+        ? _currentWifiEndpoint()
+        : wifiProvisionEndpoint.text.trim().isEmpty
+        ? '192.168.4.1'
+        : wifiProvisionEndpoint.text.trim();
+
+    setState(() {
+      saving = true;
+      espTerminalTitle = 'DESCONECTAR WIFI ESP';
+    });
+    _appendEspLog('APP> solicitando desconexao Wi-Fi em $endpoint');
+
+    try {
+      final payload = await espClient.disconnectWifi(endpoint: endpoint);
+      final controller = ref.read(operationsControllerProvider);
+      await controller.saveSetting('hardware_lighting_endpoint', '');
+      await controller.saveSetting('hardware_esp_wifi_ssid', '');
+      await controller.saveSetting('hardware_esp_wifi_password', '');
+      if (!mounted) return;
+      _appendEspPayload(payload);
+      setState(() {
+        espWifiConnected = false;
+        lightingEndpoint.clear();
+        espTerminalTitle = 'WIFI DESCONECTADO';
+      });
+      _appendEspLog('ESP> Wi-Fi desconectado e credenciais removidas');
+      _snack('Wi-Fi do ESP desconectado.');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => espTerminalTitle = 'FALHA DESCONECTAR WIFI');
+      _appendEspLog('ERR> desconexao Wi-Fi falhou: $error');
+      await showOperationError(context, error);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _showEspWifiHelp() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Conectar o ESP no Wi-Fi'),
+        content: const Text(
+          'Conecte o celular na rede SELETO-SETUP, senha seleto1234. '
+          'Depois informe o Wi-Fi da propriedade aqui na Central da Automação. '
+          'A tela web do ESP continua disponivel apenas como backup.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Entendi'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _discoverEsp({required bool auto}) async {
+    if (espScanning) return;
+    setState(() {
+      espScanning = true;
+      espTerminalTitle = auto ? 'AUTO SCAN' : 'MANUAL SCAN';
+      espTerminalLines = [
+        'SYS> ${auto ? 'varredura automatica' : 'varredura manual'} iniciada',
+      ];
+    });
+    try {
+      final probe = await espClient.discover(onLog: _appendEspLog);
+      if (!mounted) return;
+      if (probe == null) {
+        setState(() => espTerminalTitle = 'ESP NAO ENCONTRADO');
+        _appendEspLog('AP> SSID SELETO-SETUP');
+        _appendEspLog('AP> senha seleto1234');
+        _appendEspLog('AP> depois toque em Detectar ESP');
+        return;
+      }
+      await _applyEspProbe(probe);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => espTerminalTitle = 'ERRO NO LINK');
+      _appendEspLog('ERR> $error');
+    } finally {
+      if (mounted) setState(() => espScanning = false);
+    }
+  }
+
+  Future<void> _testSavedWifiEndpoint() async {
+    final endpoint = _currentWifiEndpoint();
+    if (endpoint.isEmpty) {
+      _appendEspLog('ERR> nenhum endpoint Wi-Fi salvo para testar');
+      return;
+    }
+    setState(() {
+      espScanning = true;
+      espTerminalTitle = 'ESP HANDSHAKE';
+    });
+    try {
+      final probe = await espClient.ping(endpoint);
+      if (!mounted) return;
+      await _applyEspProbe(probe);
+    } catch (error) {
+      if (!mounted) return;
+      await ref
+          .read(databaseProvider)
+          .recordAutomationEvent(
+            severity: 'WARN',
+            type: 'esp_connection_failure',
+            title: 'Falha de conexão com ESP32',
+            message: 'Endpoint salvo não respondeu: $error',
+            source: 'HTTP',
+          );
+      _appendEspLog('ERR> endpoint sem resposta: $error');
+      _appendEspLog('AP> tente conectar em SELETO-SETUP / seleto1234');
+    } finally {
+      if (mounted) setState(() => espScanning = false);
+    }
+  }
+
+  Future<void> _applyEspProbe(EspDeviceProbe probe) async {
+    final endpoint = probe.endpoint;
+    final controller = ref.read(operationsControllerProvider);
+    final relayStates = _relayStatesFromPayload(probe.payload);
+    for (final entry in relayStates.entries) {
+      final channel = entry.key;
+      final state = entry.value ? 'ON' : 'OFF';
+      if (channel >= 1 && channel <= 4) {
+        await controller.saveSetting(
+          'hardware_lighting_channel_${channel}_last_test_state',
+          state,
+        );
+      } else if (channel >= 5 && channel <= 12) {
+        await controller.saveSetting(
+          'hardware_ventilation_channel_${channel - 4}_last_test_state',
+          state,
+        );
+      }
+    }
+    await controller.saveSetting('hardware_lighting_endpoint', endpoint);
+    await controller.saveSetting(
+      'hardware_esp_last_seen_at',
+      DateTime.now().toIso8601String(),
+    );
+    setState(() {
+      lightingEndpoint.text = endpoint;
+      espWifiConnected = probe.payload['wifiConnected'] == true;
+      espTerminalTitle = 'ESP CONECTADO';
+    });
+    _appendEspLog('ESP> ${probe.message}');
+    _appendEspPayload(probe.payload);
+  }
+
+  Map<int, bool> _relayStatesFromPayload(Map<String, Object?> payload) {
+    final rawRelays = payload['relays'];
+    if (rawRelays is! List) return const {};
+    final states = <int, bool>{};
+    for (final relay in rawRelays) {
+      if (relay is! Map) continue;
+      final channel = int.tryParse((relay['channel'] ?? '').toString());
+      if (channel == null) continue;
+      states[channel] = relay['on'] == true;
+    }
+    return states;
+  }
+
+  String _currentWifiEndpoint() => lightingEndpoint.text.trim();
+
+  void _appendEspLog(String message) {
+    if (!mounted) return;
+    setState(() {
+      final nextLines = [...espTerminalLines, message];
+      espTerminalLines = nextLines.length > 12
+          ? nextLines.sublist(nextLines.length - 12)
+          : nextLines;
+    });
+  }
+
+  void _appendEspPayload(Map<String, Object?> payload) {
+    const encoder = JsonEncoder.withIndent('  ');
+    final lines = encoder.convert(payload).split('\n');
+    for (final line in lines.take(8)) {
+      _appendEspLog('JSON> $line');
+    }
+  }
+
+  void _snack(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _PanelHeader extends StatelessWidget {
+  const _PanelHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLowest.withValues(alpha: .92),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: colors.primaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: colors.onPrimaryContainer),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class HardwareIntegrationsPage extends ConsumerStatefulWidget {
   const HardwareIntegrationsPage({super.key});
 
@@ -89,9 +783,6 @@ class _HardwareIntegrationsPageState
   final mqttRuntime = HardwareMqttRuntime();
   final lightingEndpoint = TextEditingController();
   final lightingRelayPin = TextEditingController(text: '23');
-  final wifiProvisionEndpoint = TextEditingController(text: '192.168.4.1');
-  final wifiProvisionSsid = TextEditingController();
-  final wifiProvisionPassword = TextEditingController();
   final mqttHost = TextEditingController();
   final mqttPort = TextEditingController(text: '1883');
   final mqttBaseTopic = TextEditingController(text: 'seleto/esp32');
@@ -141,8 +832,6 @@ class _HardwareIntegrationsPageState
   bool lightingEnabled = false;
   bool saving = false;
   bool initialized = false;
-  bool wifiProvisionPasswordHidden = true;
-  bool mqttPasswordHidden = true;
   bool mqttEnabled = false;
   bool mqttConnected = false;
   bool mqttRuntimeStarted = false;
@@ -150,7 +839,6 @@ class _HardwareIntegrationsPageState
   bool espWifiConnected = false;
   String lightingStatus = 'Aguardando teste';
   String? lightingConnectionResult;
-  bool espDiscoveryStarted = false;
   bool espScanning = false;
   String espTerminalTitle = 'SELETO ESP LINK';
   List<String> espTerminalLines = const [
@@ -165,9 +853,6 @@ class _HardwareIntegrationsPageState
     unawaited(mqttRuntime.dispose());
     lightingEndpoint.dispose();
     lightingRelayPin.dispose();
-    wifiProvisionEndpoint.dispose();
-    wifiProvisionSsid.dispose();
-    wifiProvisionPassword.dispose();
     mqttHost.dispose();
     mqttPort.dispose();
     mqttBaseTopic.dispose();
@@ -208,11 +893,6 @@ class _HardwareIntegrationsPageState
     lightingConnection = config.lightingConnection;
     lightingEndpoint.text = config.lightingEndpoint;
     lightingRelayPin.text = config.lightingRelayPin;
-    wifiProvisionEndpoint.text =
-        values['hardware_esp_setup_endpoint']?.trim() ?? '192.168.4.1';
-    wifiProvisionSsid.text = values['hardware_esp_wifi_ssid']?.trim() ?? '';
-    wifiProvisionPassword.text =
-        values['hardware_esp_wifi_password']?.trim() ?? '';
     mqttEnabled = values['hardware_esp_mqtt_enabled'] == 'true';
     mqttHost.text = values['hardware_esp_mqtt_host']?.trim() ?? '';
     mqttPort.text = values['hardware_esp_mqtt_port']?.trim() ?? '1883';
@@ -297,12 +977,6 @@ class _HardwareIntegrationsPageState
           error: (_, _) => const SeletoAsyncError(),
           data: (settings) {
             _hydrate(settings);
-            if (!espDiscoveryStarted) {
-              espDiscoveryStarted = true;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) _discoverEsp(auto: true);
-              });
-            }
             if (!mqttRuntimeStarted && _mqttConfig().isUsable) {
               mqttRuntimeStarted = true;
               WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -318,71 +992,31 @@ class _HardwareIntegrationsPageState
                       lightingEndpoint.text.trim().isNotEmpty,
                 ),
                 const SizedBox(height: 16),
-                _EspTerminalPanel(
-                  title: espTerminalTitle,
-                  lines: espTerminalLines,
-                  scanning: espScanning,
-                  onDiscover: () => _discoverEsp(auto: false),
-                  onTestEndpoint: () => _testSavedWifiEndpoint(),
-                ),
+                _lightingControlPanel(context),
                 const SizedBox(height: 12),
-                _EspWifiProvisionPanel(
-                  endpointController: wifiProvisionEndpoint,
-                  ssidController: wifiProvisionSsid,
-                  passwordController: wifiProvisionPassword,
-                  passwordHidden: wifiProvisionPasswordHidden,
-                  connected: espWifiConnected,
-                  busy: saving || espScanning,
-                  onConfigure: _configureEspWifi,
-                  onDisconnect: _disconnectEspWifi,
-                  onTogglePassword: () => setState(
-                    () => wifiProvisionPasswordHidden =
-                        !wifiProvisionPasswordHidden,
-                  ),
-                  onHelp: _showEspWifiHelp,
-                ),
-                const SizedBox(height: 12),
-                _EspMqttPanel(
-                  enabled: mqttEnabled,
-                  connected: mqttConnected,
-                  busy: saving || espScanning,
-                  hostController: mqttHost,
-                  portController: mqttPort,
-                  baseTopicController: mqttBaseTopic,
-                  deviceIdController: mqttDeviceId,
-                  usernameController: mqttUsername,
-                  passwordController: mqttPassword,
-                  passwordHidden: mqttPasswordHidden,
-                  onEnabledChanged: (value) =>
-                      setState(() => mqttEnabled = value),
-                  onTogglePassword: () =>
-                      setState(() => mqttPasswordHidden = !mqttPasswordHidden),
-                  onSave: _saveMqttSettings,
-                  onTest: _testMqttConnection,
-                  onPushToEsp: _configureEspMqtt,
-                ),
-                const SizedBox(height: 16),
-                _lightingPanel(context),
+                _lightingSettingsPanel(context),
               ],
             );
           },
         ),
   );
 
-  // ignore: unused_element
-  Widget _lightingPanel(BuildContext context) {
-    final channelLabels = [
-      for (var i = 0; i < lightingChannelNames.length; i++)
-        lightingChannelNames[i].text.trim().isEmpty
-            ? 'Canal ${i + 1}'
-            : lightingChannelNames[i].text.trim(),
-    ];
-    final enabledCount = lightingChannelEnabled.where((value) => value).length;
-    final onCount = [
-      for (var i = 0; i < lightingChannelOn.length; i++)
-        lightingChannelEnabled[i] && lightingChannelOn[i],
-    ].where((value) => value).length;
+  List<String> get _channelLabels => [
+    for (var i = 0; i < lightingChannelNames.length; i++)
+      lightingChannelNames[i].text.trim().isEmpty
+          ? 'Canal ${i + 1}'
+          : lightingChannelNames[i].text.trim(),
+  ];
 
+  int get _enabledChannelCount =>
+      lightingChannelEnabled.where((value) => value).length;
+
+  int get _activeChannelCount => [
+    for (var i = 0; i < lightingChannelOn.length; i++)
+      lightingChannelEnabled[i] && lightingChannelOn[i],
+  ].where((value) => value).length;
+
+  Widget _lightingControlPanel(BuildContext context) {
     return _IntegrationPanel(
       icon: Icons.lightbulb_outline,
       title: 'Iluminação',
@@ -390,7 +1024,7 @@ class _HardwareIntegrationsPageState
       children: [
         _LightingControlInstrument(
           enabled: lightingEnabled,
-          channelLabels: channelLabels,
+          channelLabels: _channelLabels,
           pins: [
             for (final controller in lightingChannelPins)
               controller.text.trim().isEmpty ? '-' : controller.text.trim(),
@@ -401,10 +1035,23 @@ class _HardwareIntegrationsPageState
           eveningEnabled: lightingChannelEveningEnabled,
           connection: lightingConnection,
           connectionOk: lightingConnectionResult?.contains('OK') == true,
-          enabledCount: enabledCount,
-          onCount: onCount,
+          enabledCount: _enabledChannelCount,
+          onCount: _activeChannelCount,
         ),
-        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget _lightingSettingsPanel(BuildContext context) {
+    final channelLabels = _channelLabels;
+    final enabledCount = _enabledChannelCount;
+    final onCount = _activeChannelCount;
+
+    return _IntegrationPanel(
+      icon: Icons.tune_outlined,
+      title: 'Configuração da iluminação',
+      status: lightingConnectionResult ?? 'Ajuste conexão, canais e agenda',
+      children: [
         _LightingConnectionPanel(
           enabled: lightingEnabled,
           connection: lightingConnection,
@@ -887,13 +1534,6 @@ class _HardwareIntegrationsPageState
         'hardware_lighting_connection': lightingConnection,
         'hardware_lighting_endpoint': lightingEndpoint.text.trim(),
         'hardware_lighting_relay_pin': lightingRelayPin.text.trim(),
-        'hardware_esp_mqtt_enabled': mqttEnabled.toString(),
-        'hardware_esp_mqtt_host': mqttHost.text.trim(),
-        'hardware_esp_mqtt_port': mqttPort.text.trim(),
-        'hardware_esp_mqtt_base_topic': mqttBaseTopic.text.trim(),
-        'hardware_esp_mqtt_device_id': mqttDeviceId.text.trim(),
-        'hardware_esp_mqtt_username': mqttUsername.text.trim(),
-        'hardware_esp_mqtt_password': mqttPassword.text,
         'hardware_lighting_general_morning_enabled': generalMorningEnabled
             .toString(),
         'hardware_lighting_general_morning_on_time': generalMorningOnTime.text
@@ -965,139 +1605,6 @@ class _HardwareIntegrationsPageState
     username: mqttUsername.text.trim(),
     password: mqttPassword.text,
   );
-
-  Future<void> _saveMqttSettings() async {
-    setState(() => saving = true);
-    try {
-      final controller = ref.read(operationsControllerProvider);
-      final updates = {
-        'hardware_esp_mqtt_enabled': mqttEnabled.toString(),
-        'hardware_esp_mqtt_host': mqttHost.text.trim(),
-        'hardware_esp_mqtt_port': mqttPort.text.trim(),
-        'hardware_esp_mqtt_base_topic': mqttBaseTopic.text.trim(),
-        'hardware_esp_mqtt_device_id': mqttDeviceId.text.trim(),
-        'hardware_esp_mqtt_username': mqttUsername.text.trim(),
-        'hardware_esp_mqtt_password': mqttPassword.text,
-      };
-      for (final entry in updates.entries) {
-        await controller.saveSetting(entry.key, entry.value);
-      }
-      if (!mounted) return;
-      setState(() {
-        lightingStatus = 'Configuração MQTT salva.';
-        espTerminalTitle = 'MQTT SALVO';
-      });
-      _appendEspLog('APP> MQTT salvo em ${mqttHost.text.trim()}');
-      _snack('MQTT salvo.');
-      if (mqttEnabled) {
-        unawaited(_startMqttRuntime());
-      } else {
-        await mqttRuntime.disconnect();
-        if (mounted) setState(() => mqttConnected = false);
-      }
-    } catch (error) {
-      if (mounted) await showOperationError(context, error);
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
-  Future<void> _testMqttConnection() async {
-    final config = _mqttConfig();
-    if (!config.isUsable) {
-      setState(() {
-        lightingStatus = 'Informe broker, porta e tópico MQTT.';
-        lightingConnectionResult = 'FALHA MQTT: configuração incompleta.';
-      });
-      return;
-    }
-    setState(() {
-      saving = true;
-      espTerminalTitle = 'MQTT HANDSHAKE';
-    });
-    try {
-      final probe = await mqttClient.test(config);
-      if (!mounted) return;
-      await _saveMqttSettings();
-      if (!mounted) return;
-      setState(() {
-        mqttConnected = probe.connected;
-        lightingConnectionResult = probe.connected
-            ? 'OK MQTT: broker conectado.'
-            : 'MQTT configurado.';
-        lightingStatus = probe.connected
-            ? 'MQTT operacional para comandos rápidos.'
-            : 'MQTT conectado ao broker; ESP ainda sem status.';
-        espTerminalTitle = probe.connected ? 'MQTT CONECTADO' : 'MQTT PENDENTE';
-      });
-      _appendEspLog('MQTT> ${probe.message}');
-      await _startMqttRuntime();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        mqttConnected = false;
-        lightingConnectionResult = 'FALHA MQTT: broker não respondeu.';
-        lightingStatus = 'Falha ao testar MQTT.';
-      });
-      _appendEspLog('ERR> MQTT falhou: $error');
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
-  Future<void> _configureEspMqtt() async {
-    final endpoint = _currentWifiEndpoint();
-    final config = _mqttConfig();
-    if (endpoint.isEmpty) {
-      setState(() {
-        lightingStatus = 'Informe o endpoint Wi-Fi do ESP antes do MQTT.';
-        lightingConnectionResult = 'FALHA MQTT: endpoint do ESP ausente.';
-      });
-      return;
-    }
-    if (!config.isUsable) {
-      setState(() {
-        lightingStatus = 'Informe broker, porta e tópico MQTT.';
-        lightingConnectionResult = 'FALHA MQTT: configuração incompleta.';
-      });
-      return;
-    }
-    setState(() {
-      saving = true;
-      espTerminalTitle = 'CONFIG MQTT ESP';
-    });
-    try {
-      await _saveMqttSettings();
-      final payload = await espClient.configureMqtt(
-        endpoint: endpoint,
-        enabled: config.enabled,
-        host: config.host,
-        port: config.port,
-        baseTopic: config.baseTopic,
-        deviceId: config.deviceId,
-        username: config.username,
-        password: config.password,
-      );
-      if (!mounted) return;
-      _appendEspLog('ESP> configuração MQTT enviada');
-      _appendEspPayload(payload);
-      setState(() {
-        lightingStatus = 'MQTT enviado para o ESP.';
-        lightingConnectionResult = 'OK MQTT: configuração salva no ESP.';
-      });
-      _snack('MQTT enviado para o ESP.');
-      unawaited(_startMqttRuntime());
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        lightingStatus = 'Falha ao enviar MQTT para o ESP.';
-        lightingConnectionResult = 'FALHA MQTT: ESP não confirmou.';
-      });
-      _appendEspLog('ERR> configurar MQTT falhou: $error');
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
 
   Future<bool> _tryMqttRelayCommand(int channel, String state) async {
     final config = _mqttConfig();
@@ -1769,248 +2276,6 @@ class _HardwareIntegrationsPageState
     return match != null;
   }
 
-  Future<void> _configureEspWifi() async {
-    final endpoint = wifiProvisionEndpoint.text.trim().isEmpty
-        ? '192.168.4.1'
-        : wifiProvisionEndpoint.text.trim();
-    final ssid = wifiProvisionSsid.text.trim();
-    final password = wifiProvisionPassword.text;
-    if (ssid.isEmpty) {
-      setState(() => espTerminalTitle = 'WIFI DO ESP');
-      _appendEspLog('ERR> informe o nome da rede Wi-Fi');
-      _snack('Informe o nome da rede Wi-Fi.');
-      return;
-    }
-
-    setState(() {
-      saving = true;
-      espTerminalTitle = 'CONFIG WIFI ESP';
-    });
-    _appendEspLog('APP> enviando rede "$ssid" para $endpoint');
-
-    try {
-      var payload = await espClient.configureWifi(
-        endpoint: endpoint,
-        ssid: ssid,
-        password: password,
-      );
-      if (!mounted) return;
-
-      _appendEspPayload(payload);
-      for (
-        var attempt = 1;
-        attempt <= 12 && payload['wifiConnected'] != true;
-        attempt++
-      ) {
-        await Future<void>.delayed(const Duration(milliseconds: 2500));
-        if (!mounted) return;
-        try {
-          final probe = await espClient.ping(endpoint);
-          payload = probe.payload;
-          _appendEspLog('ESP> aguardando DHCP... tentativa $attempt/12');
-          _appendEspPayload(payload);
-        } catch (error) {
-          _appendEspLog(
-            'ESP> aguardando resposta do AP... tentativa $attempt/12',
-          );
-        }
-      }
-      final connected = payload['wifiConnected'] == true;
-      final ip = (payload['ip'] ?? '').toString().trim();
-      final setupApIp = (payload['setupApIp'] ?? '').toString().trim();
-      final normalizedIp = ip.isEmpty
-          ? ''
-          : ip.startsWith('http')
-          ? ip
-          : 'http://$ip';
-      final controller = ref.read(operationsControllerProvider);
-      await controller.saveSetting('hardware_esp_setup_endpoint', endpoint);
-      await controller.saveSetting('hardware_esp_wifi_ssid', ssid);
-      await controller.saveSetting('hardware_esp_wifi_password', password);
-      await controller.saveSetting('hardware_esp_remote_sync_enabled', 'false');
-
-      var statusMessage =
-          'Credenciais enviadas; aguardando confirmação de rede.';
-      var resultMessage =
-          'Wi-Fi enviado para o ESP. Conecte na rede e detecte o endpoint.';
-      if (connected && normalizedIp.isNotEmpty) {
-        lightingEndpoint.text = normalizedIp;
-        lightingConnection = 'WIFI';
-        lightingEnabled = true;
-        await controller.saveSetting(
-          'hardware_lighting_endpoint',
-          normalizedIp,
-        );
-        await controller.saveSetting('hardware_lighting_connection', 'WIFI');
-        await controller.saveSetting('hardware_lighting_enabled', 'true');
-        statusMessage = 'ESP conectado em $normalizedIp.';
-        resultMessage = 'OK Wi-Fi: ESP conectado em $normalizedIp.';
-      }
-
-      if (!mounted) return;
-      setState(() {
-        espWifiConnected = connected;
-        espTerminalTitle = connected ? 'WIFI CONFIGURADO' : 'WIFI SALVO NO ESP';
-        lightingConnectionResult = resultMessage;
-        lightingStatus = statusMessage;
-      });
-      _appendEspLog(
-        connected
-            ? 'ESP> Wi-Fi conectado em ${normalizedIp.isEmpty ? ip : normalizedIp}'
-            : 'ESP> credenciais salvas; conexao ainda nao confirmada',
-      );
-      if (setupApIp.isNotEmpty) {
-        _appendEspLog('ESP> AP backup continua em $setupApIp');
-      }
-      _snack(connected ? 'Wi-Fi do ESP configurado.' : 'Credenciais enviadas.');
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        espTerminalTitle = 'FALHA WIFI ESP';
-        lightingConnectionResult = 'FALHA Wi-Fi: nao foi possivel configurar.';
-        lightingStatus = 'Falha ao enviar credenciais para o ESP.';
-      });
-      _appendEspLog('ERR> Wi-Fi do ESP falhou: $error');
-      await showOperationError(context, error);
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
-  Future<void> _disconnectEspWifi() async {
-    final endpoint = _currentWifiEndpoint().isNotEmpty
-        ? _currentWifiEndpoint()
-        : wifiProvisionEndpoint.text.trim().isEmpty
-        ? '192.168.4.1'
-        : wifiProvisionEndpoint.text.trim();
-
-    setState(() {
-      saving = true;
-      espTerminalTitle = 'DESCONECTAR WIFI ESP';
-    });
-    _appendEspLog('APP> solicitando desconexao Wi-Fi em $endpoint');
-
-    try {
-      final payload = await espClient.disconnectWifi(endpoint: endpoint);
-      final controller = ref.read(operationsControllerProvider);
-      await controller.saveSetting('hardware_lighting_endpoint', '');
-      await controller.saveSetting('hardware_esp_wifi_ssid', '');
-      await controller.saveSetting('hardware_esp_wifi_password', '');
-      if (!mounted) return;
-      _appendEspPayload(payload);
-      setState(() {
-        espWifiConnected = false;
-        lightingEnabled = false;
-        lightingEndpoint.clear();
-        lightingConnection = 'WIFI';
-        lightingConnectionResult = 'Wi-Fi do ESP desconectado.';
-        lightingStatus =
-            'ESP saiu da rede Wi-Fi. Use o AP SELETO-SETUP para reconectar.';
-        espTerminalTitle = 'WIFI DESCONECTADO';
-      });
-      _appendEspLog('ESP> Wi-Fi desconectado e credenciais removidas');
-      _snack('Wi-Fi do ESP desconectado.');
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        espTerminalTitle = 'FALHA DESCONECTAR WIFI';
-        lightingConnectionResult = 'FALHA Wi-Fi: nao foi possivel desconectar.';
-      });
-      _appendEspLog('ERR> desconexao Wi-Fi falhou: $error');
-      await showOperationError(context, error);
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
-  Future<void> _showEspWifiHelp() async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Conectar o ESP no Wi-Fi'),
-        content: const Text(
-          'Conecte o celular na rede SELETO-SETUP, senha seleto1234. '
-          'Depois informe o Wi-Fi da propriedade aqui no app e toque em Enviar. '
-          'A tela web do ESP continua disponivel apenas como backup.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Entendi'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _discoverEsp({required bool auto}) async {
-    if (espScanning) return;
-    setState(() {
-      espScanning = true;
-      espTerminalTitle = auto ? 'AUTO SCAN' : 'MANUAL SCAN';
-      espTerminalLines = [
-        'SYS> ${auto ? 'varredura automatica' : 'varredura manual'} iniciada',
-      ];
-    });
-    try {
-      final probe = await espClient.discover(onLog: _appendEspLog);
-      if (!mounted) return;
-      if (probe == null) {
-        setState(() {
-          espTerminalTitle = 'ESP NAO ENCONTRADO';
-          lightingStatus =
-              'ESP não encontrado. Use a rede padrão do controlador.';
-        });
-        _appendEspLog('AP> SSID SELETO-SETUP');
-        _appendEspLog('AP> senha seleto1234');
-        _appendEspLog('AP> depois toque em Detectar ESP');
-        return;
-      }
-      await _applyEspProbe(probe);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => espTerminalTitle = 'ERRO NO LINK');
-      _appendEspLog('ERR> $error');
-    } finally {
-      if (mounted) setState(() => espScanning = false);
-    }
-  }
-
-  Future<void> _testSavedWifiEndpoint() async {
-    final endpoint = _currentWifiEndpoint();
-    if (endpoint.isEmpty) {
-      _appendEspLog('ERR> nenhum endpoint Wi-Fi salvo para testar');
-      return;
-    }
-    setState(() {
-      espScanning = true;
-      espTerminalTitle = 'ESP HANDSHAKE';
-    });
-    try {
-      final probe = await espClient.ping(endpoint);
-      if (!mounted) return;
-      await _applyEspProbe(probe);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        lightingConnectionResult = 'FALHA Wi-Fi: ESP não respondeu.';
-      });
-      await ref
-          .read(databaseProvider)
-          .recordAutomationEvent(
-            severity: 'WARN',
-            type: 'esp_connection_failure',
-            title: 'Falha de conexão com ESP32',
-            message: 'Endpoint salvo não respondeu: $error',
-            source: 'HTTP',
-          );
-      _appendEspLog('ERR> endpoint sem resposta: $error');
-      _appendEspLog('AP> tente conectar em SELETO-SETUP / seleto1234');
-    } finally {
-      if (mounted) setState(() => espScanning = false);
-    }
-  }
-
   Future<void> _probeEspConnection() async {
     setState(() {
       espScanning = true;
@@ -2097,14 +2362,6 @@ class _HardwareIntegrationsPageState
       states[channel] = relay['on'] == true;
     }
     return states;
-  }
-
-  String _currentWifiEndpoint() {
-    if (lightingConnection == 'WIFI' &&
-        lightingEndpoint.text.trim().isNotEmpty) {
-      return lightingEndpoint.text.trim();
-    }
-    return '';
   }
 
   void _appendEspLog(String message) {

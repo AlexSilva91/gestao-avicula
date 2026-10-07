@@ -316,6 +316,7 @@ String _backgroundForPath(String path) {
   }
   if (path == '/alerts') return 'assets/images/backgrounds/bg_management.png';
   if (path == '/users' ||
+      path == '/automation-center' ||
       path == '/integrations' ||
       path == '/hardware-environment' ||
       path == '/hardware-water' ||

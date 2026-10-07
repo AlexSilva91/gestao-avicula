@@ -9,6 +9,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
 import '../../application/operations_controller.dart';
+import 'hardware_integrations_page.dart';
 
 class AutomationCenterPage extends ConsumerWidget {
   const AutomationCenterPage({super.key});
@@ -48,6 +49,8 @@ class AutomationCenterPage extends ConsumerWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            const EspConfigurationSection(),
             const SizedBox(height: 12),
             _MetricGrid(
               children: [
