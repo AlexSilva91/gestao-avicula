@@ -2211,6 +2211,20 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  Future<void> cleanupAutomaticSyncQueue({required String scopeKey}) async {
+    await (delete(syncQueueItems)..where(
+          (row) =>
+              row.scopeKey.equals(scopeKey) &
+              row.status.isIn(['PENDING', 'RUNNING']) &
+              row.reason.isIn([
+                'realtime',
+                'realtime_start',
+                'remembered_session',
+              ]),
+        ))
+        .go();
+  }
+
   Future<void> completeSyncQueueItem({
     required SyncQueueItem item,
     required String status,
@@ -2218,12 +2232,14 @@ class AppDatabase extends _$AppDatabase {
     String? localHash,
     String? remoteHash,
     required DateTime startedAt,
+    bool recordHistory = true,
   }) async {
     final now = DateTime.now();
     await transaction(() async {
       await (delete(
         syncQueueItems,
       )..where((row) => row.id.equals(item.id))).go();
+      if (!recordHistory) return;
       await into(syncHistoryItems).insert(
         SyncHistoryItemsCompanion.insert(
           id: const Uuid().v4(),

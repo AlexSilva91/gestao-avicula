@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1195,7 +1193,6 @@ class _SyncServerPanel extends StatefulWidget {
 }
 
 class _SyncServerPanelState extends State<_SyncServerPanel> {
-  static const _encoder = JsonEncoder.withIndent('  ');
   final _baseUrlController = TextEditingController();
   final _tokenController = TextEditingController();
   Map<String, dynamic>? _result;
@@ -1408,20 +1405,7 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
             ),
             if (result != null) ...[
               const SizedBox(height: 10),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 220),
-                child: SingleChildScrollView(
-                  child: SelectableText(
-                    _encoder.convert(result),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontFamily: 'monospace',
-                      color: result['status'] == 'sucesso'
-                          ? scheme.primary
-                          : scheme.error,
-                    ),
-                  ),
-                ),
-              ),
+              _SyncResultSummary(result: result),
             ],
           ],
         ),
@@ -1576,6 +1560,185 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
   };
 }
 
+class _SyncResultSummary extends StatelessWidget {
+  const _SyncResultSummary({required this.result});
+
+  final Map<String, dynamic> result;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final success = result['status'] == 'sucesso';
+    final health = result['health'] is Map
+        ? Map<String, dynamic>.from(result['health'] as Map)
+        : const <String, dynamic>{};
+    final error = result['erro'] is Map
+        ? Map<String, dynamic>.from(result['erro'] as Map)
+        : const <String, dynamic>{};
+    final endpoint = result['endpoint']?.toString();
+    final serverTime = _formatResultDateTime(health['serverTime']?.toString());
+    final message =
+        result['mensagem']?.toString() ??
+        error['mensagem']?.toString() ??
+        result['resultado']?.toString();
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: success
+            ? scheme.primaryContainer.withValues(alpha: .30)
+            : scheme.errorContainer.withValues(alpha: .34),
+        border: Border.all(
+          color: success
+              ? scheme.primary.withValues(alpha: .24)
+              : scheme.error.withValues(alpha: .28),
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  success
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.error_outline_rounded,
+                  color: success ? scheme.primary : scheme.error,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    success ? 'Configuração validada' : 'Falha na validação',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: success ? scheme.primary : scheme.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Column(
+              children: [
+                if (endpoint != null)
+                  _ResultDetailRow(
+                    icon: Icons.link_rounded,
+                    label: 'Endpoint',
+                    value: endpoint,
+                  ),
+                if (result['latenciaMs'] != null)
+                  _ResultDetailRow(
+                    icon: Icons.speed_rounded,
+                    label: 'Latência',
+                    value: '${result['latenciaMs']} ms',
+                  ),
+                if (health['database'] != null)
+                  _ResultDetailRow(
+                    icon: Icons.storage_rounded,
+                    label: 'Banco',
+                    value: health['database'].toString(),
+                  ),
+                if (health['users'] != null || health['scopes'] != null)
+                  _ResultDetailRow(
+                    icon: Icons.account_tree_outlined,
+                    label: 'Dados',
+                    value:
+                        '${health['users'] ?? '-'} usuários | ${health['scopes'] ?? '-'} escopos',
+                  ),
+                if (health['onlineUsers'] != null)
+                  _ResultDetailRow(
+                    icon: Icons.sensors_rounded,
+                    label: 'Online',
+                    value: '${health['onlineUsers']} usuário(s)',
+                  ),
+                if (serverTime != null)
+                  _ResultDetailRow(
+                    icon: Icons.schedule_rounded,
+                    label: 'Servidor',
+                    value: serverTime,
+                  ),
+              ],
+            ),
+            if (message != null && message.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                message,
+                softWrap: true,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: success ? scheme.onSurfaceVariant : scheme.error,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultDetailRow extends StatelessWidget {
+  const _ResultDetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 15, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 7),
+          SizedBox(
+            width: 66,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Expanded(
+            child: SelectableText(
+              value,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String? _formatResultDateTime(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) return value;
+  final local = parsed.toLocal();
+  return '${local.day.toString().padLeft(2, '0')}/'
+      '${local.month.toString().padLeft(2, '0')}/'
+      '${local.year} às '
+      '${local.hour.toString().padLeft(2, '0')}:'
+      '${local.minute.toString().padLeft(2, '0')}:'
+      '${local.second.toString().padLeft(2, '0')}';
+}
+
 class _SyncTerminalCard extends StatelessWidget {
   const _SyncTerminalCard({required this.ref});
 
@@ -1585,13 +1748,24 @@ class _SyncTerminalCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final queue = ref.watch(syncQueueProvider);
     final history = ref.watch(syncHistoryProvider);
+    const terminalGreen = Color(0xFF22C55E);
+    const terminalText = Color(0xFFBBF7D0);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFF050807),
-        border: Border.all(
-          color: const Color(0xFF22C55E).withValues(alpha: .5),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF03110B), Color(0xFF050807), Color(0xFF020403)],
         ),
+        border: Border.all(color: terminalGreen.withValues(alpha: .5)),
         borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: terminalGreen.withValues(alpha: .10),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1600,7 +1774,7 @@ class _SyncTerminalCard extends StatelessWidget {
             color: Color(0xFF86EFAC),
             fontFamily: 'monospace',
             fontSize: 12,
-            height: 1.35,
+            height: 1.25,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1609,15 +1783,17 @@ class _SyncTerminalCard extends StatelessWidget {
                 children: [
                   const Icon(
                     Icons.terminal_outlined,
-                    color: Color(0xFF22C55E),
+                    color: terminalGreen,
                     size: 18,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'SYNC QUEUE :: SQLITE/DRIFT',
+                      'SYNC :: DRIFT',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: const Color(0xFFBBF7D0),
+                        color: terminalText,
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.w900,
                       ),
@@ -1625,7 +1801,8 @@ class _SyncTerminalCard extends StatelessWidget {
                   ),
                   TextButton.icon(
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFFBBF7D0),
+                      foregroundColor: terminalText,
+                      visualDensity: VisualDensity.compact,
                     ),
                     onPressed: () async {
                       final result = await ref
@@ -1646,37 +1823,35 @@ class _SyncTerminalCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: terminalGreen,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text('online | fila local | multitenant', maxLines: 1),
+                ],
+              ),
+              const SizedBox(height: 12),
               queue.when(
-                loading: () => const Text('> carregando fila...'),
-                error: (error, _) => Text('> erro na fila: $error'),
-                data: (items) => _TerminalBlock(
-                  title: 'FILA',
-                  empty: '> fila limpa',
-                  lines: [
-                    for (final item in items)
-                      '> ${_time(item.createdAt)} ${item.status.padRight(7)} '
-                          '${item.reason} scope=${item.scopeKey} '
-                          'tentativa=${item.attemptCount}/${item.maxAttempts}'
-                          '${item.lastError == null ? '' : ' erro="${item.lastError}"'}',
-                  ],
-                ),
+                loading: () => const _TerminalLoading(label: 'fila'),
+                error: (error, _) =>
+                    _TerminalError(label: 'fila', error: error),
+                data: (items) => _SyncQueueBlock(items: items),
               ),
               const SizedBox(height: 10),
               history.when(
-                loading: () => const Text('> carregando historico...'),
-                error: (error, _) => Text('> erro no historico: $error'),
-                data: (items) => _TerminalBlock(
-                  title: 'HISTORICO',
-                  empty: '> nenhum sync registrado',
-                  lines: [
-                    for (final item in items.take(24))
-                      '> ${_time(item.finishedAt)} ${item.status.padRight(10)} '
-                          '${item.reason} ${item.durationMs}ms '
-                          'scope=${item.scopeKey}'
-                          '${item.message == null ? '' : ' msg="${item.message}"'}',
-                  ],
-                ),
+                loading: () => const _TerminalLoading(label: 'historico'),
+                error: (error, _) =>
+                    _TerminalError(label: 'historico', error: error),
+                data: (items) =>
+                    _SyncHistoryBlock(items: items.take(24).toList()),
               ),
             ],
           ),
@@ -1695,44 +1870,409 @@ class _SyncTerminalCard extends StatelessWidget {
     SyncStatus.offline => 'offline',
     SyncStatus.failed => 'falhou',
   };
-
-  static String _time(DateTime value) =>
-      '${value.hour.toString().padLeft(2, '0')}:'
-      '${value.minute.toString().padLeft(2, '0')}:'
-      '${value.second.toString().padLeft(2, '0')}';
 }
 
-class _TerminalBlock extends StatelessWidget {
-  const _TerminalBlock({
+class _SyncQueueBlock extends StatelessWidget {
+  const _SyncQueueBlock({required this.items});
+
+  final List<SyncQueueItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final running = items.where((item) => item.status == 'RUNNING').length;
+    final pending = items.where((item) => item.status == 'PENDING').length;
+    return _TerminalPanel(
+      title: 'FILA',
+      icon: Icons.queue_rounded,
+      bodyHeight: 212,
+      trailing: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          _TerminalPill(label: 'T', value: '${items.length}'),
+          _TerminalPill(label: 'RUN', value: '$running'),
+          _TerminalPill(label: 'PEND', value: '$pending'),
+        ],
+      ),
+      empty: const _TerminalEmpty(
+        icon: Icons.check_circle_outline_rounded,
+        title: 'fila limpa',
+        lines: [
+          '0 jobs aguardando',
+          '0 em execução',
+          'pronta para a próxima alteração local',
+        ],
+      ),
+      children: [for (final item in items) _QueueJobRow(item: item)],
+    );
+  }
+}
+
+class _SyncHistoryBlock extends StatelessWidget {
+  const _SyncHistoryBlock({required this.items});
+
+  final List<SyncHistoryItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final success = items
+        .where(
+          (item) =>
+              const {'MERGED', 'UPLOADED', 'DOWNLOADED'}.contains(item.status),
+        )
+        .length;
+    final retry = items.where((item) => item.status == 'RETRY').length;
+    return _TerminalPanel(
+      title: 'HISTORICO',
+      icon: Icons.history_rounded,
+      bodyHeight: 260,
+      trailing: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          _TerminalPill(label: 'OK', value: '$success'),
+          _TerminalPill(label: 'RETRY', value: '$retry'),
+        ],
+      ),
+      empty: const _TerminalEmpty(
+        icon: Icons.history_toggle_off_rounded,
+        title: 'sem historico',
+        lines: ['a primeira sincronizacao aparecera aqui'],
+      ),
+      children: [for (final item in items) _HistoryJobRow(item: item)],
+    );
+  }
+}
+
+class _TerminalPanel extends StatelessWidget {
+  const _TerminalPanel({
     required this.title,
+    required this.icon,
+    required this.bodyHeight,
+    required this.trailing,
     required this.empty,
-    required this.lines,
+    required this.children,
   });
 
   final String title;
-  final String empty;
-  final List<String> lines;
+  final IconData icon;
+  final double bodyHeight;
+  final Widget trailing;
+  final Widget empty;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
-      color: Colors.black.withValues(alpha: .38),
-      border: Border.all(color: const Color(0xFF166534).withValues(alpha: .64)),
-      borderRadius: BorderRadius.circular(6),
+      color: Colors.black.withValues(alpha: .34),
+      border: Border.all(color: const Color(0xFF166534).withValues(alpha: .70)),
+      borderRadius: BorderRadius.circular(8),
     ),
     child: Padding(
       padding: const EdgeInsets.all(10),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 190),
-        child: SingleChildScrollView(
-          child: SelectableText(
-            ['# $title', if (lines.isEmpty) empty else ...lines].join('\n'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: const Color(0xFF22C55E), size: 17),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFFDCFCE7),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),
+          const SizedBox(height: 8),
+          Align(alignment: Alignment.centerLeft, child: trailing),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: bodyHeight,
+            child: children.isEmpty
+                ? Center(child: empty)
+                : SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < children.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 7),
+                          children[i],
+                        ],
+                      ],
+                    ),
+                  ),
+          ),
+        ],
       ),
     ),
   );
 }
+
+class _QueueJobRow extends StatelessWidget {
+  const _QueueJobRow({required this.item});
+
+  final SyncQueueItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = _statusColor(item.status);
+    return _TerminalRow(
+      color: statusColor,
+      title: item.status,
+      lines: [
+        'criado: ${_terminalTime(item.createdAt)}',
+        'motivo: ${item.reason}',
+        'escopo: ${item.scopeKey}',
+        'tentativa: ${item.attemptCount}/${item.maxAttempts}',
+      ],
+      message: item.lastError,
+      icon: item.status == 'RUNNING'
+          ? Icons.sync_rounded
+          : Icons.schedule_rounded,
+    );
+  }
+}
+
+class _HistoryJobRow extends StatelessWidget {
+  const _HistoryJobRow({required this.item});
+
+  final SyncHistoryItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = _statusColor(item.status);
+    return _TerminalRow(
+      color: statusColor,
+      title: item.status,
+      lines: [
+        'fim: ${_terminalTime(item.finishedAt)}',
+        'motivo: ${item.reason}',
+        'duracao: ${_duration(item.durationMs)}',
+        'escopo: ${item.scopeKey}',
+      ],
+      message: item.message,
+      icon: item.status == 'RETRY' || item.status == 'FAILED'
+          ? Icons.warning_amber_rounded
+          : Icons.check_rounded,
+    );
+  }
+}
+
+class _TerminalRow extends StatelessWidget {
+  const _TerminalRow({
+    required this.color,
+    required this.title,
+    required this.lines,
+    required this.icon,
+    this.message,
+  });
+
+  final Color color;
+  final String title;
+  final List<String> lines;
+  final String? message;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .08),
+      border: Border(left: BorderSide(color: color, width: 3)),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: color, size: 17),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(color: color, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 3),
+              for (final line in lines)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(
+                    line,
+                    softWrap: true,
+                    style: const TextStyle(
+                      color: Color(0xFF86EFAC),
+                      fontSize: 11.5,
+                      height: 1.18,
+                    ),
+                  ),
+                ),
+              if (message != null && message!.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  message!,
+                  softWrap: true,
+                  style: const TextStyle(color: Color(0xFFFCA5A5)),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _TerminalPill extends StatelessWidget {
+  const _TerminalPill({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: const Color(0xFF052E16),
+      border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: .45)),
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(
+      '$label:$value',
+      style: const TextStyle(
+        color: Color(0xFFBBF7D0),
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+      ),
+    ),
+  );
+}
+
+class _TerminalEmpty extends StatelessWidget {
+  const _TerminalEmpty({
+    required this.icon,
+    required this.title,
+    required this.lines,
+  });
+
+  final IconData icon;
+  final String title;
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFF052E16).withValues(alpha: .36),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Row(
+      children: [
+        Icon(icon, color: const Color(0xFF22C55E), size: 19),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Color(0xFFDCFCE7),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              for (final line in lines)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    line,
+                    softWrap: true,
+                    style: const TextStyle(
+                      color: Color(0xFF86EFAC),
+                      fontSize: 11.5,
+                      height: 1.18,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _TerminalLoading extends StatelessWidget {
+  const _TerminalLoading({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => _TerminalPanel(
+    title: label.toUpperCase(),
+    icon: Icons.hourglass_empty_rounded,
+    bodyHeight: 156,
+    trailing: const SizedBox.shrink(),
+    empty: _TerminalEmpty(
+      icon: Icons.hourglass_empty_rounded,
+      title: 'carregando $label',
+      lines: const ['aguarde a leitura local'],
+    ),
+    children: const [],
+  );
+}
+
+class _TerminalError extends StatelessWidget {
+  const _TerminalError({required this.label, required this.error});
+
+  final String label;
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) => _TerminalPanel(
+    title: label.toUpperCase(),
+    icon: Icons.error_outline_rounded,
+    bodyHeight: 156,
+    trailing: const SizedBox.shrink(),
+    empty: _TerminalEmpty(
+      icon: Icons.error_outline_rounded,
+      title: 'erro no $label',
+      lines: [error.toString()],
+    ),
+    children: const [],
+  );
+}
+
+Color _statusColor(String status) => switch (status) {
+  'RUNNING' || 'SYNCING' => const Color(0xFF38BDF8),
+  'PENDING' => const Color(0xFFFACC15),
+  'RETRY' => const Color(0xFFFB923C),
+  'FAILED' || 'OFFLINE' => const Color(0xFFF87171),
+  'MERGED' || 'UPLOADED' || 'DOWNLOADED' => const Color(0xFF22C55E),
+  _ => const Color(0xFF86EFAC),
+};
+
+String _duration(int ms) {
+  if (ms < 1000) return '${ms}ms';
+  final seconds = ms / 1000;
+  if (seconds < 60) return '${seconds.toStringAsFixed(1)}s';
+  final minutes = seconds / 60;
+  return '${minutes.toStringAsFixed(1)}min';
+}
+
+String _terminalTime(DateTime value) =>
+    '${value.hour.toString().padLeft(2, '0')}:'
+    '${value.minute.toString().padLeft(2, '0')}:'
+    '${value.second.toString().padLeft(2, '0')}';
 
 Future<void> _showExportPath(
   BuildContext context, {

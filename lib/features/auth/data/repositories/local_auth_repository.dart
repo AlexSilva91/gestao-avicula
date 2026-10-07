@@ -40,10 +40,6 @@ class LocalAuthRepository implements AuthRepository {
     }
     final session = await _sessionFromUser(user);
     _setSyncScope(session);
-    final sync = syncService;
-    if (sync != null) {
-      unawaited(sync.syncNow(reason: 'remembered_session', force: true));
-    }
     return session;
   }
 

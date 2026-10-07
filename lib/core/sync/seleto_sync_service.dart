@@ -81,6 +81,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   Future<void>? _activePresence;
   _SyncScope? _scope;
   DateTime? _lastAttemptAt;
+  DateTime? _lastRemoteStatusCheckAt;
   bool _started = false;
   bool _disposed = false;
   bool _hasSuccessfulSync = false;
@@ -92,8 +93,8 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   static const _runtimeBaseUrlKey = 'seleto.sync.base_url';
   static const _runtimeTokenKey = 'seleto.sync.token';
   static const _minimumSyncInterval = Duration(seconds: 15);
+  static const _remoteStatusCheckInterval = Duration(minutes: 2);
   static const _presenceInterval = Duration(seconds: 8);
-  static const _realtimeSyncInterval = Duration(seconds: 20);
   static const _networkTimeout = Duration(seconds: 60);
   static const _presenceTimeout = Duration(seconds: 4);
   static const _defaultBaseUrl = String.fromEnvironment(
@@ -219,7 +220,18 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
         now.difference(_lastAttemptAt!) < _minimumSyncInterval) {
       return Future.value(const SyncResult(SyncStatus.skipped));
     }
+    final activeSync = _activeSync;
+    if (activeSync != null) return activeSync;
     _lastAttemptAt = now;
+    if (!force && !await _shouldEnqueueAutomaticSync(scope, reason)) {
+      await _database.cleanupAutomaticSyncQueue(scopeKey: scope.key);
+      final result = const SyncResult(
+        SyncStatus.idle,
+        message: 'Sem alterações locais ou remotas.',
+      );
+      _setResult(result);
+      return result;
+    }
     await _database.enqueueSync(
       scopeKey: scope.key,
       tenantId: scope.tenantId,
@@ -228,8 +240,6 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       priority: force ? 10 : 100,
       coalescePending: !force,
     );
-    final activeSync = _activeSync;
-    if (activeSync != null) return activeSync;
     _setResult(const SyncResult(SyncStatus.syncing));
     final sync = _drainQueue(scope.key)
         .then((result) {
@@ -264,6 +274,15 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
             message: result.message ?? _statusLabel(result.status),
             startedAt: startedAt,
           );
+        } else if (result.status == SyncStatus.idle ||
+            result.status == SyncStatus.skipped) {
+          await _database.completeSyncQueueItem(
+            item: item,
+            status: _statusLabel(result.status),
+            message: result.message,
+            startedAt: startedAt,
+            recordHistory: false,
+          );
         } else {
           await _database.completeSyncQueueItem(
             item: item,
@@ -282,6 +301,52 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       }
     }
   }
+
+  Future<bool> _shouldEnqueueAutomaticSync(
+    _SyncScope scope,
+    String reason,
+  ) async {
+    if (!_isConfigured || !await _hasConnection()) return true;
+    final preferences = await SharedPreferences.getInstance();
+    final localHash = _hashStablePayload(await _localPayload(scope));
+    final lastLocalHash = preferences.getString(
+      _scopedPreferenceKey(_lastLocalHashKey, scope),
+    );
+    if (lastLocalHash == null || localHash != lastLocalHash) return true;
+
+    if (_isQuietAutomaticReason(reason)) return false;
+
+    final now = DateTime.now();
+    if (_lastRemoteStatusCheckAt != null &&
+        now.difference(_lastRemoteStatusCheckAt!) <
+            _remoteStatusCheckInterval) {
+      return false;
+    }
+    _lastRemoteStatusCheckAt = now;
+    try {
+      final status = await _postJson('/sync/v1/status', {
+        'scopeKey': scope.key,
+        'tenantId': scope.tenantId,
+        'userId': scope.userId,
+        'isSuperAdmin': scope.isSuperAdmin,
+        'deviceId': await _deviceId(),
+        'reason': '${reason}_status',
+      });
+      final remoteHash = status['payloadHash']?.toString();
+      final lastRemoteHash = preferences.getString(
+        _scopedPreferenceKey(_lastRemoteHashKey, scope),
+      );
+      return remoteHash != null && remoteHash != lastRemoteHash;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _isQuietAutomaticReason(String reason) => const {
+    'realtime',
+    'realtime_start',
+    'remembered_session',
+  }.contains(reason);
 
   Future<SyncResult> syncForLoginUsername(String username) async {
     await _loadStoredConfiguration();
@@ -399,6 +464,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       final preferences = await SharedPreferences.getInstance();
       final localPayload = await _localPayload(scope);
       final localHash = _hashPayload(localPayload);
+      final stableLocalHash = _hashStablePayload(localPayload);
       final lastRemoteHash = preferences.getString(
         _scopedPreferenceKey(_lastRemoteHashKey, scope),
       );
@@ -421,22 +487,23 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
       if ((status == 'downloaded' || status == 'merged') &&
           remotePayload != null) {
         await _restoreLocalPayload(remotePayload, scope);
-        final restoredHash = _hashPayload(_normalizePayload(remotePayload));
+        final restoredPayload = _normalizePayload(remotePayload);
+        final restoredHash = _hashPayload(restoredPayload);
         await _rememberHashes(
           preferences,
           scope,
-          restoredHash,
+          _hashStablePayload(restoredPayload),
           remoteHash ?? restoredHash,
         );
       } else if (status == 'uploaded') {
         await _rememberHashes(
           preferences,
           scope,
-          localHash,
+          stableLocalHash,
           remoteHash ?? localHash,
         );
       } else if (remoteHash != null) {
-        await _rememberHashes(preferences, scope, localHash, remoteHash);
+        await _rememberHashes(preferences, scope, stableLocalHash, remoteHash);
       }
 
       return SyncResult(_statusFromServer(status));
@@ -703,10 +770,8 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     await _loadStoredConfiguration();
     if (!_started || _scope == null || !_isConfigured) return;
     _realtimeSyncTimer?.cancel();
-    unawaited(syncNow(reason: 'realtime_start'));
-    _realtimeSyncTimer = Timer.periodic(_realtimeSyncInterval, (_) {
-      unawaited(syncNow(reason: 'realtime'));
-    });
+    _realtimeSyncTimer = null;
+    unawaited(_database.cleanupAutomaticSyncQueue(scopeKey: _scope!.key));
   }
 
   Future<void> _sendPresence({
@@ -1142,6 +1207,22 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
 
   String _hashPayload(Map<String, dynamic> payload) =>
       sha256.convert(utf8.encode(_canonicalJson(payload))).toString();
+
+  String _hashStablePayload(Map<String, dynamic> payload) =>
+      _hashPayload(_stableChangePayload(payload));
+
+  Map<String, dynamic> _stableChangePayload(Map<String, dynamic> payload) {
+    final stable = <String, dynamic>{...payload};
+    final users = stable['users'];
+    if (users is List) {
+      stable['users'] = users.whereType<Map>().map((item) {
+        final user = Map<String, dynamic>.from(item.cast<String, dynamic>())
+          ..remove('lastSeenAt');
+        return user;
+      }).toList();
+    }
+    return stable;
+  }
 
   String _canonicalJson(Object? value) {
     if (value is Map) {
