@@ -1,6 +1,6 @@
 # GRANJA SELETO - capacidades atuais da aplicacao
 
-Atualizado em: 04/10/2026
+Atualizado em: 07/10/2026
 
 Este documento descreve o que a aplicacao e capaz de fazer hoje, com base no
 codigo atual do projeto. Ele nao descreve promessas futuras. Quando uma funcao
@@ -16,6 +16,27 @@ sensores, reles, MQTT e cameras ONVIF.
 O app trabalha com banco local SQLite via Drift. A sincronizacao remota, quando
 configurada, envia e recebe os dados do servidor SELETO Sync, mas o app continua
 funcionando localmente.
+
+## Entrega tecnica atual
+
+- Aplicacao Flutter mobile-first.
+- Alvo principal de producao: Android.
+- Execucao web suportada para desenvolvimento, validacao visual e PWA.
+- Banco local SQLite persistente via Drift.
+- Modo offline como comportamento padrao: operacao local nao depende de internet.
+- Sincronizacao remota opcional via servidor SELETO Sync.
+- Estado reativo com Riverpod.
+- Navegacao por rotas com GoRouter.
+- Graficos com `fl_chart`.
+- Calendario operacional com `table_calendar`.
+- Exportacao e compartilhamento de arquivos por plataforma.
+- PDF para relatorios operacionais e vacinacao.
+- Importacao de arquivos CSV, XML, XLSX e XLSL conforme modulo.
+- Notificacoes locais e alertas criticos no Android quando permissao/plataforma
+  permitem.
+- Suporte a Midia/RTSP na tela de cameras por `media_kit`.
+- Comunicacao HTTP e MQTT com hardware quando configurado.
+- Assets visuais de marca e fundos por dominio da aplicacao.
 
 ## Modulos disponiveis no menu
 
@@ -89,6 +110,35 @@ para a primeira tela liberada ou para uma tela de "Sem acesso".
 Enquanto o usuario esta logado, o app atualiza `lastSeenAt` no banco local e
 tambem envia presenca ao servidor de sincronizacao quando configurado. O intervalo
 local e remoto usado no codigo e de 8 segundos.
+
+### Parcerias / tenants
+
+O app possui suporte a separacao por parceria/granja (`tenant`):
+
+- Existe tenant padrao criado pelo banco.
+- Super Admin pode criar nova parceria pela tela Usuarios.
+- Usuarios comuns e administradores de uma parceria ficam limitados ao proprio
+  tenant.
+- Super Admin com permissao global consegue visualizar usuarios e dados de mais
+  de uma parceria.
+- A sincronizacao remota tambem envia escopo de usuario, tenant e indicador de
+  Super Admin.
+
+### Gestao de usuarios
+
+A tela Usuarios entrega:
+
+- Listagem de usuarios filtrada pelo escopo do usuario logado.
+- Indicacao de usuarios ativos/inativos.
+- Indicacao de usuarios online/recentes por presenca runtime.
+- Criacao de novo usuario por administrador.
+- Criacao de nova parceria quando permitido.
+- Edicao de nome, usuario, perfil e status.
+- Ativacao e desativacao de conta.
+- Redefinicao de senha.
+- Edicao de permissoes por grupo.
+- Protecao para impedir que administrador comum conceda permissoes globais.
+- Registro de auditoria para acoes de usuario e permissao.
 
 ## Permissionamento atual
 
@@ -260,6 +310,7 @@ O modulo de racao cobre:
 - Exclusao permanente de insumo quando nao ha uso impeditivo
 - Historico de preco de insumo
 - Entrada de lote de insumo
+- Entrada por unidade de compra e peso convertido para kg
 - Ajuste de estoque de lote de insumo
 - Transferencia de estoque entre insumos
 - Cadastro e versionamento de formulas
@@ -273,10 +324,14 @@ O modulo de racao cobre:
 - Ajuste manual de estoque de racao
 - Recomendacoes de consumo por ave
 - Importacao de recomendacoes de consumo
+- Formulacoes de referencia armazenadas em `assets/formulacoes_embrapa_051.*`
 
 Na fabricacao de racao, o sistema usa os insumos e precos salvos para calcular
 custo do lote fabricado. O estoque de insumos e consumido conforme planejamento
 interno. A alimentacao registrada baixa estoque do lote de racao.
+
+O banco tambem possui rotinas para garantir formulas padrao, reconstruir formulas
+conforme insumos disponiveis e sanitizar itens de formula quando necessario.
 
 ### 5. Comercial
 
@@ -543,6 +598,40 @@ e a agenda persistida e recalculada.
 Tambem existem alertas de mudanca de fase de lote quando a configuracao de
 notificacao de fase esta ativa.
 
+Na tela Alertas, o usuario pode:
+
+- Criar alerta operacional manual.
+- Editar alerta de calendario existente.
+- Ativar/desativar alerta.
+- Cancelar alerta.
+- Configurar parametros padrao de notificacao.
+- Preparar permissoes de alerta critico no Android.
+- Testar alerta sonoro.
+
+Tipos usados na criacao de alerta:
+
+- Programa de alimentacao
+- Troca de cama
+- Tratamento sanitario
+- Vacinacao
+- Programa de luz
+- Fase de criacao
+- Geral
+
+### Alertas criticos no Android
+
+O projeto possui implementacao nativa Android para alarmes criticos:
+
+- `CriticalAlarmScheduler`
+- `CriticalAlarmReceiver`
+- `CriticalAlarmService`
+- `CriticalAlarmBootReceiver`
+
+Esses componentes permitem agendar alertas com canal de alta prioridade quando as
+permissoes e configuracoes do Android estao preparadas. O funcionamento final
+depende de permissao de notificacao, alarme exato quando aplicavel e politicas de
+bateria do aparelho.
+
 ### 11. Relatorios
 
 A tela de relatorios usa dados operacionais para apresentar:
@@ -554,6 +643,31 @@ A tela de relatorios usa dados operacionais para apresentar:
 - Taxas de postura mensais
 - Periodos selecionaveis
 - Exportacao de PDF pela tela de relatorios
+
+Periodos disponiveis:
+
+- Hoje
+- 7 dias
+- 30 dias
+- Este mes
+- Este ano
+- Personalizado por intervalo de datas
+
+Indicadores exibidos/exportados:
+
+- Taxa de postura hoje
+- Custo operacional por ovo
+- Custo operacional por duzia
+- Racao consumida no mes
+- Ovos hoje
+- Ovos no mes
+- Estoque de ovos
+- Aves ativas
+- Lotes ativos
+- Racao em estoque
+- Receitas do mes
+- Despesas do mes
+- Resultado do mes
 
 O conteudo exato dos graficos depende dos registros existentes no banco local ou
 sincronizados.
@@ -885,11 +999,35 @@ A tela Configuracoes cobre:
 - Servidor SELETO Sync
 - Configuracoes de notificacoes
 
+### Atualizacao do aplicativo
+
+O app possui aviso interno de nova versao baseado em configuracoes salvas no
+banco:
+
+- Codigo de versao remota.
+- Nome de versao remota.
+- Mensagem de atualizacao.
+- URL de download/visualizacao.
+
+Quando o codigo remoto e maior que a versao instalada, o shell do app exibe aviso
+de atualizacao disponivel.
+
 ### Backup
 
 O app exporta dados em formato JSON interno `SELETO_BACKUP_V1`. A restauracao
 usa esse conteudo para repor dados operacionais. Usuarios, permissoes e auditoria
 sao tratados com regras especificas no importador/restaurador.
+
+A tela Configuracoes permite:
+
+- Salvar copia de seguranca JSON.
+- Compartilhar/enviar copia de seguranca JSON.
+- Restaurar copia JSON colando o conteudo do arquivo.
+- Exportar financeiro da granja em CSV.
+- Importar dados iniciais.
+- Inserir dados de demonstracao.
+
+A restauracao de backup substitui dados operacionais atuais e registra auditoria.
 
 ### Importacao operacional
 
@@ -903,6 +1041,9 @@ A importacao operacional aceita:
 
 Ela converte para o formato interno do app. Para detalhes de campos e aliases,
 ver `docs/importacao/formatos_importacao.md`.
+
+No fluxo de importacao de dados iniciais, o app preserva usuarios, senhas,
+permissoes e auditoria, substituindo dados operacionais conforme o importador.
 
 ### Sincronizacao remota
 
@@ -1033,6 +1174,46 @@ O banco local contem tabelas para:
 
 Todas essas tabelas possuem controle de atualizacao (`updated_at`) no estado
 atual do banco.
+
+## Materiais e documentacao entregues no repositorio
+
+O repositorio tambem entrega documentacao de apoio para implantacao, uso e
+hardware:
+
+- Manual Android em `MANUAL_ANDROID.md`.
+- Documentacao geral em `docs/README.md`.
+- Documentacao Firebase/Firestore em `docs/firebase/`.
+- Documentacao de importacao em `docs/importacao/`.
+- Documentacao do servidor de video em `docs/video_recording_server.md`.
+- Documentacao do servidor de sincronizacao em `docs/sync_server.md`.
+- Proposta comercial em formatos Markdown/HTML/PDF/DOCX/ODT em
+  `docs/comercial/`.
+- Documentacao de automacao e sensores em `docs/hardware/`.
+- Circuitos de iluminacao, ambiente, ventiladores, cameras, balanca e agua em
+  `docs/hardware/circuitos/`.
+- Firmware ESP32 em `docs/hardware/firmware/esp32-granja-seleto/`.
+- Scripts de instalacao e populacao de dados de sincronizacao em `scripts/`.
+
+## Qualidade e validacao existentes
+
+Ha testes automatizados cobrindo areas importantes do produto:
+
+- Interface responsiva.
+- Ciclo de vida de lotes.
+- Dados de demonstracao.
+- Agendamento de alertas.
+- Calculadora de producao/postura de ovos.
+- Formatadores.
+- Repositorio operacional.
+- Importacao de contas a pagar.
+- Hash de senha.
+
+Comandos documentados no README:
+
+- `dart format .`
+- `flutter analyze`
+- `flutter test`
+- `flutter build web`
 
 ## Limites conhecidos e dependencias reais
 
