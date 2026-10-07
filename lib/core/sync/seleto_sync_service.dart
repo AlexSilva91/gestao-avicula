@@ -94,7 +94,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
   static const _minimumSyncInterval = Duration(seconds: 15);
   static const _presenceInterval = Duration(seconds: 8);
   static const _realtimeSyncInterval = Duration(seconds: 20);
-  static const _networkTimeout = Duration(seconds: 10);
+  static const _networkTimeout = Duration(seconds: 60);
   static const _presenceTimeout = Duration(seconds: 4);
   static const _defaultBaseUrl = String.fromEnvironment(
     'SELETO_SYNC_BASE_URL',

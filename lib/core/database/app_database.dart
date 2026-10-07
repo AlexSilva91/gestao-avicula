@@ -2147,7 +2147,38 @@ class AppDatabase extends _$AppDatabase {
     required String scopeKey,
   }) async {
     final now = DateTime.now();
+    final staleCutoff = now.subtract(const Duration(minutes: 2));
     return transaction(() async {
+      final staleRunning =
+          await (select(syncQueueItems)..where(
+                (row) =>
+                    row.scopeKey.equals(scopeKey) &
+                    row.status.equals('RUNNING') &
+                    row.startedAt.isNotNull() &
+                    row.startedAt.isSmallerOrEqualValue(staleCutoff),
+              ))
+              .get();
+      for (final stale in staleRunning) {
+        if (stale.attemptCount < stale.maxAttempts) {
+          await (update(
+            syncQueueItems,
+          )..where((row) => row.id.equals(stale.id))).write(
+            SyncQueueItemsCompanion(
+              status: const Value('PENDING'),
+              lastError: const Value(
+                'Sincronização interrompida antes de finalizar.',
+              ),
+              availableAt: Value(now),
+              finishedAt: Value(now),
+              updatedAt: Value(now),
+            ),
+          );
+        } else {
+          await (delete(
+            syncQueueItems,
+          )..where((row) => row.id.equals(stale.id))).go();
+        }
+      }
       final item =
           await (select(syncQueueItems)
                 ..where(
