@@ -1217,7 +1217,11 @@ private:
     configureClient();
 
     String willTopic = topic("status");
-    String willPayload = "{\"online\":false}";
+    String willPayload = "{";
+    willPayload += envelopeFields("ESP32 desconectado do MQTT");
+    willPayload += ",\"online\":false";
+    willPayload += ",\"app\":\"SELETO\"";
+    willPayload += "}";
     bool ok = false;
     if (settings_.username.length() > 0)
     {
@@ -1258,21 +1262,48 @@ private:
     return base + "/" + settings_.deviceId + "/" + suffix;
   }
 
+  String envelopeFields(const String &message)
+  {
+    String fields = "\"deviceId\":" + quoteJson(settings_.deviceId);
+    fields += ",\"source\":\"esp32\"";
+    fields += ",\"message\":";
+    fields += quoteJson(message);
+    fields += ",\"localTime\":";
+    fields += quoteJson(clock_.localTimeText());
+    fields += ",\"uptimeMs\":";
+    fields += String(millis());
+    return fields;
+  }
+
+  uint8_t countChannels(uint16_t channelsMask)
+  {
+    uint8_t count = 0;
+    for (uint8_t channel = 1; channel <= Config::relayCount; channel++)
+    {
+      const uint16_t bit = static_cast<uint16_t>(1) << (channel - 1);
+      if ((channelsMask & bit) != 0)
+        count++;
+    }
+    return count;
+  }
+
   void publishStatus()
   {
-    String json = "{\"online\":true";
-    json += ",\"deviceId\":" + quoteJson(settings_.deviceId);
+    String json = "{";
+    json += envelopeFields("ESP32 online via MQTT");
+    json += ",\"online\":true";
     json += ",\"app\":\"SELETO\"";
     json += ",\"wifiConnected\":" + boolJson(network_.connected());
     json += ",\"ip\":" + quoteJson(network_.stationIp());
-    json += ",\"uptimeMs\":" + String(millis());
     json += "}";
     client_.publish(topic("status").c_str(), json.c_str(), true);
   }
 
   void publishSensors()
   {
-    String json = "{\"ok\":true";
+    String json = "{";
+    json += envelopeFields("Telemetria de sensores publicada");
+    json += ",\"ok\":true";
     json += ",\"environment\":" + environment_.toJson();
     json += ",\"water\":" + water_.toJson();
     json += "}";
@@ -1281,7 +1312,9 @@ private:
 
   void publishRelays()
   {
-    String json = "{\"ok\":true,\"relays\":";
+    String json = "{";
+    json += envelopeFields("Estado real dos reles publicado");
+    json += ",\"ok\":true,\"relays\":";
     json += relay_.toJson();
     json += "}";
     client_.publish(topic("relay/state").c_str(), json.c_str(), true);
@@ -1289,7 +1322,9 @@ private:
 
   void publishScheduleState()
   {
-    String json = "{\"ok\":true,\"schedules\":";
+    String json = "{";
+    json += envelopeFields("Agenda atual dos canais publicada");
+    json += ",\"ok\":true,\"schedules\":";
     json += scheduler_.toJson();
     json += "}";
     client_.publish(topic("schedule/state").c_str(), json.c_str(), true);
@@ -1319,7 +1354,11 @@ private:
       const String &state,
       const String &error)
   {
-    String json = "{\"ok\":";
+    String json = "{";
+    json += envelopeFields(ok
+                               ? "Comando de rele executado"
+                               : "Comando de rele rejeitado");
+    json += ",\"ok\":";
     json += boolJson(ok);
     json += ",\"command\":\"relay\"";
     json += ",\"channel\":";
@@ -1346,7 +1385,11 @@ private:
       const String &error,
       const String &commandId)
   {
-    String json = "{\"ok\":";
+    String json = "{";
+    json += envelopeFields(ok
+                               ? "Agenda salva na memoria do ESP via MQTT"
+                               : "Agenda MQTT rejeitada pelo ESP");
+    json += ",\"ok\":";
     json += boolJson(ok);
     json += ",\"command\":\"schedule\"";
     if (commandId.length() > 0)
@@ -1356,6 +1399,8 @@ private:
     }
     json += ",\"channels\":";
     json += channelsJson(channelsMask);
+    json += ",\"channelCount\":";
+    json += String(countChannels(channelsMask));
     json += ",\"cached\":";
     json += boolJson(ok);
     if (error.length() > 0)
@@ -1365,8 +1410,8 @@ private:
     }
     if (ok)
     {
-      json += ",\"schedules\":";
-      json += scheduler_.toJson();
+      json += ",\"stateTopic\":";
+      json += quoteJson(topic("schedule/state"));
     }
     json += "}";
     client_.publish(topic("schedule/ack").c_str(), json.c_str(), true);
