@@ -45,20 +45,37 @@ class EspMqttUpdate {
     required this.topic,
     required this.payload,
     required this.receivedAt,
+    this.retained = false,
   });
 
   final String topic;
   final Map<String, Object?> payload;
   final DateTime receivedAt;
+  final bool retained;
 }
 
 bool _mqttUsesTls(EspMqttConfig config) => config.port == 8883;
+
+Map<String, Object?> _decodeMqttPayload(MqttPublishMessage message) {
+  final raw = MqttPublishPayload.bytesToStringAsString(message.payload.message);
+  Object? decoded;
+  try {
+    decoded = jsonDecode(raw);
+  } catch (_) {
+    decoded = {'raw': raw};
+  }
+  if (decoded is! Map) {
+    decoded = {'value': decoded};
+  }
+  return Map<String, Object?>.from(decoded);
+}
 
 class HardwareMqttClient {
   const HardwareMqttClient();
 
   static const _connectTimeout = Duration(seconds: 6);
   static const _statusTimeout = Duration(seconds: 5);
+  static const _ackTimeout = Duration(seconds: 8);
 
   Future<EspMqttProbe> test(EspMqttConfig config) async {
     final client = _client(config);
@@ -124,25 +141,65 @@ class HardwareMqttClient {
     }
   }
 
-  Future<void> publishScheduleCommand({
+  Future<EspMqttUpdate> publishScheduleCommand({
     required EspMqttConfig config,
     required List<int> channels,
     required List<Map<String, Object?>> schedules,
     required DateTime now,
   }) async {
     final client = _client(config);
+    StreamSubscription<List<MqttReceivedMessage<MqttMessage>>>? subscription;
     try {
       await _connect(client, config);
+      final ackTopic = _topic(config, 'schedule/ack');
+      final commandId = 'schedule-${now.microsecondsSinceEpoch}';
+      final completer = Completer<EspMqttUpdate>();
+      client.subscribe(ackTopic, MqttQos.atLeastOnce);
+      subscription = client.updates?.listen((events) {
+        for (final event in events) {
+          if (event.topic != ackTopic || completer.isCompleted) continue;
+          final message = event.payload as MqttPublishMessage;
+          if (message.header?.retain == true) continue;
+          final payload = _decodeMqttPayload(message);
+          final ackCommandId = payload['commandId']?.toString();
+          if (ackCommandId != null &&
+              ackCommandId.isNotEmpty &&
+              ackCommandId != commandId) {
+            continue;
+          }
+          final update = EspMqttUpdate(
+            topic: event.topic,
+            payload: payload,
+            receivedAt: DateTime.now(),
+          );
+          if (payload['ok'] == true) {
+            completer.complete(update);
+          } else {
+            completer.completeError(
+              StateError(
+                'ESP recusou agenda MQTT: ${payload['error'] ?? 'sem detalhe'}',
+              ),
+            );
+          }
+        }
+      });
       _publishJson(client, _topic(config, 'schedule/command'), {
         'action': 'set',
+        'commandId': commandId,
         'channels': channels,
         'schedules': schedules,
         'epoch': now.millisecondsSinceEpoch ~/ 1000,
         'source': 'app',
         'ts': now.toIso8601String(),
       });
-      await MqttUtilities.asyncSleep(1);
+      return await completer.future.timeout(
+        _ackTimeout,
+        onTimeout: () => throw TimeoutException(
+          'ESP nao confirmou agenda MQTT em ${_ackTimeout.inSeconds}s.',
+        ),
+      );
     } finally {
+      await subscription?.cancel();
       client.disconnect();
     }
   }
@@ -279,19 +336,23 @@ class HardwareMqttRuntime {
     });
   }
 
-  void publishScheduleCommand({
+  Future<EspMqttUpdate> publishScheduleCommand({
     required List<int> channels,
     required List<Map<String, Object?>> schedules,
     required DateTime now,
-  }) {
+  }) async {
+    final commandId = 'schedule-${now.microsecondsSinceEpoch}';
+    final ack = _waitForScheduleAck(commandId);
     publishJson('schedule/command', {
       'action': 'set',
+      'commandId': commandId,
       'channels': channels,
       'schedules': schedules,
       'epoch': now.millisecondsSinceEpoch ~/ 1000,
       'source': 'app',
       'ts': now.toIso8601String(),
     });
+    return ack;
   }
 
   void publishJson(String suffix, Map<String, Object?> payload) {
@@ -359,27 +420,47 @@ class HardwareMqttRuntime {
     for (final event in events) {
       _markPacket();
       final message = event.payload as MqttPublishMessage;
-      final raw = MqttPublishPayload.bytesToStringAsString(
-        message.payload.message,
-      );
-      Object? decoded;
-      try {
-        decoded = jsonDecode(raw);
-      } catch (_) {
-        decoded = {'raw': raw};
-      }
-      if (decoded is! Map) {
-        decoded = {'value': decoded};
-      }
       if (_updates.isClosed) return;
       _updates.add(
         EspMqttUpdate(
           topic: event.topic,
-          payload: Map<String, Object?>.from(decoded),
+          payload: _decodeMqttPayload(message),
           receivedAt: DateTime.now(),
+          retained: message.header?.retain == true,
         ),
       );
     }
+  }
+
+  Future<EspMqttUpdate> _waitForScheduleAck(String commandId) {
+    final completer = Completer<EspMqttUpdate>();
+    late final StreamSubscription<EspMqttUpdate> subscription;
+    subscription = updates.listen((update) {
+      if (completer.isCompleted) return;
+      if (update.retained || !update.topic.endsWith('/schedule/ack')) return;
+      final ackCommandId = update.payload['commandId']?.toString();
+      if (ackCommandId != null &&
+          ackCommandId.isNotEmpty &&
+          ackCommandId != commandId) {
+        return;
+      }
+      if (update.payload['ok'] == true) {
+        completer.complete(update);
+      } else {
+        completer.completeError(
+          StateError(
+            'ESP recusou agenda MQTT: ${update.payload['error'] ?? 'sem detalhe'}',
+          ),
+        );
+      }
+    });
+    return completer.future
+        .timeout(
+          const Duration(seconds: 8),
+          onTimeout: () =>
+              throw TimeoutException('ESP nao confirmou agenda MQTT em 8s.'),
+        )
+        .whenComplete(() => subscription.cancel());
   }
 
   void _markPacket() {
@@ -399,10 +480,7 @@ class HardwareMqttRuntime {
       _updates.add(
         EspMqttUpdate(
           topic: 'runtime/stale',
-          payload: {
-            'online': false,
-            'secondsWithoutPacket': age.inSeconds,
-          },
+          payload: {'online': false, 'secondsWithoutPacket': age.inSeconds},
           receivedAt: DateTime.now(),
         ),
       );

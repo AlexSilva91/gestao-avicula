@@ -1663,14 +1663,15 @@ class _HardwareIntegrationsPageState
       final payloadSchedules = [
         for (final schedule in schedules) _scheduleMqttPayload(schedule),
       ];
+      EspMqttUpdate ack;
       if (mqttRuntime.connected) {
-        mqttRuntime.publishScheduleCommand(
+        ack = await mqttRuntime.publishScheduleCommand(
           channels: channels,
           schedules: payloadSchedules,
           now: now,
         );
       } else {
-        await mqttClient.publishScheduleCommand(
+        ack = await mqttClient.publishScheduleCommand(
           config: config,
           channels: channels,
           schedules: payloadSchedules,
@@ -1679,7 +1680,8 @@ class _HardwareIntegrationsPageState
       }
       if (!mounted) return true;
       setState(() => mqttConnected = true);
-      _appendEspLog('MQTT> agenda enviada: $label');
+      _appendEspLog('MQTT> agenda confirmada pelo ESP: $label');
+      _appendEspLog('MQTT> ACK ${jsonEncode(ack.payload)}');
       return true;
     } catch (error) {
       if (!mounted) return false;

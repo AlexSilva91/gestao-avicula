@@ -38,11 +38,13 @@ class EspMqttUpdate {
     required this.topic,
     required this.payload,
     required this.receivedAt,
+    this.retained = false,
   });
 
   final String topic;
   final Map<String, Object?> payload;
   final DateTime receivedAt;
+  final bool retained;
 }
 
 class HardwareMqttClient {
@@ -60,7 +62,7 @@ class HardwareMqttClient {
     throw UnsupportedError('MQTT indisponivel nesta plataforma.');
   }
 
-  Future<void> publishScheduleCommand({
+  Future<EspMqttUpdate> publishScheduleCommand({
     required EspMqttConfig config,
     required List<int> channels,
     required List<Map<String, Object?>> schedules,
@@ -89,11 +91,11 @@ class HardwareMqttRuntime {
     throw UnsupportedError('MQTT indisponivel nesta plataforma.');
   }
 
-  void publishScheduleCommand({
+  Future<EspMqttUpdate> publishScheduleCommand({
     required List<int> channels,
     required List<Map<String, Object?>> schedules,
     required DateTime now,
-  }) {
+  }) async {
     throw UnsupportedError('MQTT indisponivel nesta plataforma.');
   }
 }

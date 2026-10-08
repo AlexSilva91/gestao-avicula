@@ -72,6 +72,7 @@ namespace Config
   constexpr uint32_t scheduleCheckIntervalMs = 1000;
   constexpr uint32_t mqttReconnectIntervalMs = 5000;
   constexpr uint32_t mqttPublishIntervalMs = 15000;
+  constexpr uint16_t mqttBufferSize = 4096;
   constexpr uint32_t manualOverrideMs = 5UL * 60UL * 1000UL;
   constexpr bool relayActiveLow = true;
   // Canais 1-4: iluminacao existente. Nao alterar sem reconfigurar o app.
@@ -1194,6 +1195,7 @@ private:
   void configureClient()
   {
     client_.setServer(settings_.host.c_str(), settings_.port);
+    client_.setBufferSize(Config::mqttBufferSize);
     active_ = this;
     client_.setCallback(dispatchMessage);
   }
@@ -1339,11 +1341,17 @@ private:
   void publishScheduleAck(
       bool ok,
       uint16_t channelsMask,
-      const String &error)
+      const String &error,
+      const String &commandId)
   {
     String json = "{\"ok\":";
     json += boolJson(ok);
     json += ",\"command\":\"schedule\"";
+    if (commandId.length() > 0)
+    {
+      json += ",\"commandId\":";
+      json += quoteJson(commandId);
+    }
     json += ",\"channels\":";
     json += channelsJson(channelsMask);
     json += ",\"cached\":";
@@ -1427,8 +1435,9 @@ private:
     {
       uint16_t channelsMask = 0;
       String error;
+      const String commandId = jsonStringField(body, "commandId");
       const bool ok = applyScheduleCommand(body, channelsMask, error);
-      publishScheduleAck(ok, channelsMask, error);
+      publishScheduleAck(ok, channelsMask, error, commandId);
       if (ok)
       {
         publishScheduleState();
