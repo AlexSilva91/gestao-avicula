@@ -923,6 +923,7 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
   bool _syncing = false;
   bool _savingConfig = false;
   bool _tokenConfigured = false;
+  bool _showToken = false;
 
   @override
   void initState() {
@@ -988,13 +989,28 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
             const SizedBox(height: 8),
             TextField(
               controller: _tokenController,
-              obscureText: true,
+              obscureText: !_showToken,
+              enableSuggestions: false,
+              autocorrect: false,
+              onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                 labelText: 'Token de sincronização',
                 helperText: _tokenConfigured
-                    ? 'Token salvo. Informe outro apenas para substituir.'
+                    ? 'Token salvo no aparelho.'
                     : 'Informe o token gerado no servidor remoto.',
                 prefixIcon: const Icon(Icons.key_outlined),
+                suffixIcon: IconButton(
+                  tooltip: _showToken ? 'Ocultar token' : 'Exibir token',
+                  onPressed:
+                      _tokenConfigured || _tokenController.text.isNotEmpty
+                      ? () => setState(() => _showToken = !_showToken)
+                      : null,
+                  icon: Icon(
+                    _showToken
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -1158,7 +1174,9 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
     if (!mounted) return;
     setState(() {
       _baseUrlController.text = config.baseUrl;
+      _tokenController.text = config.token;
       _tokenConfigured = config.tokenConfigured;
+      _showToken = false;
     });
   }
 
@@ -1171,7 +1189,6 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
             baseUrl: _baseUrlController.text,
             token: _tokenController.text,
           );
-      _tokenController.clear();
       await _loadConfig();
       if (mounted) {
         setState(
@@ -1207,6 +1224,7 @@ class _SyncServerPanelState extends State<_SyncServerPanel> {
           .read(seletoSyncServiceProvider)
           .configureRuntime(baseUrl: _baseUrlController.text, clearToken: true);
       _tokenController.clear();
+      _showToken = false;
       await _loadConfig();
     } finally {
       if (mounted) setState(() => _savingConfig = false);

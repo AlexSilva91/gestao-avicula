@@ -49,11 +49,13 @@ class SyncServerException implements Exception {
 class SyncRuntimeConfig {
   const SyncRuntimeConfig({
     required this.baseUrl,
+    required this.token,
     required this.tokenConfigured,
     required this.usingBuildToken,
   });
 
   final String baseUrl;
+  final String token;
   final bool tokenConfigured;
   final bool usingBuildToken;
 }
@@ -110,6 +112,7 @@ class SeletoSyncService extends ChangeNotifier with WidgetsBindingObserver {
     await _loadStoredConfiguration();
     return SyncRuntimeConfig(
       baseUrl: _baseUri.toString(),
+      token: _syncToken,
       tokenConfigured: _syncToken.isNotEmpty,
       usingBuildToken: _syncToken.isNotEmpty && _syncToken == _defaultSyncToken,
     );
