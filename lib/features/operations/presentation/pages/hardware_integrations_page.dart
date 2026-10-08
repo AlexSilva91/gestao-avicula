@@ -100,6 +100,7 @@ class _EspConfigurationSectionState
   bool initialized = false;
   bool saving = false;
   bool espScanning = false;
+  bool wifiScanLoading = false;
   bool espWifiConnected = false;
   bool wifiProvisionPasswordHidden = true;
   bool mqttPasswordHidden = true;
@@ -113,6 +114,8 @@ class _EspConfigurationSectionState
     'SYS> use Wi-Fi do ESP para provisionar a rede local',
     'SYS> use MQTT para comandos e status em tempo real',
   ];
+  List<EspWifiNetwork> espWifiNetworks = const [];
+  String espWifiScanSummary = 'Nenhuma leitura de redes feita pelo ESP ainda.';
 
   @override
   void dispose() {
@@ -193,6 +196,13 @@ class _EspConfigurationSectionState
                 scanning: espScanning,
                 onDiscover: () => _discoverEsp(auto: false),
                 onTestEndpoint: _testSavedWifiEndpoint,
+              ),
+              const SizedBox(height: 12),
+              _EspWifiSignalPanel(
+                networks: espWifiNetworks,
+                summary: espWifiScanSummary,
+                busy: saving || espScanning || wifiScanLoading,
+                onScan: _scanEspWifiNetworks,
               ),
               const SizedBox(height: 12),
               _EspWifiProvisionPanel(
@@ -566,6 +576,49 @@ class _EspConfigurationSectionState
       await showOperationError(context, error);
     } finally {
       if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _scanEspWifiNetworks() async {
+    final endpoint = wifiProvisionEndpoint.text.trim().isEmpty
+        ? '192.168.4.1'
+        : wifiProvisionEndpoint.text.trim();
+    setState(() {
+      wifiScanLoading = true;
+      espTerminalTitle = 'SCAN WIFI ESP';
+    });
+    _appendEspLog('APP> solicitando redes captadas pelo ESP em $endpoint');
+    try {
+      final result = await espClient.scanWifi(endpoint);
+      if (!mounted) return;
+      final connected = result.connectedSsid.trim();
+      final connectedSuffix = connected.isEmpty
+          ? ''
+          : ' · conectado em "$connected" (${result.connectedRssi ?? '?'} dBm)';
+      setState(() {
+        espWifiNetworks = result.networks;
+        espWifiScanSummary =
+            '${result.networks.length} rede(s) captada(s) pelo ESP$connectedSuffix';
+        espTerminalTitle = 'SCAN WIFI ESP OK';
+      });
+      _appendEspLog(
+        'ESP> ${result.networks.length} rede(s) encontradas pelo radio do ESP',
+      );
+      for (final network in result.networks.take(5)) {
+        _appendEspLog(
+          'WIFI> ${network.ssid.isEmpty ? '<oculta>' : network.ssid} '
+          '${network.rssi} dBm ch ${network.channel} ${network.qualityLabel}',
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        espTerminalTitle = 'FALHA SCAN WIFI';
+        espWifiScanSummary = 'Falha ao ler redes pelo ESP: $error';
+      });
+      _appendEspLog('ERR> scan Wi-Fi do ESP falhou: $error');
+    } finally {
+      if (mounted) setState(() => wifiScanLoading = false);
     }
   }
 
@@ -2779,6 +2832,156 @@ class _EspTerminalPanel extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _EspWifiSignalPanel extends StatelessWidget {
+  const _EspWifiSignalPanel({
+    required this.networks,
+    required this.summary,
+    required this.busy,
+    required this.onScan,
+  });
+
+  final List<EspWifiNetwork> networks;
+  final String summary;
+  final bool busy;
+  final VoidCallback onScan;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final visible = networks.take(8).toList();
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .34),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: .70)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.wifi_find_outlined, color: colors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Sinal Wi-Fi visto pelo ESP',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        summary,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: busy ? null : onScan,
+                  icon: busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.network_wifi_3_bar_outlined),
+                  label: Text(busy ? 'Lendo...' : 'Ler redes pelo ESP'),
+                ),
+              ],
+            ),
+            if (visible.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              for (final network in visible) ...[
+                _EspWifiNetworkRow(network: network),
+                const SizedBox(height: 8),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EspWifiNetworkRow extends StatelessWidget {
+  const _EspWifiNetworkRow({required this.network});
+
+  final EspWifiNetwork network;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final ssid = network.ssid.trim().isEmpty ? '<rede oculta>' : network.ssid;
+    final quality = network.qualityPercent / 100;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(
+              network.connected ? Icons.wifi : Icons.wifi_outlined,
+              size: 18,
+              color: network.connected
+                  ? colors.primary
+                  : colors.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                ssid,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: network.connected
+                      ? FontWeight.w800
+                      : FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${network.rssi} dBm',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: quality,
+            minHeight: 6,
+            backgroundColor: colors.surfaceContainerHighest,
+            color: network.rssi >= -67
+                ? colors.primary
+                : network.rssi >= -75
+                ? colors.tertiary
+                : colors.error,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${network.qualityLabel} · canal ${network.channel}'
+          '${network.encrypted ? ' · protegida' : ' · aberta'}'
+          '${network.connected ? ' · conectada no ESP' : ''}',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+        ),
+      ],
     );
   }
 }

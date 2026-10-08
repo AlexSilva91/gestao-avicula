@@ -21,6 +21,7 @@
     POST /api/group_schedule    channels=1,2,4&enabled=1&on1=04:30&off1=06:10&en1=1&on2=17:40&off2=20:00&en2=1&days=127
     GET  /api/schedule
     POST /api/time              epoch=1735689600
+    GET  /api/wifi/scan
     POST /api/wifi              ssid=NomeDaRede&password=SenhaDaRede
     POST /api/wifi/disconnect   clear=1
     POST /api/mqtt              enabled=1&host=192.168.0.10&port=1883&baseTopic=seleto/esp32
@@ -1586,6 +1587,8 @@ public:
                { handleScheduleGet(); });
     server_.on("/api/time", HTTP_POST, [this]()
                { handleTimePost(); });
+    server_.on("/api/wifi/scan", HTTP_GET, [this]()
+               { handleWifiScanGet(); });
     server_.on("/api/wifi", HTTP_POST, [this]()
                { handleWifiPost(); });
     server_.on("/api/wifi/disconnect", HTTP_POST, [this]()
@@ -1947,6 +1950,48 @@ private:
     json += quoteJson(network_.setupIp());
     json += "}";
     sendJson(json, connected ? 200 : 202);
+  }
+
+  void handleWifiScanGet()
+  {
+    const String connectedSsid = network_.ssid();
+    const int connectedRssi = network_.connected() ? WiFi.RSSI() : 0;
+    const int found = WiFi.scanNetworks(false, true);
+    String json = "{\"ok\":true";
+    json += ",\"source\":\"esp32\"";
+    json += ",\"wifiConnected\":";
+    json += boolJson(network_.connected());
+    json += ",\"connectedSsid\":";
+    json += quoteJson(connectedSsid);
+    json += ",\"connectedRssi\":";
+    json += (network_.connected() ? String(connectedRssi) : String("null"));
+    json += ",\"ip\":";
+    json += quoteJson(network_.stationIp());
+    json += ",\"setupApIp\":";
+    json += quoteJson(network_.setupIp());
+    json += ",\"networks\":[";
+    for (int i = 0; i < found; i++)
+    {
+      if (i > 0)
+        json += ",";
+      const String ssid = WiFi.SSID(i);
+      json += "{\"ssid\":";
+      json += quoteJson(ssid);
+      json += ",\"rssi\":";
+      json += String(WiFi.RSSI(i));
+      json += ",\"channel\":";
+      json += String(WiFi.channel(i));
+      json += ",\"bssid\":";
+      json += quoteJson(WiFi.BSSIDstr(i));
+      json += ",\"encrypted\":";
+      json += boolJson(WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+      json += ",\"connected\":";
+      json += boolJson(network_.connected() && ssid == connectedSsid);
+      json += "}";
+    }
+    json += "]}";
+    WiFi.scanDelete();
+    sendJson(json);
   }
 
   void handleWifiDisconnectPost()

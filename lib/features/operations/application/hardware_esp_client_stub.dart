@@ -78,6 +78,47 @@ class EspRelayResult {
   final Map<String, Object?> payload;
 }
 
+class EspWifiNetwork {
+  const EspWifiNetwork({
+    required this.ssid,
+    required this.rssi,
+    required this.channel,
+    required this.bssid,
+    required this.encrypted,
+    required this.connected,
+  });
+
+  final String ssid;
+  final int rssi;
+  final int channel;
+  final String bssid;
+  final bool encrypted;
+  final bool connected;
+
+  int get qualityPercent => ((rssi + 100) * 2).clamp(0, 100).toInt();
+
+  String get qualityLabel {
+    if (rssi >= -55) return 'Excelente';
+    if (rssi >= -67) return 'Bom';
+    if (rssi >= -75) return 'Regular';
+    return 'Fraco';
+  }
+}
+
+class EspWifiScanResult {
+  const EspWifiScanResult({
+    required this.networks,
+    required this.connectedSsid,
+    required this.connectedRssi,
+    required this.payload,
+  });
+
+  final List<EspWifiNetwork> networks;
+  final String connectedSsid;
+  final int? connectedRssi;
+  final Map<String, Object?> payload;
+}
+
 class EspChannelSchedule {
   const EspChannelSchedule({
     required this.channel,
@@ -178,6 +219,12 @@ class HardwareEspClient {
   }) async {
     throw UnsupportedError(
       'Configuracao de Wi-Fi do ESP indisponivel nesta plataforma.',
+    );
+  }
+
+  Future<EspWifiScanResult> scanWifi(String endpoint) async {
+    throw UnsupportedError(
+      'Leitura de redes Wi-Fi do ESP indisponivel nesta plataforma.',
     );
   }
 
