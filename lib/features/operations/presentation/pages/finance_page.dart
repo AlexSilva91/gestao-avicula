@@ -6,6 +6,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
+import '../../../auth/application/auth_controller.dart';
 import '../../../lots/application/lots_controller.dart';
 import '../../application/operations_controller.dart';
 
@@ -69,12 +70,38 @@ const _personalExpenseCategories = [
   'Outras saídas',
 ];
 
+bool _allows(WidgetRef ref, String permission) =>
+    ref.read(authControllerProvider).allows(permission);
+
+bool _canCreateBusinessFinance(WidgetRef ref) =>
+    _allows(ref, 'finance.business.create');
+
+bool _canUpdateBusinessFinance(WidgetRef ref) =>
+    _allows(ref, 'finance.business.update');
+
+bool _canCreatePersonalFinance(WidgetRef ref) =>
+    _allows(ref, 'finance.personal.create');
+
+bool _canUpdatePersonalFinance(WidgetRef ref) =>
+    _allows(ref, 'finance.personal.update');
+
+bool _canCreateProLabore(WidgetRef ref) =>
+    _canCreateBusinessFinance(ref) && _canCreatePersonalFinance(ref);
+
 Future<void> importPayablesFile(
   BuildContext context, {
   required WidgetRef ref,
   required bool personal,
 }) async {
   try {
+    final allowed = personal
+        ? _canCreatePersonalFinance(ref)
+        : _canCreateBusinessFinance(ref);
+    if (!allowed) {
+      throw StateError(
+        'Você não tem permissão para importar contas deste módulo financeiro.',
+      );
+    }
     final picked = await FilePicker.pickFile(
       dialogTitle: personal
           ? 'Importar contas a pagar pessoais'
@@ -362,6 +389,8 @@ class _TransactionsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final metrics = ref.watch(financeMetricsProvider).asData?.value;
+    final canCreate = _canCreateBusinessFinance(ref);
+    final canCreateProLabore = _canCreateProLabore(ref);
     return SeletoTabList(
       children: [
         SeletoKpiGrid(
@@ -398,41 +427,46 @@ class _TransactionsTab extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 16),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => _ProLaboreDialog(ref: ref),
-                ),
-                icon: const Icon(Icons.payments_outlined),
-                label: const Text('Retirar pró-labore'),
-              ),
-              FilledButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => _FinanceDialog(ref: ref),
-                ),
-                icon: const Icon(Icons.add),
-                label: const Text('Novo lançamento'),
-              ),
-              FilledButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) =>
-                      _FinanceDialog(ref: ref, accountsPayable: true),
-                ),
-                icon: const Icon(Icons.event_available_outlined),
-                label: const Text('Conta a pagar'),
-              ),
-            ],
+        if (canCreate || canCreateProLabore) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (canCreateProLabore)
+                  OutlinedButton.icon(
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _ProLaboreDialog(ref: ref),
+                    ),
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text('Retirar pró-labore'),
+                  ),
+                if (canCreate)
+                  FilledButton.icon(
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _FinanceDialog(ref: ref),
+                    ),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Novo lançamento'),
+                  ),
+                if (canCreate)
+                  FilledButton.icon(
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) =>
+                          _FinanceDialog(ref: ref, accountsPayable: true),
+                    ),
+                    icon: const Icon(Icons.event_available_outlined),
+                    label: const Text('Conta a pagar'),
+                  ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
+          const SizedBox(height: 12),
+        ],
         ref
             .watch(financeProvider)
             .when(
@@ -473,6 +507,7 @@ class _BusinessFinanceTile extends StatelessWidget {
     final cancelled = item.status == 'CANCELLED';
     final pending = item.status == 'PENDING';
     final manual = item.referenceType == null;
+    final canUpdate = _canUpdateBusinessFinance(ref);
     final amount = '${income ? '+' : '−'} ${money(item.amountCents)}';
     return ListTile(
       leading: CircleAvatar(
@@ -496,8 +531,8 @@ class _BusinessFinanceTile extends StatelessWidget {
       ),
       trailing: cancelled
           ? const Chip(label: Text('Cancelado'))
-          : !manual
-          ? null
+          : !manual || !canUpdate
+          ? Text(amount, style: Theme.of(context).textTheme.titleMedium)
           : PopupMenuButton<String>(
               tooltip: 'Ações do lançamento',
               onSelected: (action) async {
@@ -583,6 +618,7 @@ class _InvestmentsTab extends StatelessWidget {
         error: (_, _) => const SeletoAsyncError(),
         data: (items) {
           final total = items.fold<int>(0, (s, i) => s + i.amountCents);
+          final canCreate = _canCreateBusinessFinance(ref);
           return SeletoTabList(
             children: [
               Row(
@@ -592,14 +628,15 @@ class _InvestmentsTab extends StatelessWidget {
                     'Total investido: ${money(total)}',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  FilledButton.icon(
-                    onPressed: () => showDialog<void>(
-                      context: context,
-                      builder: (_) => _InvestmentDialog(ref: ref),
+                  if (canCreate)
+                    FilledButton.icon(
+                      onPressed: () => showDialog<void>(
+                        context: context,
+                        builder: (_) => _InvestmentDialog(ref: ref),
+                      ),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Novo investimento'),
                     ),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Novo investimento'),
-                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -644,52 +681,58 @@ class _BusinessPayablesTab extends StatelessWidget {
   final WidgetRef ref;
 
   @override
-  Widget build(BuildContext context) => SeletoTabList(
-    children: [
-      Align(
-        alignment: Alignment.centerRight,
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: () => _importPayables(context, personal: false),
-              icon: const Icon(Icons.upload_file_outlined),
-              label: const Text('Importar'),
+  Widget build(BuildContext context) {
+    final canCreate = _canCreateBusinessFinance(ref);
+    return SeletoTabList(
+      children: [
+        if (canCreate) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _importPayables(context, personal: false),
+                  icon: const Icon(Icons.upload_file_outlined),
+                  label: const Text('Importar'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) =>
+                        _FinanceDialog(ref: ref, accountsPayable: true),
+                  ),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Nova conta'),
+                ),
+              ],
             ),
-            FilledButton.icon(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => _FinanceDialog(ref: ref, accountsPayable: true),
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text('Nova conta'),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 12),
-      ref
-          .watch(financeProvider)
-          .when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) => const SeletoAsyncError(),
-            data: (items) {
-              final pending = items
-                  .where((item) => item.status == 'PENDING')
-                  .toList();
-              return _SectionCard(
-                title: 'Contas a pagar da granja',
-                emptyIcon: Icons.event_available_outlined,
-                emptyTitle: 'Nenhuma conta pendente',
-                itemCount: pending.length,
-                itemBuilder: (_, i) =>
-                    _BusinessFinanceTile(item: pending[i], ref: ref),
-              );
-            },
           ),
-    ],
-  );
+          const SizedBox(height: 12),
+        ],
+        ref
+            .watch(financeProvider)
+            .when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, _) => const SeletoAsyncError(),
+              data: (items) {
+                final pending = items
+                    .where((item) => item.status == 'PENDING')
+                    .toList();
+                return _SectionCard(
+                  title: 'Contas a pagar da granja',
+                  emptyIcon: Icons.event_available_outlined,
+                  emptyTitle: 'Nenhuma conta pendente',
+                  itemCount: pending.length,
+                  itemBuilder: (_, i) =>
+                      _BusinessFinanceTile(item: pending[i], ref: ref),
+                );
+              },
+            ),
+      ],
+    );
+  }
 
   Future<void> _importPayables(
     BuildContext context, {
@@ -826,45 +869,48 @@ class _PersonalActionGrid extends StatelessWidget {
   final WidgetRef ref;
 
   @override
-  Widget build(BuildContext context) => SeletoCompactGrid(
-    minTileHeight: 72,
-    spacing: 8,
-    children: [
-      _ActionCard(
-        icon: Icons.add,
-        title: 'Lançamento',
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (_) => _PersonalFinanceDialog(ref: ref),
+  Widget build(BuildContext context) {
+    if (!_canCreatePersonalFinance(ref)) return const SizedBox.shrink();
+    return SeletoCompactGrid(
+      minTileHeight: 72,
+      spacing: 8,
+      children: [
+        _ActionCard(
+          icon: Icons.add,
+          title: 'Lançamento',
+          onTap: () => showDialog<void>(
+            context: context,
+            builder: (_) => _PersonalFinanceDialog(ref: ref),
+          ),
         ),
-      ),
-      _ActionCard(
-        icon: Icons.event_available_outlined,
-        title: 'Conta a pagar',
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (_) =>
-              _PersonalFinanceDialog(ref: ref, accountsPayable: true),
+        _ActionCard(
+          icon: Icons.event_available_outlined,
+          title: 'Conta a pagar',
+          onTap: () => showDialog<void>(
+            context: context,
+            builder: (_) =>
+                _PersonalFinanceDialog(ref: ref, accountsPayable: true),
+          ),
         ),
-      ),
-      _ActionCard(
-        icon: Icons.savings_outlined,
-        title: 'Reserva',
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (_) => _ReserveDialog(ref: ref),
+        _ActionCard(
+          icon: Icons.savings_outlined,
+          title: 'Reserva',
+          onTap: () => showDialog<void>(
+            context: context,
+            builder: (_) => _ReserveDialog(ref: ref),
+          ),
         ),
-      ),
-      _ActionCard(
-        icon: Icons.trending_up,
-        title: 'Investimento',
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (_) => _PersonalInvestmentDialog(ref: ref),
+        _ActionCard(
+          icon: Icons.trending_up,
+          title: 'Investimento',
+          onTap: () => showDialog<void>(
+            context: context,
+            builder: (_) => _PersonalInvestmentDialog(ref: ref),
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 class _ActionCard extends StatelessWidget {
@@ -909,37 +955,45 @@ class _PersonalTransactionsTab extends StatelessWidget {
   final WidgetRef ref;
 
   @override
-  Widget build(BuildContext context) => SeletoTabList(
-    children: [
-      Align(
-        alignment: Alignment.centerRight,
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => _ProLaboreTransferDialog(ref: ref),
-              ),
-              icon: const Icon(Icons.sync_alt),
-              label: const Text('Transferência'),
+  Widget build(BuildContext context) {
+    final canCreate = _canCreatePersonalFinance(ref);
+    final canTransfer = _canCreateProLabore(ref);
+    return SeletoTabList(
+      children: [
+        if (canCreate || canTransfer) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (canTransfer)
+                  OutlinedButton.icon(
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _ProLaboreTransferDialog(ref: ref),
+                    ),
+                    icon: const Icon(Icons.sync_alt),
+                    label: const Text('Transferência'),
+                  ),
+                if (canCreate)
+                  FilledButton.icon(
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _PersonalFinanceDialog(ref: ref),
+                    ),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Novo lançamento'),
+                  ),
+              ],
             ),
-            FilledButton.icon(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => _PersonalFinanceDialog(ref: ref),
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text('Novo lançamento'),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 12),
-      _PersonalTransactions(ref: ref, hidePending: true),
-    ],
-  );
+          ),
+          const SizedBox(height: 12),
+        ],
+        _PersonalTransactions(ref: ref, hidePending: true),
+      ],
+    );
+  }
 }
 
 class _PersonalPayablesTab extends StatelessWidget {
@@ -947,41 +1001,46 @@ class _PersonalPayablesTab extends StatelessWidget {
   final WidgetRef ref;
 
   @override
-  Widget build(BuildContext context) => SeletoTabList(
-    children: [
-      Align(
-        alignment: Alignment.centerRight,
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: () =>
-                  importPayablesFile(context, ref: ref, personal: true),
-              icon: const Icon(Icons.upload_file_outlined),
-              label: const Text('Importar'),
+  Widget build(BuildContext context) {
+    final canCreate = _canCreatePersonalFinance(ref);
+    return SeletoTabList(
+      children: [
+        if (canCreate) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      importPayablesFile(context, ref: ref, personal: true),
+                  icon: const Icon(Icons.upload_file_outlined),
+                  label: const Text('Importar'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) =>
+                        _PersonalFinanceDialog(ref: ref, accountsPayable: true),
+                  ),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Nova conta'),
+                ),
+              ],
             ),
-            FilledButton.icon(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) =>
-                    _PersonalFinanceDialog(ref: ref, accountsPayable: true),
-              ),
-              icon: const Icon(Icons.add),
-              label: const Text('Nova conta'),
-            ),
-          ],
+          ),
+          const SizedBox(height: 12),
+        ],
+        _PersonalTransactions(
+          ref: ref,
+          pendingOnly: true,
+          title: 'Contas a pagar pessoais',
+          emptyTitle: 'Nenhuma conta pendente',
         ),
-      ),
-      const SizedBox(height: 12),
-      _PersonalTransactions(
-        ref: ref,
-        pendingOnly: true,
-        title: 'Contas a pagar pessoais',
-        emptyTitle: 'Nenhuma conta pendente',
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 class _PersonalAssetsTab extends StatelessWidget {
@@ -989,39 +1048,44 @@ class _PersonalAssetsTab extends StatelessWidget {
   final WidgetRef ref;
 
   @override
-  Widget build(BuildContext context) => SeletoTabList(
-    children: [
-      Align(
-        alignment: Alignment.centerRight,
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => _ReserveDialog(ref: ref),
-              ),
-              icon: const Icon(Icons.savings_outlined),
-              label: const Text('Reserva'),
+  Widget build(BuildContext context) {
+    final canCreate = _canCreatePersonalFinance(ref);
+    return SeletoTabList(
+      children: [
+        if (canCreate) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _ReserveDialog(ref: ref),
+                  ),
+                  icon: const Icon(Icons.savings_outlined),
+                  label: const Text('Reserva'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _PersonalInvestmentDialog(ref: ref),
+                  ),
+                  icon: const Icon(Icons.trending_up),
+                  label: const Text('Investimento'),
+                ),
+              ],
             ),
-            FilledButton.icon(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => _PersonalInvestmentDialog(ref: ref),
-              ),
-              icon: const Icon(Icons.trending_up),
-              label: const Text('Investimento'),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 12),
-      _ReserveList(ref: ref),
-      const SizedBox(height: 12),
-      _PersonalInvestmentList(ref: ref),
-    ],
-  );
+          ),
+          const SizedBox(height: 12),
+        ],
+        _ReserveList(ref: ref),
+        const SizedBox(height: 12),
+        _PersonalInvestmentList(ref: ref),
+      ],
+    );
+  }
 }
 
 class _PersonalRecordsTab extends StatelessWidget {
@@ -1029,39 +1093,44 @@ class _PersonalRecordsTab extends StatelessWidget {
   final WidgetRef ref;
 
   @override
-  Widget build(BuildContext context) => SeletoTabList(
-    children: [
-      Align(
-        alignment: Alignment.centerRight,
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => _EstablishmentDialog(ref: ref),
-              ),
-              icon: const Icon(Icons.storefront_outlined),
-              label: const Text('Estabelecimento'),
+  Widget build(BuildContext context) {
+    final canCreate = _canCreatePersonalFinance(ref);
+    return SeletoTabList(
+      children: [
+        if (canCreate) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _EstablishmentDialog(ref: ref),
+                  ),
+                  icon: const Icon(Icons.storefront_outlined),
+                  label: const Text('Estabelecimento'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => _DebtDialog(ref: ref),
+                  ),
+                  icon: const Icon(Icons.credit_card),
+                  label: const Text('Dívida'),
+                ),
+              ],
             ),
-            FilledButton.icon(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => _DebtDialog(ref: ref),
-              ),
-              icon: const Icon(Icons.credit_card),
-              label: const Text('Dívida'),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 12),
-      _DebtList(ref: ref),
-      const SizedBox(height: 12),
-      _EstablishmentList(ref: ref),
-    ],
-  );
+          ),
+          const SizedBox(height: 12),
+        ],
+        _DebtList(ref: ref),
+        const SizedBox(height: 12),
+        _EstablishmentList(ref: ref),
+      ],
+    );
+  }
 }
 
 class _PersonalTransactions extends StatelessWidget {
@@ -1085,6 +1154,7 @@ class _PersonalTransactions extends StatelessWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => const SeletoAsyncError(),
         data: (items) {
+          final canUpdate = _canUpdatePersonalFinance(ref);
           final visible = items.where((item) {
             if (pendingOnly) return item.status == 'PENDING';
             if (hidePending) return item.status != 'PENDING';
@@ -1121,7 +1191,7 @@ class _PersonalTransactions extends StatelessWidget {
                   '${item.dueDate == null ? '' : ' · vence ${shortDate.format(item.dueDate!)}'}'
                   '${item.paymentMethod == null ? '' : ' · ${item.paymentMethod}'}',
                 ),
-                trailing: item.referenceType != null
+                trailing: item.referenceType != null || !canUpdate
                     ? Text(
                         '${income ? '+' : '−'} ${money(item.amountCents)}',
                         style: Theme.of(context).textTheme.titleMedium,

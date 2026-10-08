@@ -35,6 +35,10 @@ const _globalPermissions = {'tenant.view_all', 'tenants.create'};
 const _legacyPermissionAliases = <String, List<String>>{
   'finance.business.view': ['finance.view'],
   'finance.personal.view': ['finance.view'],
+  'finance.business.create': ['finance.create'],
+  'finance.personal.create': ['finance.create'],
+  'finance.business.update': ['finance.update'],
+  'finance.personal.update': ['finance.update'],
   'hardware.automation.view': ['settings.view'],
   'hardware.lighting.view': ['settings.view', 'lighting.view'],
   'hardware.environment.view': ['settings.view'],

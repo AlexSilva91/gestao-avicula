@@ -849,6 +849,8 @@ class AppDatabase extends _$AppDatabase {
         'home.shortcuts.view',
       ],
       'finance.view': ['finance.business.view', 'finance.personal.view'],
+      'finance.create': ['finance.business.create', 'finance.personal.create'],
+      'finance.update': ['finance.business.update', 'finance.personal.update'],
       'settings.view': [
         'hardware.automation.view',
         'hardware.lighting.view',

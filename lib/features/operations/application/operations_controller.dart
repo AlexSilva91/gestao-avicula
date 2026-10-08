@@ -314,6 +314,17 @@ class OperationsController {
     return session.userId;
   }
 
+  String _actorAll(Iterable<String> permissions) {
+    final session = _session();
+    final missing = permissions.where(
+      (permission) => !session.allows(permission),
+    );
+    if (missing.isNotEmpty) {
+      throw StateError('Você não tem permissão para realizar esta operação.');
+    }
+    return session.userId;
+  }
+
   String _superAdminActor() {
     final session = _session();
     if (!session.isSuperAdmin) {
@@ -665,7 +676,7 @@ class OperationsController {
       status: status,
       dueDate: dueDate,
       notes: notes,
-      actorId: _actor('finance.create'),
+      actorId: _actor('finance.business.create'),
     );
     await _reschedulePayableAlerts();
   }
@@ -675,7 +686,7 @@ class OperationsController {
     required Uint8List bytes,
   }) async {
     final entries = parsePayablesImport(filename: filename, bytes: bytes);
-    final actorId = _actor('finance.create');
+    final actorId = _actor('finance.business.create');
     for (final entry in entries) {
       await _db.addFinance(
         type: 'EXPENSE',
@@ -695,7 +706,7 @@ class OperationsController {
 
   Future<void> cancelFinance(String id) async {
     await cancelPayableAlerts('finance_payable:$id');
-    await _db.cancelFinance(id, actorId: _actor('finance.update'));
+    await _db.cancelFinance(id, actorId: _actor('finance.business.update'));
     await _reschedulePayableAlerts();
   }
 
@@ -709,7 +720,7 @@ class OperationsController {
       id: id,
       paymentMethod: payment,
       notes: notes,
-      actorId: _actor('finance.update'),
+      actorId: _actor('finance.business.update'),
     );
     await _reschedulePayableAlerts();
   }
@@ -736,7 +747,7 @@ class OperationsController {
       status: status,
       dueDate: dueDate,
       notes: notes,
-      actorId: _actor('finance.update'),
+      actorId: _actor('finance.business.update'),
     );
     await _reschedulePayableAlerts();
   }
@@ -751,7 +762,7 @@ class OperationsController {
     category: category,
     amountCents: amount,
     lotId: lotId,
-    actorId: _actor('finance.create'),
+    actorId: _actor('finance.business.create'),
   );
   Future<void> addFinancialEstablishment({
     required String name,
@@ -763,7 +774,7 @@ class OperationsController {
     type: type,
     contact: contact,
     notes: notes,
-    actorId: _actor('finance.create'),
+    actorId: _actor('finance.personal.create'),
   );
   Future<void> addProLabore({
     required String description,
@@ -775,7 +786,7 @@ class OperationsController {
     amountCents: amount,
     paymentMethod: payment,
     notes: notes,
-    actorId: _actor('finance.create'),
+    actorId: _actorAll(['finance.business.create', 'finance.personal.create']),
   );
   Future<void> addPersonalFinance({
     required String type,
@@ -798,7 +809,7 @@ class OperationsController {
       status: status,
       dueDate: dueDate,
       notes: notes,
-      actorId: _actor('finance.create'),
+      actorId: _actor('finance.personal.create'),
     );
     await _reschedulePayableAlerts();
   }
@@ -808,7 +819,7 @@ class OperationsController {
     required Uint8List bytes,
   }) async {
     final entries = parsePayablesImport(filename: filename, bytes: bytes);
-    final actorId = _actor('finance.create');
+    final actorId = _actor('finance.personal.create');
     for (final entry in entries) {
       await _db.addPersonalFinance(
         type: 'EXPENSE',
@@ -836,7 +847,7 @@ class OperationsController {
       id: id,
       paymentMethod: payment,
       notes: notes,
-      actorId: _actor('finance.update'),
+      actorId: _actor('finance.personal.update'),
     );
     await _reschedulePayableAlerts();
   }
@@ -865,7 +876,7 @@ class OperationsController {
       status: status,
       dueDate: dueDate,
       notes: notes,
-      actorId: _actor('finance.update'),
+      actorId: _actor('finance.personal.update'),
     );
     await _reschedulePayableAlerts();
   }
@@ -882,7 +893,7 @@ class OperationsController {
     currentAmountCents: currentAmount,
     account: account,
     notes: notes,
-    actorId: _actor('finance.create'),
+    actorId: _actor('finance.personal.create'),
   );
   Future<void> addPersonalInvestment({
     required String description,
@@ -898,7 +909,7 @@ class OperationsController {
     allocationPercent: allocationPercent,
     institution: institution,
     notes: notes,
-    actorId: _actor('finance.create'),
+    actorId: _actor('finance.personal.create'),
   );
   Future<void> addPersonalDebt({
     required String creditor,
@@ -920,7 +931,7 @@ class OperationsController {
     expectedPayoffDate: expectedPayoffDate,
     alertEnabled: alertEnabled,
     notes: notes,
-    actorId: _actor('finance.create'),
+    actorId: _actor('finance.personal.create'),
   );
   Future<void> addEvent(
     String title,

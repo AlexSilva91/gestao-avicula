@@ -61,13 +61,33 @@ const seletoPermissions = <SeletoPermission>[
   ),
   SeletoPermission(
     'finance.create',
-    'Criar lançamentos e investimentos',
+    'Criar lançamentos e investimentos (legado)',
     'Financeiro',
   ),
   SeletoPermission(
     'finance.update',
-    'Cancelar/alterar lançamentos',
+    'Cancelar/alterar lançamentos (legado)',
     'Financeiro',
+  ),
+  SeletoPermission(
+    'finance.business.create',
+    'Criar lançamentos da granja',
+    'Financeiro da granja',
+  ),
+  SeletoPermission(
+    'finance.business.update',
+    'Alterar ou quitar lançamentos da granja',
+    'Financeiro da granja',
+  ),
+  SeletoPermission(
+    'finance.personal.create',
+    'Criar lançamentos pessoais',
+    'Financeiro pessoal',
+  ),
+  SeletoPermission(
+    'finance.personal.update',
+    'Alterar ou quitar lançamentos pessoais',
+    'Financeiro pessoal',
   ),
   SeletoPermission('calendar.view', 'Visualizar calendário', 'Calendário'),
   SeletoPermission('calendar.manage', 'Criar eventos', 'Calendário'),
