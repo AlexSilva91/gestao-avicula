@@ -587,7 +587,7 @@ class _EspConfigurationSectionState
       wifiScanLoading = true;
       espTerminalTitle = 'SCAN WIFI ESP';
     });
-    _appendEspLog('APP> solicitando redes captadas pelo ESP em $endpoint');
+    _appendEspLog(r'$ iw dev esp32 scan --source=esp --endpoint=' + endpoint);
     try {
       final result = await espClient.scanWifi(endpoint);
       if (!mounted) return;
@@ -602,13 +602,12 @@ class _EspConfigurationSectionState
         espTerminalTitle = 'SCAN WIFI ESP OK';
       });
       _appendEspLog(
-        'ESP> ${result.networks.length} rede(s) encontradas pelo radio do ESP',
+        'scan: ${result.networks.length} network(s) captured by ESP32 radio',
       );
-      for (final network in result.networks.take(5)) {
-        _appendEspLog(
-          'WIFI> ${network.ssid.isEmpty ? '<oculta>' : network.ssid} '
-          '${network.rssi} dBm ch ${network.channel} ${network.qualityLabel}',
-        );
+      _appendEspLog('SSID                 RSSI  CH  SEC   LINK');
+      _appendEspLog('-------------------  ----  --  ----  ----------');
+      for (final network in result.networks.take(8)) {
+        _appendEspLog(_wifiTerminalLine(network));
       }
     } catch (error) {
       if (!mounted) return;
@@ -620,6 +619,19 @@ class _EspConfigurationSectionState
     } finally {
       if (mounted) setState(() => wifiScanLoading = false);
     }
+  }
+
+  String _wifiTerminalLine(EspWifiNetwork network) {
+    final ssid = (network.ssid.trim().isEmpty ? '<hidden>' : network.ssid)
+        .replaceAll(RegExp(r'\s+'), ' ');
+    final displaySsid = ssid.length > 19
+        ? '${ssid.substring(0, 18)}…'
+        : ssid.padRight(19);
+    final rssi = '${network.rssi}'.padLeft(4);
+    final channel = '${network.channel}'.padLeft(2);
+    final security = network.encrypted ? 'WPA ' : 'OPEN';
+    final link = network.connected ? 'CONNECTED' : network.qualityLabel;
+    return '$displaySsid  $rssi  $channel  $security  $link';
   }
 
   Future<void> _disconnectEspWifi() async {
@@ -793,8 +805,8 @@ class _EspConfigurationSectionState
     if (!mounted) return;
     setState(() {
       final nextLines = [...espTerminalLines, message];
-      espTerminalLines = nextLines.length > 12
-          ? nextLines.sublist(nextLines.length - 12)
+      espTerminalLines = nextLines.length > 24
+          ? nextLines.sublist(nextLines.length - 24)
           : nextLines;
     });
   }
@@ -2709,8 +2721,8 @@ class _HardwareIntegrationsPageState
     if (!mounted) return;
     setState(() {
       final nextLines = [...espTerminalLines, message];
-      espTerminalLines = nextLines.length > 12
-          ? nextLines.sublist(nextLines.length - 12)
+      espTerminalLines = nextLines.length > 24
+          ? nextLines.sublist(nextLines.length - 24)
           : nextLines;
     });
   }
