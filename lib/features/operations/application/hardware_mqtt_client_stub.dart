@@ -59,6 +59,15 @@ class HardwareMqttClient {
   }) async {
     throw UnsupportedError('MQTT indisponivel nesta plataforma.');
   }
+
+  Future<void> publishScheduleCommand({
+    required EspMqttConfig config,
+    required List<int> channels,
+    required List<Map<String, Object?>> schedules,
+    required DateTime now,
+  }) async {
+    throw UnsupportedError('MQTT indisponivel nesta plataforma.');
+  }
 }
 
 class HardwareMqttRuntime {
@@ -77,6 +86,14 @@ class HardwareMqttRuntime {
   Future<void> dispose() async {}
 
   void publishRelayCommand({required int channel, required String state}) {
+    throw UnsupportedError('MQTT indisponivel nesta plataforma.');
+  }
+
+  void publishScheduleCommand({
+    required List<int> channels,
+    required List<Map<String, Object?>> schedules,
+    required DateTime now,
+  }) {
     throw UnsupportedError('MQTT indisponivel nesta plataforma.');
   }
 }

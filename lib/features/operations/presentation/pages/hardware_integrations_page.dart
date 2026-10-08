@@ -1632,6 +1632,57 @@ class _HardwareIntegrationsPageState
     }
   }
 
+  Future<bool> _tryMqttScheduleCommand({
+    required List<int> channels,
+    required List<EspChannelSchedule> schedules,
+    required String label,
+  }) async {
+    final config = _mqttConfig();
+    if (!config.isUsable) return false;
+    try {
+      if (!mqttRuntime.connected) await _startMqttRuntime();
+      final now = DateTime.now();
+      final payloadSchedules = [
+        for (final schedule in schedules) _scheduleMqttPayload(schedule),
+      ];
+      if (mqttRuntime.connected) {
+        mqttRuntime.publishScheduleCommand(
+          channels: channels,
+          schedules: payloadSchedules,
+          now: now,
+        );
+      } else {
+        await mqttClient.publishScheduleCommand(
+          config: config,
+          channels: channels,
+          schedules: payloadSchedules,
+          now: now,
+        );
+      }
+      if (!mounted) return true;
+      setState(() => mqttConnected = true);
+      _appendEspLog('MQTT> agenda enviada: $label');
+      return true;
+    } catch (error) {
+      if (!mounted) return false;
+      setState(() => mqttConnected = false);
+      _appendEspLog('WARN> MQTT agenda falhou; usando HTTP: $error');
+      return false;
+    }
+  }
+
+  Map<String, Object?> _scheduleMqttPayload(EspChannelSchedule schedule) => {
+    'channel': schedule.channel,
+    'enabled': schedule.enabled,
+    'en1': schedule.morningEnabled,
+    'on1': schedule.morningOnTime,
+    'off1': schedule.morningOffTime,
+    'en2': schedule.eveningEnabled,
+    'on2': schedule.eveningOnTime,
+    'off2': schedule.eveningOffTime,
+    'days': schedule.daysMask,
+  };
+
   Future<void> _startMqttRuntime() async {
     final config = _mqttConfig();
     if (!config.isUsable) return;
@@ -1755,10 +1806,55 @@ class _HardwareIntegrationsPageState
       _appendEspLog('MQTT> estado dos relés recebido');
       return;
     }
+    if (update.topic.endsWith('/schedule/ack') ||
+        update.topic.endsWith('/schedule/state')) {
+      final channels = _mqttChannelsFromPayload(update.payload);
+      setState(() {
+        lightingStatus = update.topic.endsWith('/schedule/ack')
+            ? 'Agenda confirmada via MQTT.'
+            : 'Estado da agenda recebido via MQTT.';
+        lightingConnectionResult = 'OK MQTT: agenda em tempo real.';
+        for (final channel in channels) {
+          if (channel < 1 || channel > lightingChannelStatus.length) continue;
+          lightingChannelStatus[channel -
+              1] = update.topic.endsWith('/schedule/ack')
+              ? 'OK: agenda confirmada via MQTT.'
+              : 'Agenda atualizada via MQTT.';
+        }
+      });
+      _appendEspLog(
+        update.topic.endsWith('/schedule/ack')
+            ? 'MQTT> confirmacao da agenda recebida'
+            : 'MQTT> estado da agenda recebido',
+      );
+      return;
+    }
+    if (update.topic.endsWith('/command/ack')) {
+      _appendEspLog('MQTT> comando confirmado pelo ESP');
+      setState(() {
+        lightingConnectionResult = 'OK MQTT: comando confirmado.';
+      });
+      return;
+    }
     if (suffix == 'sensors') {
       unawaited(_recordMqttSensorPayload(update.payload));
       _appendEspLog('MQTT> sensores recebidos em tempo real');
     }
+  }
+
+  List<int> _mqttChannelsFromPayload(Map<String, Object?> payload) {
+    final rawChannels = payload['channels'];
+    if (rawChannels is List) {
+      final channels = <int>[];
+      for (final value in rawChannels) {
+        final channel = int.tryParse(value.toString());
+        if (channel != null) channels.add(channel);
+      }
+      return channels;
+    }
+    final rawChannel = payload['channel'];
+    final channel = int.tryParse(rawChannel?.toString() ?? '');
+    return channel == null ? const [] : [channel];
   }
 
   Future<void> _recordMqttSensorPayload(Map<String, Object?> payload) async {
@@ -1887,27 +1983,11 @@ class _HardwareIntegrationsPageState
   }
 
   Future<void> _syncGeneralLightingSchedule(List<int> selectedIndexes) async {
-    if (!lightingEnabled || lightingEndpoint.text.trim().isEmpty) {
-      setState(() {
-        lightingStatus = 'Falha: configure a conexão antes da agenda geral.';
-        lightingConnectionResult = 'FALHA: endpoint/IP ausente.';
-      });
-      return;
-    }
-    if (lightingConnection != 'WIFI') {
-      setState(() {
-        lightingStatus = 'Agenda geral requer Wi-Fi com o ESP.';
-        lightingConnectionResult = 'FALHA: selecione Wi-Fi para sincronizar.';
-      });
-      return;
-    }
-
     setState(() {
       saving = true;
       espTerminalTitle = 'SYNC AGENDA GERAL';
     });
     try {
-      final endpoint = lightingEndpoint.text.trim();
       final channels = [for (final index in selectedIndexes) index + 1];
       final schedule = EspChannelSchedule(
         channel: channels.first,
@@ -1919,6 +1999,59 @@ class _HardwareIntegrationsPageState
         eveningOnTime: generalEveningOnTime.text.trim(),
         eveningOffTime: generalEveningOffTime.text.trim(),
       );
+
+      final mqttSynced = await _tryMqttScheduleCommand(
+        channels: channels,
+        schedules: [
+          for (final channel in channels)
+            EspChannelSchedule(
+              channel: channel,
+              enabled: true,
+              morningEnabled: generalMorningEnabled,
+              morningOnTime: generalMorningOnTime.text.trim(),
+              morningOffTime: generalMorningOffTime.text.trim(),
+              eveningEnabled: generalEveningEnabled,
+              eveningOnTime: generalEveningOnTime.text.trim(),
+              eveningOffTime: generalEveningOffTime.text.trim(),
+            ),
+        ],
+        label: 'geral canais ${channels.join(',')}',
+      );
+      if (mqttSynced) {
+        await _saveLighting();
+        await ref
+            .read(databaseProvider)
+            .saveAppSetting(
+              'hardware_lighting_schedule_last_synced_at',
+              DateTime.now().toIso8601String(),
+              'system',
+            );
+        if (!mounted) return;
+        setState(() {
+          for (final index in selectedIndexes) {
+            lightingChannelStatus[index] = 'OK: agenda geral enviada via MQTT.';
+          }
+          lightingStatus =
+              'Agenda geral enviada via MQTT em ${channels.length} canal(is).';
+          lightingConnectionResult =
+              'OK MQTT: aguardando confirmação em tempo real.';
+        });
+        _snack('Agenda geral enviada via MQTT.');
+        return;
+      }
+
+      final endpoint = lightingEndpoint.text.trim();
+      if (!lightingEnabled ||
+          endpoint.isEmpty ||
+          lightingConnection != 'WIFI') {
+        setState(() {
+          lightingStatus =
+              'Falha: MQTT indisponível e conexão local não configurada.';
+          lightingConnectionResult =
+              'FALHA: configure MQTT ou endpoint local do ESP.';
+        });
+        return;
+      }
 
       final timePayload = await espClient.syncTime(endpoint, DateTime.now());
       _appendEspLog('ESP> relógio sincronizado pelo app');
@@ -2002,21 +2135,6 @@ class _HardwareIntegrationsPageState
   }
 
   Future<void> _syncLightingSchedule() async {
-    if (!lightingEnabled || lightingEndpoint.text.trim().isEmpty) {
-      setState(() {
-        lightingStatus = 'Falha: configure a conexão antes da agenda.';
-        lightingConnectionResult = 'FALHA: endpoint/IP ausente.';
-      });
-      return;
-    }
-    if (lightingConnection != 'WIFI') {
-      setState(() {
-        lightingStatus = 'Agenda automática requer Wi-Fi com o ESP.';
-        lightingConnectionResult = 'FALHA: selecione Wi-Fi para sincronizar.';
-      });
-      return;
-    }
-
     for (var i = 0; i < 4; i++) {
       final invalidMorning =
           lightingChannelMorningEnabled[i] &&
@@ -2043,7 +2161,61 @@ class _HardwareIntegrationsPageState
       espTerminalTitle = 'SYNC AGENDA';
     });
     try {
+      final schedules = [
+        for (var i = 0; i < 4; i++)
+          EspChannelSchedule(
+            channel: i + 1,
+            enabled: lightingChannelEnabled[i],
+            morningEnabled: lightingChannelMorningEnabled[i],
+            morningOnTime: lightingChannelOnTimes[i].text.trim(),
+            morningOffTime: lightingChannelOffTimes[i].text.trim(),
+            eveningEnabled: lightingChannelEveningEnabled[i],
+            eveningOnTime: lightingChannelEveningOnTimes[i].text.trim(),
+            eveningOffTime: lightingChannelEveningOffTimes[i].text.trim(),
+          ),
+      ];
+      final mqttSynced = await _tryMqttScheduleCommand(
+        channels: const [1, 2, 3, 4],
+        schedules: schedules,
+        label: 'todos os canais',
+      );
+      if (mqttSynced) {
+        await _saveLighting();
+        await ref
+            .read(databaseProvider)
+            .saveAppSetting(
+              'hardware_lighting_schedule_last_synced_at',
+              DateTime.now().toIso8601String(),
+              'system',
+            );
+        if (!mounted) return;
+        setState(() {
+          for (var i = 0; i < 4; i++) {
+            lightingChannelStatus[i] = lightingChannelEnabled[i]
+                ? 'OK: agenda enviada via MQTT.'
+                : 'OK: agenda desativada enviada via MQTT.';
+          }
+          lightingStatus = 'Agenda enviada via MQTT.';
+          lightingConnectionResult =
+              'OK MQTT: aguardando confirmação em tempo real.';
+        });
+        _snack('Agenda enviada via MQTT.');
+        return;
+      }
+
       final endpoint = lightingEndpoint.text.trim();
+      if (!lightingEnabled ||
+          endpoint.isEmpty ||
+          lightingConnection != 'WIFI') {
+        setState(() {
+          lightingStatus =
+              'Falha: MQTT indisponível e conexão local não configurada.';
+          lightingConnectionResult =
+              'FALHA: configure MQTT ou endpoint local do ESP.';
+        });
+        return;
+      }
+
       final timePayload = await espClient.syncTime(endpoint, DateTime.now());
       _appendEspLog('ESP> relógio sincronizado pelo app');
       _appendEspPayload(timePayload);
@@ -2058,16 +2230,7 @@ class _HardwareIntegrationsPageState
             : 'OFF';
         final payload = await espClient.setChannelSchedule(
           endpoint: endpoint,
-          schedule: EspChannelSchedule(
-            channel: channel,
-            enabled: lightingChannelEnabled[i],
-            morningEnabled: lightingChannelMorningEnabled[i],
-            morningOnTime: lightingChannelOnTimes[i].text.trim(),
-            morningOffTime: lightingChannelOffTimes[i].text.trim(),
-            eveningEnabled: lightingChannelEveningEnabled[i],
-            eveningOnTime: lightingChannelEveningOnTimes[i].text.trim(),
-            eveningOffTime: lightingChannelEveningOffTimes[i].text.trim(),
-          ),
+          schedule: schedules[i],
         );
         _appendEspLog(
           'ESP> agenda canal $channel salva: M $morningLabel / T $eveningLabel',
@@ -2108,14 +2271,19 @@ class _HardwareIntegrationsPageState
   }
 
   Future<void> _testLightingChannel(int index, bool turnOn) async {
-    if (!lightingEnabled || lightingEndpoint.text.trim().isEmpty) {
+    final hasMqtt = _mqttConfig().isUsable;
+    final hasLocalEndpoint =
+        lightingEnabled && lightingEndpoint.text.trim().isNotEmpty;
+    if (!hasMqtt && !hasLocalEndpoint) {
       setState(() {
-        lightingStatus = 'Falha: configure a conexão antes do canal.';
-        lightingChannelStatus[index] = 'FALHA: conexão não configurada.';
+        lightingStatus =
+            'Falha: configure MQTT ou conexão local antes do canal.';
+        lightingChannelStatus[index] =
+            'FALHA: MQTT e conexão local não configurados.';
       });
       return;
     }
-    if (lightingChannelPins[index].text.trim().isEmpty) {
+    if (!hasMqtt && lightingChannelPins[index].text.trim().isEmpty) {
       setState(() {
         lightingChannelStatus[index] = 'FALHA: informe o GPIO do canal.';
       });
@@ -2124,40 +2292,45 @@ class _HardwareIntegrationsPageState
     setState(() => saving = true);
     try {
       final channel = index + 1;
-      var usedMqtt = false;
-      if (lightingConnection == 'WIFI') {
-        final mqttSent = await _tryMqttRelayCommand(
-          channel,
-          turnOn ? 'on' : 'off',
-        );
-        usedMqtt = mqttSent;
-        if (!mqttSent) {
-          final result = await espClient.setRelay(
-            endpoint: lightingEndpoint.text.trim(),
-            channel: channel,
-            turnOn: turnOn,
+      final mqttSent = await _tryMqttRelayCommand(
+        channel,
+        turnOn ? 'on' : 'off',
+      );
+      var usedMqtt = mqttSent;
+      if (!mqttSent) {
+        if (!hasLocalEndpoint) {
+          throw StateError(
+            'MQTT indisponivel e endpoint local do ESP nao configurado.',
           );
-          if (result.endpoint != lightingEndpoint.text.trim()) {
-            lightingEndpoint.text = result.endpoint;
-            await ref
-                .read(operationsControllerProvider)
-                .saveSetting('hardware_lighting_endpoint', result.endpoint);
-            _appendEspLog('ESP> endpoint atualizado para ${result.endpoint}');
-          }
-          turnOn = result.on;
-          unawaited(
-            ref
-                .read(databaseProvider)
-                .recordRelayState(
-                  channel: channel,
-                  on: result.on,
-                  transport: 'HTTP',
-                  payload: result.payload,
-                ),
-          );
-          _appendEspLog('ESP> ${result.message}');
-          _appendEspPayload(result.payload);
         }
+        if (lightingChannelPins[index].text.trim().isEmpty) {
+          throw StateError('GPIO do canal $channel nao informado.');
+        }
+        final result = await espClient.setRelay(
+          endpoint: lightingEndpoint.text.trim(),
+          channel: channel,
+          turnOn: turnOn,
+        );
+        if (result.endpoint != lightingEndpoint.text.trim()) {
+          lightingEndpoint.text = result.endpoint;
+          await ref
+              .read(operationsControllerProvider)
+              .saveSetting('hardware_lighting_endpoint', result.endpoint);
+          _appendEspLog('ESP> endpoint atualizado para ${result.endpoint}');
+        }
+        turnOn = result.on;
+        unawaited(
+          ref
+              .read(databaseProvider)
+              .recordRelayState(
+                channel: channel,
+                on: result.on,
+                transport: 'HTTP',
+                payload: result.payload,
+              ),
+        );
+        _appendEspLog('ESP> ${result.message}');
+        _appendEspPayload(result.payload);
       }
       await ref
           .read(operationsControllerProvider)
@@ -2193,17 +2366,24 @@ class _HardwareIntegrationsPageState
   }
 
   Future<void> _pulseLightingChannel(int index) async {
-    if (lightingConnection == 'WIFI' &&
-        lightingEnabled &&
-        lightingEndpoint.text.trim().isNotEmpty &&
-        lightingChannelEnabled[index] &&
-        lightingChannelPins[index].text.trim().isNotEmpty) {
+    final hasMqtt = _mqttConfig().isUsable;
+    final hasLocalEndpoint =
+        lightingEnabled && lightingEndpoint.text.trim().isNotEmpty;
+    if ((hasMqtt || hasLocalEndpoint) && lightingChannelEnabled[index]) {
       setState(() => saving = true);
       try {
         final channel = index + 1;
         final mqttSent = await _tryMqttRelayCommand(channel, 'pulse');
         EspRelayResult? result;
         if (!mqttSent) {
+          if (!hasLocalEndpoint) {
+            throw StateError(
+              'MQTT indisponivel e endpoint local do ESP nao configurado.',
+            );
+          }
+          if (lightingChannelPins[index].text.trim().isEmpty) {
+            throw StateError('GPIO do canal $channel nao informado.');
+          }
           result = await espClient.pulseRelay(
             endpoint: lightingEndpoint.text.trim(),
             channel: channel,

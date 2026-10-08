@@ -124,6 +124,29 @@ class HardwareMqttClient {
     }
   }
 
+  Future<void> publishScheduleCommand({
+    required EspMqttConfig config,
+    required List<int> channels,
+    required List<Map<String, Object?>> schedules,
+    required DateTime now,
+  }) async {
+    final client = _client(config);
+    try {
+      await _connect(client, config);
+      _publishJson(client, _topic(config, 'schedule/command'), {
+        'action': 'set',
+        'channels': channels,
+        'schedules': schedules,
+        'epoch': now.millisecondsSinceEpoch ~/ 1000,
+        'source': 'app',
+        'ts': now.toIso8601String(),
+      });
+      await MqttUtilities.asyncSleep(1);
+    } finally {
+      client.disconnect();
+    }
+  }
+
   MqttServerClient _client(EspMqttConfig config) {
     final clientId =
         'seleto-app-${DateTime.now().millisecondsSinceEpoch % 100000}';
@@ -210,7 +233,14 @@ class HardwareMqttRuntime {
       client.disconnect();
       throw StateError('Broker MQTT recusou a conexao: ${result?.state}.');
     }
-    for (final suffix in ['status', 'sensors', 'relay/state']) {
+    for (final suffix in [
+      'status',
+      'sensors',
+      'relay/state',
+      'schedule/ack',
+      'schedule/state',
+      'command/ack',
+    ]) {
       client.subscribe(_topic(config, suffix), MqttQos.atLeastOnce);
     }
     _subscription = client.updates?.listen(_handleUpdates);
@@ -238,6 +268,21 @@ class HardwareMqttRuntime {
       'state': state,
       'source': 'app',
       'ts': DateTime.now().toIso8601String(),
+    });
+  }
+
+  void publishScheduleCommand({
+    required List<int> channels,
+    required List<Map<String, Object?>> schedules,
+    required DateTime now,
+  }) {
+    publishJson('schedule/command', {
+      'action': 'set',
+      'channels': channels,
+      'schedules': schedules,
+      'epoch': now.millisecondsSinceEpoch ~/ 1000,
+      'source': 'app',
+      'ts': now.toIso8601String(),
     });
   }
 
