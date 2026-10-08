@@ -9,6 +9,7 @@ SYNC_PORT="${SELETO_SYNC_PORT:-5005}"
 MQTT_PORT="${MQTT_PORT:-1883}"
 MQTT_USER="${MQTT_USER:-seleto}"
 MQTT_PASSWORD="${MQTT_PASSWORD:-}"
+MQTT_BASE_TOPIC="${MQTT_BASE_TOPIC:-seleto/esp32}"
 SYNC_TOKEN="${SELETO_SYNC_TOKEN:-}"
 POSTGRES_DB="${POSTGRES_DB:-seleto}"
 POSTGRES_USER="${POSTGRES_USER:-agrogestor}"
@@ -63,11 +64,12 @@ ssh "${REMOTE}" "\
   '${REMOTE_TMP}/install_seleto_sync_service.sh'"
 
 echo "==> Instalando/configurando Mosquitto MQTT"
-ssh "${REMOTE}" bash -s -- "${MQTT_USER}" "${MQTT_PASSWORD}" "${MQTT_PORT}" <<'REMOTE_SCRIPT'
+ssh "${REMOTE}" bash -s -- "${MQTT_USER}" "${MQTT_PASSWORD}" "${MQTT_PORT}" "${MQTT_BASE_TOPIC}" <<'REMOTE_SCRIPT'
 set -euo pipefail
 MQTT_USER="$1"
 MQTT_PASSWORD="$2"
 MQTT_PORT="$3"
+MQTT_BASE_TOPIC="$4"
 
 if command -v apt-get >/dev/null 2>&1; then
   apt-get update
@@ -82,10 +84,12 @@ else
 fi
 
 install -d -m 0755 /etc/mosquitto/conf.d
+install -d -m 0750 -o mosquitto -g mosquitto /etc/mosquitto
 cat > /etc/mosquitto/conf.d/seleto.conf <<EOF
 listener ${MQTT_PORT} 0.0.0.0
 allow_anonymous false
 password_file /etc/mosquitto/passwd
+acl_file /etc/mosquitto/seleto.acl
 persistence true
 persistence_location /var/lib/mosquitto/
 log_dest syslog
@@ -97,6 +101,22 @@ EOF
 touch /etc/mosquitto/passwd
 mosquitto_passwd -b /etc/mosquitto/passwd "${MQTT_USER}" "${MQTT_PASSWORD}"
 chmod 600 /etc/mosquitto/passwd
+chown mosquitto:mosquitto /etc/mosquitto/passwd
+
+cat > /etc/mosquitto/seleto.acl <<EOF
+user ${MQTT_USER}
+topic readwrite ${MQTT_BASE_TOPIC}/+/status
+topic readwrite ${MQTT_BASE_TOPIC}/+/sensors
+topic readwrite ${MQTT_BASE_TOPIC}/+/relay/state
+topic readwrite ${MQTT_BASE_TOPIC}/+/schedule/state
+topic readwrite ${MQTT_BASE_TOPIC}/+/command/ack
+topic readwrite ${MQTT_BASE_TOPIC}/+/schedule/ack
+topic readwrite ${MQTT_BASE_TOPIC}/+/relay/command
+topic readwrite ${MQTT_BASE_TOPIC}/+/schedule/command
+topic readwrite ${MQTT_BASE_TOPIC}/+/ping
+EOF
+chown mosquitto:mosquitto /etc/mosquitto/seleto.acl
+chmod 640 /etc/mosquitto/seleto.acl
 
 if command -v ufw >/dev/null 2>&1; then
   ufw allow "${MQTT_PORT}/tcp"
@@ -105,8 +125,12 @@ elif command -v firewall-cmd >/dev/null 2>&1; then
   firewall-cmd --reload
 fi
 
-systemctl enable --now mosquitto
-systemctl restart mosquitto
+systemctl enable mosquitto
+if systemctl is-active --quiet mosquitto; then
+  systemctl reload mosquitto || systemctl kill -s HUP mosquitto
+else
+  systemctl start mosquitto
+fi
 systemctl --no-pager status mosquitto || true
 REMOTE_SCRIPT
 
@@ -160,5 +184,6 @@ echo "  ${SYNC_TOKEN}"
 echo "MQTT:"
 echo "  host=${REMOTE_HOST}"
 echo "  port=${MQTT_PORT}"
+echo "  baseTopic=${MQTT_BASE_TOPIC}"
 echo "  user=${MQTT_USER}"
 echo "  password=${MQTT_PASSWORD}"

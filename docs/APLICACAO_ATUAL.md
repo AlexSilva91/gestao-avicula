@@ -811,14 +811,20 @@ Topicos assinados no runtime:
 - `<baseTopic>/<deviceId>/status`
 - `<baseTopic>/<deviceId>/sensors`
 - `<baseTopic>/<deviceId>/relay/state`
+- `<baseTopic>/<deviceId>/schedule/state`
+- `<baseTopic>/<deviceId>/schedule/ack`
+- `<baseTopic>/<deviceId>/command/ack`
 
 Topicos publicados:
 
 - `<baseTopic>/<deviceId>/ping`
 - `<baseTopic>/<deviceId>/relay/command`
+- `<baseTopic>/<deviceId>/schedule/command`
 
 O app registra payloads recebidos de sensores e estados de rele quando o fluxo da
-tela faz esse processamento.
+tela faz esse processamento. A agenda de iluminacao tambem pode ser enviada via
+MQTT, permitindo sincronizar horarios fora da rede local quando o broker remoto
+esta acessivel e o ESP32 esta conectado nele.
 
 ### Iluminacao
 

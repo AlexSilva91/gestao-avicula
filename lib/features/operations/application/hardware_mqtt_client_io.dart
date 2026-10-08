@@ -205,11 +205,15 @@ class HardwareMqttRuntime {
   HardwareMqttRuntime();
 
   static const _connectTimeout = Duration(seconds: 6);
+  static const _staleTimeout = Duration(seconds: 45);
 
   final _updates = StreamController<EspMqttUpdate>.broadcast();
   MqttServerClient? _client;
   EspMqttConfig? _config;
   StreamSubscription<List<MqttReceivedMessage<MqttMessage>>>? _subscription;
+  Timer? _watchdog;
+  DateTime? _lastPacketAt;
+  bool _staleEmitted = false;
 
   Stream<EspMqttUpdate> get updates => _updates.stream;
 
@@ -244,6 +248,8 @@ class HardwareMqttRuntime {
       client.subscribe(_topic(config, suffix), MqttQos.atLeastOnce);
     }
     _subscription = client.updates?.listen(_handleUpdates);
+    _markPacket();
+    _startWatchdog();
     publishJson('ping', {
       'source': 'app',
       'ts': DateTime.now().toIso8601String(),
@@ -251,6 +257,8 @@ class HardwareMqttRuntime {
   }
 
   Future<void> disconnect() async {
+    _watchdog?.cancel();
+    _watchdog = null;
     await _subscription?.cancel();
     _subscription = null;
     _client?.disconnect();
@@ -349,6 +357,7 @@ class HardwareMqttRuntime {
 
   void _handleUpdates(List<MqttReceivedMessage<MqttMessage>> events) {
     for (final event in events) {
+      _markPacket();
       final message = event.payload as MqttPublishMessage;
       final raw = MqttPublishPayload.bytesToStringAsString(
         message.payload.message,
@@ -371,6 +380,33 @@ class HardwareMqttRuntime {
         ),
       );
     }
+  }
+
+  void _markPacket() {
+    _lastPacketAt = DateTime.now();
+    _staleEmitted = false;
+  }
+
+  void _startWatchdog() {
+    _watchdog?.cancel();
+    _watchdog = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_updates.isClosed || !connected) return;
+      final lastPacketAt = _lastPacketAt;
+      if (lastPacketAt == null) return;
+      final age = DateTime.now().difference(lastPacketAt);
+      if (age < _staleTimeout || _staleEmitted) return;
+      _staleEmitted = true;
+      _updates.add(
+        EspMqttUpdate(
+          topic: 'runtime/stale',
+          payload: {
+            'online': false,
+            'secondsWithoutPacket': age.inSeconds,
+          },
+          receivedAt: DateTime.now(),
+        ),
+      );
+    });
   }
 
   bool _sameConfig(EspMqttConfig next) {

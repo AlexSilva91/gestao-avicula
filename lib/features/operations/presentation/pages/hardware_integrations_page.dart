@@ -395,6 +395,15 @@ class _EspConfigurationSectionState
       _appendEspLog('MQTT> desconectado');
       return;
     }
+    if (update.topic == 'runtime/stale') {
+      final seconds = update.payload['secondsWithoutPacket'] ?? '?';
+      setState(() {
+        mqttConnected = false;
+        espTerminalTitle = 'MQTT SEM TELEMETRIA';
+      });
+      _appendEspLog('WARN> sem pacote do ESP há ${seconds}s');
+      return;
+    }
     setState(() => mqttConnected = true);
     unawaited(
       ref
@@ -413,6 +422,15 @@ class _EspConfigurationSectionState
         ? update.topic
         : update.topic.split('/').last;
     if (suffix == 'status') {
+      if (update.payload['online'] == false) {
+        setState(() {
+          mqttConnected = false;
+          espWifiConnected = false;
+          espTerminalTitle = 'ESP32 OFFLINE';
+        });
+        _appendEspLog('WARN> status MQTT indicou ESP offline');
+        return;
+      }
       final ip = (update.payload['ip'] ?? '').toString();
       setState(
         () => espWifiConnected = update.payload['wifiConnected'] == true,
@@ -1738,6 +1756,16 @@ class _HardwareIntegrationsPageState
       _appendEspLog('MQTT> desconectado');
       return;
     }
+    if (update.topic == 'runtime/stale') {
+      final seconds = update.payload['secondsWithoutPacket'] ?? '?';
+      setState(() {
+        mqttConnected = false;
+        lightingConnectionResult = 'MQTT sem telemetria recente.';
+        lightingStatus = 'Sem atualização do ESP32 há ${seconds}s.';
+      });
+      _appendEspLog('WARN> sem pacote do ESP há ${seconds}s');
+      return;
+    }
     if (update.topic == 'runtime/connected') {
       unawaited(
         ref
@@ -1757,6 +1785,16 @@ class _HardwareIntegrationsPageState
     }
     setState(() => mqttConnected = true);
     if (suffix == 'status') {
+      if (update.payload['online'] == false) {
+        setState(() {
+          mqttConnected = false;
+          espWifiConnected = false;
+          lightingConnectionResult = 'MQTT indicou ESP32 offline.';
+          lightingStatus = 'ESP32 offline no broker MQTT.';
+        });
+        _appendEspLog('WARN> status MQTT indicou ESP offline');
+        return;
+      }
       final ip = (update.payload['ip'] ?? '').toString();
       unawaited(
         ref

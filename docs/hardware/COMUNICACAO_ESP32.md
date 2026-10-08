@@ -426,7 +426,7 @@ granja/esp32/GRANJA-SELETO-RELE-01/sensors
 
 ## MQTT
 
-O MQTT e configurado no app e enviado ao ESP32 pelo endpoint HTTP. Quando configurado, o app mantem uma conexao MQTT persistente enquanto a tela de integracoes esta aberta, assinando `status`, `sensors` e `relay/state`, e publicando comandos em `relay/command` sem reconectar a cada acao.
+O MQTT e configurado no app e enviado ao ESP32 pelo endpoint HTTP. Quando configurado, o app mantem uma conexao MQTT persistente enquanto a tela de integracoes esta aberta, assinando `status`, `sensors`, `relay/state`, `schedule/state`, `command/ack` e `schedule/ack`, e publicando comandos em `relay/command`, `schedule/command` e `ping` sem reconectar a cada acao.
 
 ```text
 POST /api/mqtt
@@ -451,7 +451,11 @@ Topicos padrao:
 | `granja/esp32/GRANJA-SELETO-RELE-01/status` | ESP32 -> broker | Online, IP e uptime |
 | `granja/esp32/GRANJA-SELETO-RELE-01/sensors` | ESP32 -> broker | Ambiente e agua |
 | `granja/esp32/GRANJA-SELETO-RELE-01/relay/state` | ESP32 -> broker | Estado dos reles |
+| `granja/esp32/GRANJA-SELETO-RELE-01/schedule/state` | ESP32 -> broker | Estado atual da agenda cacheada |
+| `granja/esp32/GRANJA-SELETO-RELE-01/command/ack` | ESP32 -> broker | Confirmacao de comando de rele |
+| `granja/esp32/GRANJA-SELETO-RELE-01/schedule/ack` | ESP32 -> broker | Confirmacao de agenda recebida |
 | `granja/esp32/GRANJA-SELETO-RELE-01/relay/command` | app/broker -> ESP32 | Comandos `on`, `off` e `pulse` |
+| `granja/esp32/GRANJA-SELETO-RELE-01/schedule/command` | app/broker -> ESP32 | Sincronizacao de horarios de iluminacao |
 | `granja/esp32/GRANJA-SELETO-RELE-01/ping` | app/broker -> ESP32 | Solicita publicacao de status |
 
 O ESP32 usa Last Will no topico `status` para sinalizar queda:
