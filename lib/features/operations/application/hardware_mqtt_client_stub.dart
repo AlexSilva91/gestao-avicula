@@ -70,6 +70,10 @@ class HardwareMqttClient {
   }) async {
     throw UnsupportedError('MQTT indisponivel nesta plataforma.');
   }
+
+  Future<EspMqttUpdate> publishWifiScanCommand({required DateTime now}) async {
+    throw UnsupportedError('MQTT indisponivel nesta plataforma.');
+  }
 }
 
 class HardwareMqttRuntime {
@@ -96,6 +100,10 @@ class HardwareMqttRuntime {
     required List<Map<String, Object?>> schedules,
     required DateTime now,
   }) async {
+    throw UnsupportedError('MQTT indisponivel nesta plataforma.');
+  }
+
+  Future<EspMqttUpdate> publishWifiScanCommand({required DateTime now}) async {
     throw UnsupportedError('MQTT indisponivel nesta plataforma.');
   }
 }

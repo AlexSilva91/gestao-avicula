@@ -119,6 +119,34 @@ class EspWifiScanResult {
     required this.payload,
   });
 
+  factory EspWifiScanResult.fromPayload(Map<String, Object?> payload) {
+    final rawNetworks = payload['networks'];
+    final networks = <EspWifiNetwork>[];
+    if (rawNetworks is List) {
+      for (final item in rawNetworks) {
+        if (item is! Map) continue;
+        final mapped = Map<String, Object?>.from(item);
+        networks.add(
+          EspWifiNetwork(
+            ssid: (mapped['ssid'] ?? '').toString(),
+            rssi: int.tryParse((mapped['rssi'] ?? '').toString()) ?? -100,
+            channel: int.tryParse((mapped['channel'] ?? '').toString()) ?? 0,
+            bssid: (mapped['bssid'] ?? '').toString(),
+            encrypted: mapped['encrypted'] == true,
+            connected: mapped['connected'] == true,
+          ),
+        );
+      }
+    }
+    networks.sort((a, b) => b.rssi.compareTo(a.rssi));
+    return EspWifiScanResult(
+      networks: networks,
+      connectedSsid: (payload['connectedSsid'] ?? '').toString(),
+      connectedRssi: int.tryParse((payload['connectedRssi'] ?? '').toString()),
+      payload: payload,
+    );
+  }
+
   final List<EspWifiNetwork> networks;
   final String connectedSsid;
   final int? connectedRssi;
@@ -334,31 +362,7 @@ class HardwareEspClient {
   Future<EspWifiScanResult> scanWifi(String endpoint) async {
     final normalized = _normalizeEndpoint(endpoint);
     final payload = await _getJson('$normalized/api/wifi/scan');
-    final rawNetworks = payload['networks'];
-    final networks = <EspWifiNetwork>[];
-    if (rawNetworks is List) {
-      for (final item in rawNetworks) {
-        if (item is! Map) continue;
-        final mapped = Map<String, Object?>.from(item);
-        networks.add(
-          EspWifiNetwork(
-            ssid: (mapped['ssid'] ?? '').toString(),
-            rssi: int.tryParse((mapped['rssi'] ?? '').toString()) ?? -100,
-            channel: int.tryParse((mapped['channel'] ?? '').toString()) ?? 0,
-            bssid: (mapped['bssid'] ?? '').toString(),
-            encrypted: mapped['encrypted'] == true,
-            connected: mapped['connected'] == true,
-          ),
-        );
-      }
-    }
-    networks.sort((a, b) => b.rssi.compareTo(a.rssi));
-    return EspWifiScanResult(
-      networks: networks,
-      connectedSsid: (payload['connectedSsid'] ?? '').toString(),
-      connectedRssi: int.tryParse((payload['connectedRssi'] ?? '').toString()),
-      payload: payload,
-    );
+    return EspWifiScanResult.fromPayload(payload);
   }
 
   Future<Map<String, Object?>> disconnectWifi({

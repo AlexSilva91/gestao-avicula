@@ -315,6 +315,7 @@ class HardwareMqttRuntime {
       'relay/state',
       'schedule/ack',
       'schedule/state',
+      'wifi/scan/state',
       'command/ack',
     ]) {
       client.subscribe(_topic(config, suffix), MqttQos.atLeastOnce);
@@ -368,6 +369,18 @@ class HardwareMqttRuntime {
       'ts': now.toIso8601String(),
     });
     return ack;
+  }
+
+  Future<EspMqttUpdate> publishWifiScanCommand({required DateTime now}) async {
+    final commandId = 'wifi-scan-${now.microsecondsSinceEpoch}';
+    final response = _waitForWifiScanState(commandId);
+    publishJson('wifi/scan/command', {
+      'action': 'scan',
+      'commandId': commandId,
+      'source': 'app',
+      'ts': now.toIso8601String(),
+    });
+    return response;
   }
 
   void publishJson(String suffix, Map<String, Object?> payload) {
@@ -477,6 +490,43 @@ class HardwareMqttRuntime {
           const Duration(seconds: 12),
           onTimeout: () =>
               throw TimeoutException('ESP nao confirmou agenda MQTT em 12s.'),
+        )
+        .whenComplete(() => subscription.cancel());
+  }
+
+  Future<EspMqttUpdate> _waitForWifiScanState(String commandId) {
+    final completer = Completer<EspMqttUpdate>();
+    late final StreamSubscription<EspMqttUpdate> subscription;
+    subscription = updates.listen((update) {
+      if (completer.isCompleted) return;
+      if (update.retained || !update.topic.endsWith('/wifi/scan/state')) {
+        return;
+      }
+      final ackCommandId = update.payload['commandId']?.toString();
+      if (ackCommandId != null &&
+          ackCommandId.isNotEmpty &&
+          ackCommandId != commandId) {
+        return;
+      }
+      if (update.payload['ok'] == true) {
+        completer.complete(update);
+      } else {
+        completer.completeError(
+          StateError(
+            _payloadMessage(
+              update.payload,
+              fallback: 'ESP recusou scan Wi-Fi MQTT',
+            ),
+          ),
+        );
+      }
+    });
+    return completer.future
+        .timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => throw TimeoutException(
+            'ESP nao respondeu scan Wi-Fi MQTT em 15s.',
+          ),
         )
         .whenComplete(() => subscription.cancel());
   }

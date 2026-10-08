@@ -113,6 +113,15 @@ class EspWifiScanResult {
     required this.payload,
   });
 
+  factory EspWifiScanResult.fromPayload(Map<String, Object?> payload) {
+    return EspWifiScanResult(
+      networks: const [],
+      connectedSsid: (payload['connectedSsid'] ?? '').toString(),
+      connectedRssi: int.tryParse((payload['connectedRssi'] ?? '').toString()),
+      payload: payload,
+    );
+  }
+
   final List<EspWifiNetwork> networks;
   final String connectedSsid;
   final int? connectedRssi;

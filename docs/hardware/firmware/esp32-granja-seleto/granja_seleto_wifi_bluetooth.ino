@@ -30,7 +30,8 @@
     - HTTP local pelo IP do ESP na rede Wi-Fi.
     - MQTT opcional para status, sensores, comandos de rele e agenda.
     - Topicos MQTT: relay/command, schedule/command, ping, status,
-      sensors, relay/state, schedule/state, command/ack e schedule/ack.
+      sensors, relay/state, schedule/state, wifi/scan/state, command/ack
+      e schedule/ack.
     - AP local de recuperacao SELETO-SETUP / seleto1234.
     - Sem Bluetooth e sem servidor remoto.
 */
@@ -1248,6 +1249,7 @@ private:
       return;
     client_.subscribe(topic("relay/command").c_str(), 1);
     client_.subscribe(topic("schedule/command").c_str(), 1);
+    client_.subscribe(topic("wifi/scan/command").c_str(), 1);
     client_.subscribe(topic("ping").c_str(), 1);
     publishStatus();
     publishSensors();
@@ -1329,6 +1331,62 @@ private:
     json += scheduler_.toJson();
     json += "}";
     client_.publish(topic("schedule/state").c_str(), json.c_str(), true);
+  }
+
+  String wifiScanJson(const String &commandId)
+  {
+    const String connectedSsid = network_.ssid();
+    const int connectedRssi = network_.connected() ? WiFi.RSSI() : 0;
+    const int found = WiFi.scanNetworks(false, true);
+    const int visibleCount = found > 16 ? 16 : found;
+    String json = "{";
+    json += envelopeFields("Redes Wi-Fi captadas pelo ESP32");
+    json += ",\"ok\":true";
+    json += ",\"command\":\"wifi_scan\"";
+    if (commandId.length() > 0)
+    {
+      json += ",\"commandId\":";
+      json += quoteJson(commandId);
+    }
+    json += ",\"wifiConnected\":";
+    json += boolJson(network_.connected());
+    json += ",\"connectedSsid\":";
+    json += quoteJson(connectedSsid);
+    json += ",\"connectedRssi\":";
+    json += (network_.connected() ? String(connectedRssi) : String("null"));
+    json += ",\"ip\":";
+    json += quoteJson(network_.stationIp());
+    json += ",\"setupApIp\":";
+    json += quoteJson(network_.setupIp());
+    json += ",\"networks\":[";
+    for (int i = 0; i < visibleCount; i++)
+    {
+      if (i > 0)
+        json += ",";
+      const String ssid = WiFi.SSID(i);
+      json += "{\"ssid\":";
+      json += quoteJson(ssid);
+      json += ",\"rssi\":";
+      json += String(WiFi.RSSI(i));
+      json += ",\"channel\":";
+      json += String(WiFi.channel(i));
+      json += ",\"bssid\":";
+      json += quoteJson(WiFi.BSSIDstr(i));
+      json += ",\"encrypted\":";
+      json += boolJson(WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+      json += ",\"connected\":";
+      json += boolJson(network_.connected() && ssid == connectedSsid);
+      json += "}";
+    }
+    json += "]}";
+    WiFi.scanDelete();
+    return json;
+  }
+
+  void publishWifiScanState(const String &commandId)
+  {
+    String json = wifiScanJson(commandId);
+    client_.publish(topic("wifi/scan/state").c_str(), json.c_str(), false);
   }
 
   String channelsJson(uint16_t channelsMask)
@@ -1492,6 +1550,14 @@ private:
         publishRelays();
         publishStatus();
       }
+      return;
+    }
+
+    if (currentTopic == topic("wifi/scan/command"))
+    {
+      const String commandId = jsonStringField(body, "commandId");
+      publishWifiScanState(commandId);
+      publishStatus();
       return;
     }
 

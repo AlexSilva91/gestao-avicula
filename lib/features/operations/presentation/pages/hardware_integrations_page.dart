@@ -587,28 +587,22 @@ class _EspConfigurationSectionState
       wifiScanLoading = true;
       espTerminalTitle = 'SCAN WIFI ESP';
     });
-    _appendEspLog(r'$ iw dev esp32 scan --source=esp --endpoint=' + endpoint);
+    final useMqtt = mqttRuntime.connected;
+    _appendEspLog(
+      useMqtt
+          ? r'$ mosquitto_pub seleto/esp32/SELETO-RELE-01/wifi/scan/command'
+          : r'$ iw dev esp32 scan --source=esp --endpoint=' + endpoint,
+    );
     try {
-      final result = await espClient.scanWifi(endpoint);
+      final result = useMqtt
+          ? EspWifiScanResult.fromPayload(
+              (await mqttRuntime.publishWifiScanCommand(
+                now: DateTime.now(),
+              )).payload,
+            )
+          : await espClient.scanWifi(endpoint);
       if (!mounted) return;
-      final connected = result.connectedSsid.trim();
-      final connectedSuffix = connected.isEmpty
-          ? ''
-          : ' · conectado em "$connected" (${result.connectedRssi ?? '?'} dBm)';
-      setState(() {
-        espWifiNetworks = result.networks;
-        espWifiScanSummary =
-            '${result.networks.length} rede(s) captada(s) pelo ESP$connectedSuffix';
-        espTerminalTitle = 'SCAN WIFI ESP OK';
-      });
-      _appendEspLog(
-        'scan: ${result.networks.length} network(s) captured by ESP32 radio',
-      );
-      _appendEspLog('SSID                 RSSI  CH  SEC   NIVEL');
-      _appendEspLog('-------------------  ----  --  ----  ---------');
-      for (final network in result.networks.take(8)) {
-        _appendEspLog(_wifiTerminalLine(network));
-      }
+      _applyEspWifiScanResult(result, transport: useMqtt ? 'MQTT' : 'Wi-Fi');
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -618,6 +612,30 @@ class _EspConfigurationSectionState
       _appendEspLog('ERR> scan Wi-Fi do ESP falhou: $error');
     } finally {
       if (mounted) setState(() => wifiScanLoading = false);
+    }
+  }
+
+  void _applyEspWifiScanResult(
+    EspWifiScanResult result, {
+    required String transport,
+  }) {
+    final connected = result.connectedSsid.trim();
+    final connectedSuffix = connected.isEmpty
+        ? ''
+        : ' · conectado em "$connected" (${result.connectedRssi ?? '?'} dBm)';
+    setState(() {
+      espWifiNetworks = result.networks;
+      espWifiScanSummary =
+          '${result.networks.length} rede(s) captada(s) pelo ESP via $transport$connectedSuffix';
+      espTerminalTitle = 'SCAN WIFI ESP OK';
+    });
+    _appendEspLog(
+      'scan: ${result.networks.length} network(s) captured by ESP32 radio via $transport',
+    );
+    _appendEspLog('SSID                 RSSI  CH  SEC   NIVEL');
+    _appendEspLog('-------------------  ----  --  ----  ---------');
+    for (final network in result.networks.take(8)) {
+      _appendEspLog(_wifiTerminalLine(network));
     }
   }
 
