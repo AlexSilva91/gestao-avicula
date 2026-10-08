@@ -148,10 +148,12 @@ topic read ${MQTT_BASE_TOPIC}/+/status
 topic read ${MQTT_BASE_TOPIC}/+/sensors
 topic read ${MQTT_BASE_TOPIC}/+/relay/state
 topic read ${MQTT_BASE_TOPIC}/+/schedule/state
+topic read ${MQTT_BASE_TOPIC}/+/wifi/scan/state
 topic read ${MQTT_BASE_TOPIC}/+/command/ack
 topic read ${MQTT_BASE_TOPIC}/+/schedule/ack
 topic write ${MQTT_BASE_TOPIC}/+/relay/command
 topic write ${MQTT_BASE_TOPIC}/+/schedule/command
+topic write ${MQTT_BASE_TOPIC}/+/wifi/scan/command
 topic write ${MQTT_BASE_TOPIC}/+/ping
 
 user ${MQTT_ESP_USER}
@@ -159,10 +161,12 @@ topic write ${MQTT_BASE_TOPIC}/+/status
 topic write ${MQTT_BASE_TOPIC}/+/sensors
 topic write ${MQTT_BASE_TOPIC}/+/relay/state
 topic write ${MQTT_BASE_TOPIC}/+/schedule/state
+topic write ${MQTT_BASE_TOPIC}/+/wifi/scan/state
 topic write ${MQTT_BASE_TOPIC}/+/command/ack
 topic write ${MQTT_BASE_TOPIC}/+/schedule/ack
 topic read ${MQTT_BASE_TOPIC}/+/relay/command
 topic read ${MQTT_BASE_TOPIC}/+/schedule/command
+topic read ${MQTT_BASE_TOPIC}/+/wifi/scan/command
 topic read ${MQTT_BASE_TOPIC}/+/ping
 EOF
   chown mosquitto:mosquitto "${MOSQUITTO_ACL}"

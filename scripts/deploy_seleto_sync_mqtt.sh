@@ -109,10 +109,12 @@ topic readwrite ${MQTT_BASE_TOPIC}/+/status
 topic readwrite ${MQTT_BASE_TOPIC}/+/sensors
 topic readwrite ${MQTT_BASE_TOPIC}/+/relay/state
 topic readwrite ${MQTT_BASE_TOPIC}/+/schedule/state
+topic readwrite ${MQTT_BASE_TOPIC}/+/wifi/scan/state
 topic readwrite ${MQTT_BASE_TOPIC}/+/command/ack
 topic readwrite ${MQTT_BASE_TOPIC}/+/schedule/ack
 topic readwrite ${MQTT_BASE_TOPIC}/+/relay/command
 topic readwrite ${MQTT_BASE_TOPIC}/+/schedule/command
+topic readwrite ${MQTT_BASE_TOPIC}/+/wifi/scan/command
 topic readwrite ${MQTT_BASE_TOPIC}/+/ping
 EOF
 chown mosquitto:mosquitto /etc/mosquitto/seleto.acl
