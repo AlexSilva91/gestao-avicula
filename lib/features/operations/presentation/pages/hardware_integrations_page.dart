@@ -2069,14 +2069,14 @@ class _HardwareIntegrationsPageState
         if (!mounted) return;
         setState(() {
           for (final index in selectedIndexes) {
-            lightingChannelStatus[index] = 'OK: agenda geral enviada via MQTT.';
+            lightingChannelStatus[index] =
+                'OK: agenda geral confirmada e salva via MQTT.';
           }
           lightingStatus =
-              'Agenda geral enviada via MQTT em ${channels.length} canal(is).';
-          lightingConnectionResult =
-              'OK MQTT: aguardando confirmação em tempo real.';
+              'Agenda geral confirmada via MQTT em ${channels.length} canal(is).';
+          lightingConnectionResult = 'OK MQTT: agenda salva no ESP.';
         });
-        _snack('Agenda geral enviada via MQTT.');
+        _snack('Agenda geral confirmada via MQTT.');
         return;
       }
 
@@ -2232,14 +2232,13 @@ class _HardwareIntegrationsPageState
         setState(() {
           for (var i = 0; i < 4; i++) {
             lightingChannelStatus[i] = lightingChannelEnabled[i]
-                ? 'OK: agenda enviada via MQTT.'
-                : 'OK: agenda desativada enviada via MQTT.';
+                ? 'OK: agenda confirmada e salva via MQTT.'
+                : 'OK: agenda desativada e salva via MQTT.';
           }
-          lightingStatus = 'Agenda enviada via MQTT.';
-          lightingConnectionResult =
-              'OK MQTT: aguardando confirmação em tempo real.';
+          lightingStatus = 'Agenda confirmada e salva via MQTT.';
+          lightingConnectionResult = 'OK MQTT: agenda salva no ESP.';
         });
-        _snack('Agenda enviada via MQTT.');
+        _snack('Agenda confirmada via MQTT.');
         return;
       }
 

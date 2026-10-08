@@ -75,7 +75,7 @@ class HardwareMqttClient {
 
   static const _connectTimeout = Duration(seconds: 6);
   static const _statusTimeout = Duration(seconds: 5);
-  static const _ackTimeout = Duration(seconds: 8);
+  static const _ackTimeout = Duration(seconds: 12);
 
   Future<EspMqttProbe> test(EspMqttConfig config) async {
     final client = _client(config);
@@ -456,9 +456,9 @@ class HardwareMqttRuntime {
     });
     return completer.future
         .timeout(
-          const Duration(seconds: 8),
+          const Duration(seconds: 12),
           onTimeout: () =>
-              throw TimeoutException('ESP nao confirmou agenda MQTT em 8s.'),
+              throw TimeoutException('ESP nao confirmou agenda MQTT em 12s.'),
         )
         .whenComplete(() => subscription.cancel());
   }
