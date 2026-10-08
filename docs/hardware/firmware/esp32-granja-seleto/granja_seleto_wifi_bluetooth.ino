@@ -74,7 +74,7 @@ namespace Config
   constexpr uint32_t scheduleCheckIntervalMs = 1000;
   constexpr uint32_t mqttReconnectIntervalMs = 5000;
   constexpr uint32_t mqttPublishIntervalMs = 15000;
-  constexpr uint16_t mqttBufferSize = 4096;
+  constexpr uint16_t mqttBufferSize = 8192;
   constexpr uint32_t manualOverrideMs = 5UL * 60UL * 1000UL;
   constexpr bool relayActiveLow = true;
   // Canais 1-4: iluminacao existente. Nao alterar sem reconfigurar o app.
