@@ -1,6 +1,8 @@
 # GRANJA SELETO - capacidades atuais da aplicacao
 
-Atualizado em: 07/10/2026
+Atualizado em: 08/10/2026
+
+Documento completo consolidado: [DOCUMENTACAO_COMPLETA_PROJETO.md](DOCUMENTACAO_COMPLETA_PROJETO.md)
 
 Este documento descreve o que a aplicacao e capaz de fazer hoje, com base no
 codigo atual do projeto. Ele nao descreve promessas futuras. Quando uma funcao
