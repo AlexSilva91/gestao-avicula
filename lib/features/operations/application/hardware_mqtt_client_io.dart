@@ -70,6 +70,17 @@ Map<String, Object?> _decodeMqttPayload(MqttPublishMessage message) {
   return Map<String, Object?>.from(decoded);
 }
 
+String _payloadMessage(
+  Map<String, Object?> payload, {
+  required String fallback,
+}) {
+  final message = payload['message']?.toString().trim();
+  if (message != null && message.isNotEmpty) return message;
+  final error = payload['error']?.toString().trim();
+  if (error != null && error.isNotEmpty) return '$fallback: $error';
+  return fallback;
+}
+
 class HardwareMqttClient {
   const HardwareMqttClient();
 
@@ -93,11 +104,15 @@ class HardwareMqttClient {
             message.payload.message,
           );
           if (!completer.isCompleted) {
+            final decoded = _decodeMqttPayload(message);
             completer.complete(
               EspMqttProbe(
                 connected: true,
                 topic: event.topic,
-                message: 'MQTT conectado: $payload',
+                message: _payloadMessage(
+                  decoded,
+                  fallback: 'MQTT conectado: $payload',
+                ),
               ),
             );
           }
@@ -177,7 +192,7 @@ class HardwareMqttClient {
           } else {
             completer.completeError(
               StateError(
-                'ESP recusou agenda MQTT: ${payload['error'] ?? 'sem detalhe'}',
+                _payloadMessage(payload, fallback: 'ESP recusou agenda MQTT'),
               ),
             );
           }
@@ -449,7 +464,10 @@ class HardwareMqttRuntime {
       } else {
         completer.completeError(
           StateError(
-            'ESP recusou agenda MQTT: ${update.payload['error'] ?? 'sem detalhe'}',
+            _payloadMessage(
+              update.payload,
+              fallback: 'ESP recusou agenda MQTT',
+            ),
           ),
         );
       }

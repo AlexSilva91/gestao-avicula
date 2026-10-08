@@ -422,23 +422,57 @@ class _EspConfigurationSectionState
         ? update.topic
         : update.topic.split('/').last;
     if (suffix == 'status') {
+      final espMessage = _mqttMessage(
+        update,
+        fallback: 'Status MQTT recebido do ESP32.',
+      );
       if (update.payload['online'] == false) {
         setState(() {
           mqttConnected = false;
           espWifiConnected = false;
           espTerminalTitle = 'ESP32 OFFLINE';
         });
-        _appendEspLog('WARN> status MQTT indicou ESP offline');
+        _appendEspLog(
+          _mqttLogLine(update, fallback: espMessage, prefix: 'WARN'),
+        );
         return;
       }
       final ip = (update.payload['ip'] ?? '').toString();
       setState(
         () => espWifiConnected = update.payload['wifiConnected'] == true,
       );
-      _appendEspLog('MQTT> status recebido${ip.isEmpty ? '' : ' ($ip)'}');
+      _appendEspLog(
+        _mqttLogLine(
+          update,
+          fallback: ip.isEmpty ? espMessage : '$espMessage ($ip)',
+        ),
+      );
       return;
     }
-    _appendEspLog('MQTT> mensagem recebida: $suffix');
+    _appendEspLog(
+      _mqttLogLine(update, fallback: 'Mensagem MQTT recebida: $suffix'),
+    );
+  }
+
+  String _mqttMessage(EspMqttUpdate update, {required String fallback}) {
+    final message = update.payload['message']?.toString().trim();
+    if (message != null && message.isNotEmpty) return message;
+    final error = update.payload['error']?.toString().trim();
+    if (error != null && error.isNotEmpty) return '$fallback: $error';
+    return fallback;
+  }
+
+  String _mqttLogLine(
+    EspMqttUpdate update, {
+    required String fallback,
+    String prefix = 'MQTT',
+  }) {
+    final message = _mqttMessage(update, fallback: fallback);
+    final localTime = update.payload['localTime']?.toString().trim();
+    final suffix = localTime == null || localTime.isEmpty
+        ? ''
+        : ' [$localTime]';
+    return '$prefix> $message$suffix';
   }
 
   Future<void> _configureEspWifi() async {
@@ -1787,14 +1821,20 @@ class _HardwareIntegrationsPageState
     }
     setState(() => mqttConnected = true);
     if (suffix == 'status') {
+      final espMessage = _mqttMessage(
+        update,
+        fallback: 'Status MQTT recebido do ESP32.',
+      );
       if (update.payload['online'] == false) {
         setState(() {
           mqttConnected = false;
           espWifiConnected = false;
           lightingConnectionResult = 'MQTT indicou ESP32 offline.';
-          lightingStatus = 'ESP32 offline no broker MQTT.';
+          lightingStatus = espMessage;
         });
-        _appendEspLog('WARN> status MQTT indicou ESP offline');
+        _appendEspLog(
+          _mqttLogLine(update, fallback: espMessage, prefix: 'WARN'),
+        );
         return;
       }
       final ip = (update.payload['ip'] ?? '').toString();
@@ -1810,14 +1850,16 @@ class _HardwareIntegrationsPageState
       setState(() {
         espWifiConnected = update.payload['wifiConnected'] == true;
         lightingConnectionResult = 'OK MQTT: status recebido.';
-        lightingStatus = ip.isEmpty
-            ? 'ESP32 online via MQTT.'
-            : 'ESP32 online via MQTT em $ip.';
+        lightingStatus = ip.isEmpty ? espMessage : '$espMessage ($ip)';
       });
-      _appendEspLog('MQTT> status recebido${ip.isEmpty ? '' : ' ($ip)'}');
+      _appendEspLog(_mqttLogLine(update, fallback: espMessage));
       return;
     }
     if (update.topic.endsWith('/relay/state')) {
+      final espMessage = _mqttMessage(
+        update,
+        fallback: 'Estado dos relés recebido via MQTT.',
+      );
       final rawRelays = update.payload['relays'];
       if (rawRelays is List) {
         setState(() {
@@ -1840,46 +1882,73 @@ class _HardwareIntegrationsPageState
                   ),
             );
           }
-          lightingStatus = 'Estados dos relés atualizados via MQTT.';
+          lightingStatus = espMessage;
         });
       }
-      _appendEspLog('MQTT> estado dos relés recebido');
+      _appendEspLog(_mqttLogLine(update, fallback: espMessage));
       return;
     }
     if (update.topic.endsWith('/schedule/ack') ||
         update.topic.endsWith('/schedule/state')) {
+      final isAck = update.topic.endsWith('/schedule/ack');
+      final espMessage = _mqttMessage(
+        update,
+        fallback: isAck
+            ? 'Agenda confirmada via MQTT.'
+            : 'Estado da agenda recebido via MQTT.',
+      );
       final channels = _mqttChannelsFromPayload(update.payload);
       setState(() {
-        lightingStatus = update.topic.endsWith('/schedule/ack')
-            ? 'Agenda confirmada via MQTT.'
-            : 'Estado da agenda recebido via MQTT.';
+        lightingStatus = espMessage;
         lightingConnectionResult = 'OK MQTT: agenda em tempo real.';
         for (final channel in channels) {
           if (channel < 1 || channel > lightingChannelStatus.length) continue;
-          lightingChannelStatus[channel -
-              1] = update.topic.endsWith('/schedule/ack')
-              ? 'OK: agenda confirmada via MQTT.'
-              : 'Agenda atualizada via MQTT.';
+          lightingChannelStatus[channel - 1] = espMessage;
         }
       });
-      _appendEspLog(
-        update.topic.endsWith('/schedule/ack')
-            ? 'MQTT> confirmacao da agenda recebida'
-            : 'MQTT> estado da agenda recebido',
-      );
+      _appendEspLog(_mqttLogLine(update, fallback: espMessage));
       return;
     }
     if (update.topic.endsWith('/command/ack')) {
-      _appendEspLog('MQTT> comando confirmado pelo ESP');
+      final espMessage = _mqttMessage(
+        update,
+        fallback: 'Comando confirmado pelo ESP.',
+      );
+      _appendEspLog(_mqttLogLine(update, fallback: espMessage));
       setState(() {
-        lightingConnectionResult = 'OK MQTT: comando confirmado.';
+        lightingConnectionResult = 'OK MQTT: $espMessage';
       });
       return;
     }
     if (suffix == 'sensors') {
+      final espMessage = _mqttMessage(
+        update,
+        fallback: 'Sensores recebidos em tempo real.',
+      );
       unawaited(_recordMqttSensorPayload(update.payload));
-      _appendEspLog('MQTT> sensores recebidos em tempo real');
+      _appendEspLog(_mqttLogLine(update, fallback: espMessage));
     }
+  }
+
+  String _mqttMessage(EspMqttUpdate update, {required String fallback}) {
+    final message = update.payload['message']?.toString().trim();
+    if (message != null && message.isNotEmpty) return message;
+    final error = update.payload['error']?.toString().trim();
+    if (error != null && error.isNotEmpty) return '$fallback: $error';
+    return fallback;
+  }
+
+  String _mqttLogLine(
+    EspMqttUpdate update, {
+    required String fallback,
+    String prefix = 'MQTT',
+  }) {
+    final message = _mqttMessage(update, fallback: fallback);
+    final localTime = update.payload['localTime']?.toString().trim();
+    final suffix = localTime == null || localTime.isEmpty
+        ? ''
+        : ' [$localTime]';
+    return '$prefix> $message$suffix';
   }
 
   List<int> _mqttChannelsFromPayload(Map<String, Object?> payload) {
