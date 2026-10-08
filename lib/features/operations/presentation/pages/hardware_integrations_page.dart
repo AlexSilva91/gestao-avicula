@@ -1,8 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/database/operations_repository.dart';
@@ -73,6 +77,146 @@ class LightingChannelConfig {
   final String pin;
   final bool enabled;
 }
+
+class SolarForecast {
+  const SolarForecast({
+    required this.sunrise,
+    required this.sunset,
+    required this.daylightMinutes,
+    required this.latitude,
+    required this.longitude,
+    required this.timezone,
+    required this.usingFallbackLocation,
+    required this.locationSource,
+    required this.locationStatus,
+    required this.fetchedAt,
+  });
+
+  final DateTime sunrise;
+  final DateTime sunset;
+  final int daylightMinutes;
+  final double latitude;
+  final double longitude;
+  final String timezone;
+  final bool usingFallbackLocation;
+  final String locationSource;
+  final String locationStatus;
+  final DateTime fetchedAt;
+}
+
+final lightingSolarForecastProvider = FutureProvider<SolarForecast>((
+  ref,
+) async {
+  final refreshTimer = Timer(const Duration(hours: 12), ref.invalidateSelf);
+  ref.onDispose(refreshTimer.cancel);
+
+  final settings = await ref.watch(appSettingsProvider.future);
+  final values = {for (final setting in settings) setting.key: setting.value};
+  final prefs = await SharedPreferences.getInstance();
+  var usingFallbackLocation = false;
+  var locationSource = '';
+  var locationStatus = '';
+  late final double latitude;
+  late final double longitude;
+  try {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw StateError('GPS/localização do Android está desligado.');
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      throw StateError('Permissão de localização não concedida.');
+    }
+    final position =
+        await Geolocator.getLastKnownPosition() ??
+        await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.low,
+            timeLimit: Duration(seconds: 5),
+          ),
+        ).timeout(const Duration(seconds: 6));
+    latitude = position.latitude;
+    longitude = position.longitude;
+    await prefs.setDouble('lighting_solar_last_latitude', latitude);
+    await prefs.setDouble('lighting_solar_last_longitude', longitude);
+    await prefs.setDouble('lighting_solar_last_accuracy', position.accuracy);
+    await prefs.setString(
+      'lighting_solar_last_read_at',
+      DateTime.now().toIso8601String(),
+    );
+    locationSource = 'GPS/REDE DO DEVICE: localização real usada na previsão';
+    locationStatus =
+        'Localização real do device · precisão ${position.accuracy.toStringAsFixed(0)}m';
+  } catch (error) {
+    final lastLatitude = prefs.getDouble('lighting_solar_last_latitude');
+    final lastLongitude = prefs.getDouble('lighting_solar_last_longitude');
+    if (lastLatitude == null || lastLongitude == null) {
+      throw StateError(
+        'Localização real indisponível e nenhuma última leitura válida foi registrada. $error',
+      );
+    }
+    latitude = lastLatitude;
+    longitude = lastLongitude;
+    usingFallbackLocation = true;
+    final lastAccuracy = prefs.getDouble('lighting_solar_last_accuracy');
+    final lastReadAt = DateTime.tryParse(
+      prefs.getString('lighting_solar_last_read_at') ?? '',
+    );
+    locationSource = 'ÚLTIMA LOCALIZAÇÃO VÁLIDA DO DEVICE';
+    locationStatus =
+        'GPS indisponível; usando leitura de ${lastReadAt == null ? 'data desconhecida' : _formatClock(lastReadAt)}'
+        '${lastAccuracy == null ? '' : ' · precisão ${lastAccuracy.toStringAsFixed(0)}m'}';
+  }
+  final timezone =
+      values['farm_timezone'] ?? values['weather_timezone'] ?? 'America/Recife';
+
+  final uri = Uri.https('api.open-meteo.com', '/v1/forecast', {
+    'latitude': latitude.toStringAsFixed(5),
+    'longitude': longitude.toStringAsFixed(5),
+    'daily': 'sunrise,sunset,daylight_duration',
+    'timezone': timezone,
+    'forecast_days': '1',
+  });
+  final response = await http.get(uri).timeout(const Duration(seconds: 8));
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw StateError('Open-Meteo retornou HTTP ${response.statusCode}.');
+  }
+  final body = jsonDecode(response.body);
+  if (body is! Map<String, Object?>) {
+    throw StateError('Resposta solar inválida.');
+  }
+  final daily = body['daily'];
+  if (daily is! Map<String, Object?>) {
+    throw StateError('Previsão diária indisponível.');
+  }
+  final sunriseRaw = (daily['sunrise'] as List?)?.firstOrNull?.toString();
+  final sunsetRaw = (daily['sunset'] as List?)?.firstOrNull?.toString();
+  final daylightRaw = (daily['daylight_duration'] as List?)?.firstOrNull;
+  final sunrise = sunriseRaw == null ? null : DateTime.tryParse(sunriseRaw);
+  final sunset = sunsetRaw == null ? null : DateTime.tryParse(sunsetRaw);
+  if (sunrise == null || sunset == null) {
+    throw StateError('Nascer ou pôr do sol inválido.');
+  }
+  final daylightMinutes = daylightRaw is num
+      ? (daylightRaw / 60).round()
+      : sunset.difference(sunrise).inMinutes;
+  return SolarForecast(
+    sunrise: sunrise,
+    sunset: sunset,
+    daylightMinutes: daylightMinutes,
+    latitude: latitude,
+    longitude: longitude,
+    timezone: timezone,
+    usingFallbackLocation: usingFallbackLocation,
+    locationSource: locationSource,
+    locationStatus: locationStatus,
+    fetchedAt: DateTime.now(),
+  );
+});
 
 class EspConfigurationSection extends ConsumerStatefulWidget {
   const EspConfigurationSection({super.key});
@@ -1181,6 +1325,7 @@ class _HardwareIntegrationsPageState
     final channelLabels = _channelLabels;
     final enabledCount = _enabledChannelCount;
     final onCount = _activeChannelCount;
+    final solarForecast = ref.watch(lightingSolarForecastProvider);
 
     return _IntegrationPanel(
       icon: Icons.tune_outlined,
@@ -1228,6 +1373,37 @@ class _HardwareIntegrationsPageState
               controller.text.trim(),
           ],
           onOpen: _openLightingChannelSheet,
+        ),
+        const SizedBox(height: 12),
+        _SolarLightingPanel(
+          forecast: solarForecast,
+          channelLabels: channelLabels,
+          channelEnabled: lightingChannelEnabled,
+          morningEnabled: lightingChannelMorningEnabled,
+          eveningEnabled: lightingChannelEveningEnabled,
+          morningOnTimes: [
+            for (final controller in lightingChannelOnTimes)
+              controller.text.trim(),
+          ],
+          morningOffTimes: [
+            for (final controller in lightingChannelOffTimes)
+              controller.text.trim(),
+          ],
+          eveningOnTimes: [
+            for (final controller in lightingChannelEveningOnTimes)
+              controller.text.trim(),
+          ],
+          eveningOffTimes: [
+            for (final controller in lightingChannelEveningOffTimes)
+              controller.text.trim(),
+          ],
+          generalMorningEnabled: generalMorningEnabled,
+          generalEveningEnabled: generalEveningEnabled,
+          generalMorningOnTime: generalMorningOnTime.text.trim(),
+          generalMorningOffTime: generalMorningOffTime.text.trim(),
+          generalEveningOnTime: generalEveningOnTime.text.trim(),
+          generalEveningOffTime: generalEveningOffTime.text.trim(),
+          coopLightOn: _activeChannelCount > 0,
         ),
         const SizedBox(height: 12),
         _GeneralLightingSchedulePanel(
@@ -3861,6 +4037,1139 @@ class _LightingMetricTile extends StatelessWidget {
       ),
     );
   }
+}
+
+class _SolarLightingPanel extends StatelessWidget {
+  const _SolarLightingPanel({
+    required this.forecast,
+    required this.channelLabels,
+    required this.channelEnabled,
+    required this.morningEnabled,
+    required this.eveningEnabled,
+    required this.morningOnTimes,
+    required this.morningOffTimes,
+    required this.eveningOnTimes,
+    required this.eveningOffTimes,
+    required this.generalMorningEnabled,
+    required this.generalEveningEnabled,
+    required this.generalMorningOnTime,
+    required this.generalMorningOffTime,
+    required this.generalEveningOnTime,
+    required this.generalEveningOffTime,
+    required this.coopLightOn,
+  });
+
+  final AsyncValue<SolarForecast> forecast;
+  final List<String> channelLabels;
+  final List<bool> channelEnabled;
+  final List<bool> morningEnabled;
+  final List<bool> eveningEnabled;
+  final List<String> morningOnTimes;
+  final List<String> morningOffTimes;
+  final List<String> eveningOnTimes;
+  final List<String> eveningOffTimes;
+  final bool generalMorningEnabled;
+  final bool generalEveningEnabled;
+  final String generalMorningOnTime;
+  final String generalMorningOffTime;
+  final String generalEveningOnTime;
+  final String generalEveningOffTime;
+  final bool coopLightOn;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .30),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: forecast.when(
+          loading: () => _SolarLoadingContent(colors: colors),
+          error: (error, _) => _SolarErrorContent(error: error),
+          data: (solar) {
+            final plan = _LightingExposurePlan.fromSchedule(
+              forecast: solar,
+              channelEnabled: channelEnabled,
+              morningEnabled: morningEnabled,
+              eveningEnabled: eveningEnabled,
+              morningOnTimes: morningOnTimes,
+              morningOffTimes: morningOffTimes,
+              eveningOnTimes: eveningOnTimes,
+              eveningOffTimes: eveningOffTimes,
+              generalMorningEnabled: generalMorningEnabled,
+              generalEveningEnabled: generalEveningEnabled,
+              generalMorningOnTime: generalMorningOnTime,
+              generalMorningOffTime: generalMorningOffTime,
+              generalEveningOnTime: generalEveningOnTime,
+              generalEveningOffTime: generalEveningOffTime,
+            );
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.wb_sunny_outlined, color: colors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Luz natural e fotoperíodo',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                          Text(
+                            solar.usingFallbackLocation
+                                ? 'GPS indisponível: usando a última localização válida'
+                                : solar.locationSource.startsWith('GPS')
+                                ? 'Usando sua localização real para nascer e pôr do sol'
+                                : 'Usando última localização válida registrada',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: colors.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 170,
+                  child: _SolarFarmScene(
+                    sunrise: solar.sunrise,
+                    sunset: solar.sunset,
+                    coopLightOn: coopLightOn,
+                    outline: colors.outlineVariant,
+                    surface: colors.surface,
+                    sky: colors.primaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                LayoutBuilder(
+                  builder: (context, box) {
+                    final compact = box.maxWidth < 560;
+                    final metrics = [
+                      _SolarMetric(
+                        Icons.wb_twilight_outlined,
+                        'Nascer',
+                        _formatClock(solar.sunrise),
+                      ),
+                      _SolarMetric(
+                        Icons.nightlight_round,
+                        'Pôr do sol',
+                        _formatClock(solar.sunset),
+                      ),
+                      _SolarMetric(
+                        Icons.light_mode_outlined,
+                        'Natural',
+                        _formatDuration(plan.naturalMinutes),
+                      ),
+                      _SolarMetric(
+                        Icons.tungsten_outlined,
+                        'Total aves',
+                        _formatDuration(plan.totalExposureMinutes),
+                        highlight: true,
+                      ),
+                    ];
+                    return GridView.builder(
+                      itemCount: metrics.length,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: compact ? 2 : 4,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                        childAspectRatio: compact ? 2.55 : 2.15,
+                      ),
+                      itemBuilder: (context, index) =>
+                          _SolarMetricTile(metric: metrics[index]),
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _SolarScheduleChip(
+                      icon: Icons.add_circle_outline,
+                      label:
+                          'Complemento útil ${_formatDuration(plan.usefulArtificialMinutes)}',
+                    ),
+                    _SolarScheduleChip(
+                      icon: Icons.schedule_outlined,
+                      label:
+                          'Agenda artificial ${_formatDuration(plan.artificialScheduleMinutes)}',
+                    ),
+                    _SolarScheduleChip(
+                      icon: Icons.place_outlined,
+                      label: solar.usingFallbackLocation
+                          ? 'Última válida ${solar.latitude.toStringAsFixed(3)}, ${solar.longitude.toStringAsFixed(3)}'
+                          : 'GPS ${solar.latitude.toStringAsFixed(3)}, ${solar.longitude.toStringAsFixed(3)}',
+                    ),
+                    _SolarScheduleChip(
+                      icon: Icons.sync_outlined,
+                      label:
+                          'Atualizado ${_formatClock(solar.fetchedAt)} · cache 12h',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${solar.locationSource} · ${solar.locationStatus}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: solar.usingFallbackLocation
+                        ? colors.error
+                        : colors.onSurfaceVariant,
+                    fontWeight: solar.usingFallbackLocation
+                        ? FontWeight.w800
+                        : FontWeight.w500,
+                  ),
+                ),
+                if (plan.activeWindowCount == 0) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Nenhum canal ativo com horário válido; o cálculo está considerando apenas a luz solar.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _SolarFarmScene extends StatefulWidget {
+  const _SolarFarmScene({
+    required this.sunrise,
+    required this.sunset,
+    required this.coopLightOn,
+    required this.outline,
+    required this.surface,
+    required this.sky,
+  });
+
+  final DateTime sunrise;
+  final DateTime sunset;
+  final bool coopLightOn;
+  final Color outline;
+  final Color surface;
+  final Color sky;
+
+  @override
+  State<_SolarFarmScene> createState() => _SolarFarmSceneState();
+}
+
+class _SolarFarmSceneState extends State<_SolarFarmScene>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _motion;
+
+  @override
+  void initState() {
+    super.initState();
+    _motion = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 14),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _motion.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: CustomPaint(
+      painter: _SolarArcPainter(
+        sunrise: widget.sunrise,
+        sunset: widget.sunset,
+        coopLightOn: widget.coopLightOn,
+        outline: widget.outline,
+        surface: widget.surface,
+        sky: widget.sky,
+        motion: _motion,
+      ),
+      child: const SizedBox.expand(),
+    ),
+  );
+}
+
+class _SolarLoadingContent extends StatelessWidget {
+  const _SolarLoadingContent({required this.colors});
+
+  final ColorScheme colors;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Text(
+          'Consultando nascer e pôr do sol...',
+          style: TextStyle(color: colors.onSurfaceVariant),
+        ),
+      ),
+    ],
+  );
+}
+
+class _SolarErrorContent extends StatelessWidget {
+  const _SolarErrorContent({required this.error});
+
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.cloud_off_outlined, color: colors.error),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Não foi possível obter a localização real nem encontrar uma última localização válida. Libere a localização do app e abra esta tela novamente.',
+            style: TextStyle(color: colors.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SolarMetric {
+  const _SolarMetric(
+    this.icon,
+    this.label,
+    this.value, {
+    this.highlight = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool highlight;
+}
+
+class _SolarMetricTile extends StatelessWidget {
+  const _SolarMetricTile({required this.metric});
+
+  final _SolarMetric metric;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = metric.highlight ? colors.primary : colors.onSurface;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: metric.highlight
+            ? colors.primaryContainer.withValues(alpha: .28)
+            : colors.surface.withValues(alpha: .76),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: metric.highlight
+              ? colors.primary.withValues(alpha: .30)
+              : colors.outlineVariant,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          children: [
+            Icon(metric.icon, color: color, size: 18),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    metric.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    metric.value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SolarScheduleChip extends StatelessWidget {
+  const _SolarScheduleChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: .78),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: colors.primary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SolarArcPainter extends CustomPainter {
+  _SolarArcPainter({
+    required this.sunrise,
+    required this.sunset,
+    required this.coopLightOn,
+    required this.outline,
+    required this.surface,
+    required this.sky,
+    required this.motion,
+  }) : super(repaint: motion);
+
+  final DateTime sunrise;
+  final DateTime sunset;
+  final bool coopLightOn;
+  final Color outline;
+  final Color surface;
+  final Color sky;
+  final Animation<double> motion;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const sunOrange = Color(0xFFFF8A00);
+    const sunGold = Color(0xFFFFC857);
+    const sunsetRed = Color(0xFFFF5A36);
+    const moonBlue = Color(0xFFDCEBFF);
+    const pasture = Color(0xFF4C8F46);
+    const pastureDark = Color(0xFF214E2B);
+    const wood = Color(0xFF7A4B2D);
+    const roof = Color(0xFF6D2A24);
+    final daylight = _isDaylightNow();
+    final progress = _sunProgress();
+    final baseY = size.height * .80;
+    final arcStart = Offset(size.width * .08, size.height * .34);
+    final arcControl = Offset(size.width * .50, size.height * -.04);
+    final arcEnd = Offset(size.width * .94, size.height * .34);
+    final arcPath = Path()
+      ..moveTo(arcStart.dx, arcStart.dy)
+      ..quadraticBezierTo(arcControl.dx, arcControl.dy, arcEnd.dx, arcEnd.dy);
+    final skyPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: daylight
+            ? [
+                Color.lerp(sky, Colors.white, .16)!,
+                const Color(0xFFFFE3A5),
+                const Color(0xFFBFD8A5),
+              ]
+            : [
+                const Color(0xFF0B1226),
+                const Color(0xFF172948),
+                const Color(0xFF2C3B43),
+              ],
+      ).createShader(Offset.zero & size);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 0, size.width, size.height),
+        const Radius.circular(8),
+      ),
+      skyPaint,
+    );
+
+    _drawDistantLandscape(canvas, size, baseY, daylight);
+
+    final arcPaint = Paint()
+      ..color = daylight
+          ? Colors.white.withValues(alpha: .50)
+          : Colors.white.withValues(alpha: .24)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1;
+    final activePaint = Paint()
+      ..shader = const LinearGradient(
+        colors: [sunOrange, sunGold, sunsetRed],
+      ).createShader(Offset.zero & size)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 2.4;
+    final grass = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: daylight
+            ? [pasture, pastureDark]
+            : [const Color(0xFF284A32), const Color(0xFF132719)],
+      ).createShader(Rect.fromLTWH(0, baseY - 8, size.width, size.height));
+    final grassRect = RRect.fromRectAndCorners(
+      Rect.fromLTWH(0, baseY - 8, size.width, size.height * .30),
+      bottomLeft: const Radius.circular(8),
+      bottomRight: const Radius.circular(8),
+    );
+    canvas.drawRRect(grassRect, grass);
+    _drawGrassDetail(canvas, size, baseY, daylight);
+    canvas.drawPath(arcPath, arcPaint);
+    final arcMetric = arcPath.computeMetrics().first;
+    canvas.drawPath(
+      arcMetric.extractPath(0, arcMetric.length * progress),
+      activePaint,
+    );
+
+    _drawTree(canvas, size, baseY, wood, daylight);
+    _drawCoop(canvas, size, baseY, wood, roof, coopLightOn, sunGold);
+    _drawChickens(canvas, size, baseY, daylight, coopLightOn);
+
+    final celestialCenter = _quadraticPoint(
+      arcStart,
+      arcControl,
+      arcEnd,
+      progress,
+    );
+    _drawCelestial(
+      canvas,
+      size,
+      celestialCenter,
+      daylight,
+      sunOrange,
+      sunGold,
+      sunsetRed,
+      moonBlue,
+    );
+  }
+
+  void _drawCelestial(
+    Canvas canvas,
+    Size size,
+    Offset celestialCenter,
+    bool daylight,
+    Color sunOrange,
+    Color sunGold,
+    Color sunsetRed,
+    Color moonBlue,
+  ) {
+    if (daylight) {
+      final glow = Paint()
+        ..color = sunOrange.withValues(alpha: .20)
+        ..style = PaintingStyle.fill;
+      final sun = Paint()
+        ..shader = RadialGradient(
+          colors: [sunGold, sunOrange, sunsetRed],
+          stops: [.18, .74, 1],
+        ).createShader(Rect.fromCircle(center: celestialCenter, radius: 22));
+      canvas.drawCircle(celestialCenter, 29, glow);
+      for (var i = 0; i < 10; i++) {
+        final angle = (math.pi * 2 / 12) * i;
+        final rayStart = Offset(
+          celestialCenter.dx + math.cos(angle) * 15,
+          celestialCenter.dy + math.sin(angle) * 15,
+        );
+        final rayEnd = Offset(
+          celestialCenter.dx + math.cos(angle) * 22,
+          celestialCenter.dy + math.sin(angle) * 22,
+        );
+        canvas.drawLine(
+          rayStart,
+          rayEnd,
+          Paint()
+            ..color = sunOrange.withValues(alpha: .45)
+            ..strokeWidth = 1.4
+            ..strokeCap = StrokeCap.round,
+        );
+      }
+      canvas.drawCircle(celestialCenter, 12.5, sun);
+    } else {
+      final moon = Paint()
+        ..shader = RadialGradient(
+          colors: [Colors.white, moonBlue],
+        ).createShader(Rect.fromCircle(center: celestialCenter, radius: 18));
+      canvas.drawCircle(celestialCenter, 12, moon);
+      canvas.drawCircle(
+        celestialCenter.translate(5, -3),
+        11,
+        Paint()..color = const Color(0xFF172849),
+      );
+      for (final star in const [
+        Offset(.16, .20),
+        Offset(.28, .34),
+        Offset(.72, .20),
+        Offset(.84, .36),
+        Offset(.58, .14),
+        Offset(.42, .25),
+      ]) {
+        canvas.drawCircle(
+          Offset(size.width * star.dx, size.height * star.dy),
+          1.3,
+          Paint()..color = Colors.white.withValues(alpha: .78),
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SolarArcPainter oldDelegate) =>
+      oldDelegate.sunrise != sunrise ||
+      oldDelegate.sunset != sunset ||
+      oldDelegate.coopLightOn != coopLightOn ||
+      oldDelegate.outline != outline ||
+      oldDelegate.surface != surface ||
+      oldDelegate.sky != sky;
+
+  double _sunProgress() {
+    final now = DateTime.now();
+    final start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      sunrise.hour,
+      sunrise.minute,
+    );
+    final end = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      sunset.hour,
+      sunset.minute,
+    );
+    if (!now.isAfter(start)) return 0;
+    if (!now.isBefore(end)) return 1;
+    final elapsed = now.difference(start).inSeconds;
+    final total = end.difference(start).inSeconds;
+    if (total <= 0) return 0;
+    return (elapsed / total).clamp(0, 1).toDouble();
+  }
+
+  bool _isDaylightNow() {
+    final now = DateTime.now();
+    final start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      sunrise.hour,
+      sunrise.minute,
+    );
+    final end = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      sunset.hour,
+      sunset.minute,
+    );
+    return now.isAfter(start) && now.isBefore(end);
+  }
+
+  Offset _quadraticPoint(Offset start, Offset control, Offset end, double t) {
+    final inverse = 1 - t;
+    return Offset(
+      inverse * inverse * start.dx +
+          2 * inverse * t * control.dx +
+          t * t * end.dx,
+      inverse * inverse * start.dy +
+          2 * inverse * t * control.dy +
+          t * t * end.dy,
+    );
+  }
+
+  void _drawDistantLandscape(
+    Canvas canvas,
+    Size size,
+    double baseY,
+    bool daylight,
+  ) {
+    final hillPaint = Paint()
+      ..color = (daylight ? const Color(0xFF6E9A65) : const Color(0xFF253B36))
+          .withValues(alpha: .72);
+    final hill = Path()
+      ..moveTo(0, baseY - 26)
+      ..cubicTo(
+        size.width * .20,
+        baseY - 48,
+        size.width * .34,
+        baseY - 18,
+        size.width * .52,
+        baseY - 38,
+      )
+      ..cubicTo(
+        size.width * .70,
+        baseY - 58,
+        size.width * .86,
+        baseY - 28,
+        size.width,
+        baseY - 44,
+      )
+      ..lineTo(size.width, baseY + 16)
+      ..lineTo(0, baseY + 16)
+      ..close();
+    canvas.drawPath(hill, hillPaint);
+
+    final treeLinePaint = Paint()
+      ..color = (daylight ? const Color(0xFF365B36) : const Color(0xFF172521))
+          .withValues(alpha: .46);
+    for (var i = 0; i < 9; i++) {
+      final x = size.width * (.04 + i * .105);
+      final height = 12 + (i % 3) * 5;
+      final top = baseY - 26 - height;
+      final p = Path()
+        ..moveTo(x, top)
+        ..lineTo(x - 9, baseY - 21)
+        ..lineTo(x + 9, baseY - 21)
+        ..close();
+      canvas.drawPath(p, treeLinePaint);
+    }
+  }
+
+  void _drawGrassDetail(Canvas canvas, Size size, double baseY, bool daylight) {
+    final linePaint = Paint()
+      ..color = (daylight ? Colors.white : Colors.black).withValues(alpha: .08)
+      ..strokeWidth = 1;
+    for (var i = 0; i < 5; i++) {
+      final y = baseY + 7 + i * 11;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y + 6), linePaint);
+    }
+    final shadow = Paint()
+      ..color = Colors.black.withValues(alpha: daylight ? .12 : .22)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(size.width * .74, baseY + 4),
+        width: size.width * .24,
+        height: 10,
+      ),
+      shadow,
+    );
+  }
+
+  void _drawTree(
+    Canvas canvas,
+    Size size,
+    double baseY,
+    Color wood,
+    bool daylight,
+  ) {
+    final trunk = Rect.fromLTWH(size.width * .13, baseY - 46, 12, 48);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(trunk, const Radius.circular(5)),
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [Color(0xFF6C3F24), Color(0xFF3A2115)],
+        ).createShader(trunk),
+    );
+    final leaf = daylight ? const Color(0xFF2F6C39) : const Color(0xFF16331F);
+    final crownPaint = Paint()
+      ..shader =
+          RadialGradient(
+            colors: [
+              Color.lerp(leaf, Colors.white, daylight ? .10 : .03)!,
+              leaf,
+            ],
+          ).createShader(
+            Rect.fromCircle(
+              center: Offset(size.width * .145, baseY - 57),
+              radius: 36,
+            ),
+          );
+    for (final offset in const [
+      Offset(0, 0),
+      Offset(-20, 9),
+      Offset(18, 8),
+      Offset(-8, -13),
+      Offset(9, -16),
+    ]) {
+      canvas.drawCircle(
+        Offset(size.width * .145 + offset.dx, baseY - 57 + offset.dy),
+        21,
+        crownPaint,
+      );
+    }
+  }
+
+  void _drawCoop(
+    Canvas canvas,
+    Size size,
+    double baseY,
+    Color wood,
+    Color roof,
+    bool lit,
+    Color light,
+  ) {
+    final left = size.width * .76;
+    final top = baseY - 48;
+    final body = Rect.fromLTWH(left, top, size.width * .16, 45);
+    final bodyPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color.lerp(wood, Colors.white, .12)!, wood],
+      ).createShader(body);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(left + body.width * .56, baseY + 3),
+        width: body.width * 1.35,
+        height: 13,
+      ),
+      Paint()..color = Colors.black.withValues(alpha: .20),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(body, const Radius.circular(4)),
+      bodyPaint,
+    );
+    final plankPaint = Paint()
+      ..color = Colors.black.withValues(alpha: .13)
+      ..strokeWidth = 1;
+    for (var i = 1; i < 4; i++) {
+      final x = left + body.width * i / 4;
+      canvas.drawLine(
+        Offset(x, top + 6),
+        Offset(x, top + body.height),
+        plankPaint,
+      );
+    }
+    final roofPath = Path()
+      ..moveTo(left - 10, top + 4)
+      ..lineTo(left + body.width / 2, top - 21)
+      ..lineTo(left + body.width + 10, top + 4)
+      ..close();
+    canvas.drawPath(roofPath, Paint()..color = roof);
+    canvas.drawPath(
+      roofPath.shift(const Offset(0, 4)),
+      Paint()..color = Colors.black.withValues(alpha: .13),
+    );
+    final window = Rect.fromLTWH(left + body.width * .56, top + 14, 15, 13);
+    if (lit) {
+      canvas.drawCircle(
+        window.center,
+        42,
+        Paint()..color = light.withValues(alpha: .22),
+      );
+    }
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(window, const Radius.circular(3)),
+      Paint()..color = lit ? light : const Color(0xFF3A241D),
+    );
+    final door = Rect.fromLTWH(left + 10, top + 20, 17, 25);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(door, const Radius.circular(3)),
+      Paint()..color = const Color(0xFF4D2B1C),
+    );
+  }
+
+  void _drawChickens(
+    Canvas canvas,
+    Size size,
+    double baseY,
+    bool daylight,
+    bool coopLightOn,
+  ) {
+    final sleeping = !daylight && !coopLightOn;
+    if (sleeping) {
+      _drawSleepingChickens(canvas, size, baseY);
+      return;
+    }
+    final phase = motion.value * math.pi * 2;
+    final positions = [
+      Offset(size.width * .29, baseY - 8),
+      Offset(size.width * .42, baseY - 3),
+      Offset(size.width * .55, baseY - 10),
+    ];
+    for (var i = 0; i < positions.length; i++) {
+      final bob = daylight ? math.sin(phase + i * 1.4) * 2.2 : 0.0;
+      final walk = daylight ? math.sin(phase * .55 + i) * 5.5 : 0.0;
+      final center = positions[i].translate(walk, bob);
+      _drawChicken(canvas, center, scale: i == 1 ? .90 : 1.0, phase: phase + i);
+    }
+  }
+
+  void _drawChicken(
+    Canvas canvas,
+    Offset center, {
+    required double scale,
+    required double phase,
+  }) {
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: .16)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: center.translate(0, 9 * scale),
+        width: 26 * scale,
+        height: 6 * scale,
+      ),
+      shadowPaint,
+    );
+    final body = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFFFF7E4), Color(0xFFD6A55C)],
+      ).createShader(Rect.fromCenter(center: center, width: 28, height: 18));
+    final wing = Paint()
+      ..color = const Color(0xFFB8793A).withValues(alpha: .42);
+    canvas.drawOval(
+      Rect.fromCenter(center: center, width: 23 * scale, height: 14 * scale),
+      body,
+    );
+    canvas.drawCircle(center.translate(9 * scale, -6 * scale), 6 * scale, body);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: center.translate(1 * scale, 0),
+        width: 9 * scale,
+        height: 7 * scale,
+      ),
+      wing,
+    );
+    final comb = Path()
+      ..moveTo(center.dx + 7 * scale, center.dy - 12 * scale)
+      ..lineTo(center.dx + 10 * scale, center.dy - 17 * scale)
+      ..lineTo(center.dx + 13 * scale, center.dy - 12 * scale)
+      ..close();
+    canvas.drawPath(comb, Paint()..color = const Color(0xFFB92520));
+    final beak = Path()
+      ..moveTo(center.dx + 15 * scale, center.dy - 7 * scale)
+      ..lineTo(center.dx + 21 * scale, center.dy - 5 * scale)
+      ..lineTo(center.dx + 15 * scale, center.dy - 3 * scale)
+      ..close();
+    canvas.drawPath(beak, Paint()..color = const Color(0xFFD98616));
+    canvas.drawCircle(
+      center.translate(11 * scale, -7 * scale),
+      1,
+      Paint()..color = const Color(0xFF2B1B12),
+    );
+    final legPhase = math.sin(phase);
+    for (final side in [-1.0, 1.0]) {
+      final footX = side * (2.5 + legPhase * 2.0) * scale;
+      canvas.drawLine(
+        center.translate(side * 3.5 * scale, 6 * scale),
+        center.translate(footX, 12 * scale),
+        Paint()
+          ..color = const Color(0xFF5D3B22)
+          ..strokeWidth = 1.2
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  void _drawSleepingChickens(Canvas canvas, Size size, double baseY) {
+    final roostY = baseY - 20;
+    final centers = [
+      Offset(size.width * .72, roostY),
+      Offset(size.width * .80, roostY + 2),
+    ];
+    final sleeperPaint = Paint()..color = const Color(0xFFE0B56E);
+    final headPaint = Paint()..color = const Color(0xFFD39A55);
+    for (final center in centers) {
+      canvas.drawOval(
+        Rect.fromCenter(center: center, width: 18, height: 11),
+        sleeperPaint,
+      );
+      canvas.drawCircle(center.translate(-7, -3), 4.2, headPaint);
+      canvas.drawLine(
+        center.translate(-2, -1),
+        center.translate(5, 2),
+        Paint()
+          ..color = const Color(0xFF7D4D2B)
+          ..strokeWidth = 1.4
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+}
+
+class _LightingExposurePlan {
+  const _LightingExposurePlan({
+    required this.naturalMinutes,
+    required this.artificialScheduleMinutes,
+    required this.usefulArtificialMinutes,
+    required this.totalExposureMinutes,
+    required this.activeWindowCount,
+  });
+
+  final int naturalMinutes;
+  final int artificialScheduleMinutes;
+  final int usefulArtificialMinutes;
+  final int totalExposureMinutes;
+  final int activeWindowCount;
+
+  factory _LightingExposurePlan.fromSchedule({
+    required SolarForecast forecast,
+    required List<bool> channelEnabled,
+    required List<bool> morningEnabled,
+    required List<bool> eveningEnabled,
+    required List<String> morningOnTimes,
+    required List<String> morningOffTimes,
+    required List<String> eveningOnTimes,
+    required List<String> eveningOffTimes,
+    required bool generalMorningEnabled,
+    required bool generalEveningEnabled,
+    required String generalMorningOnTime,
+    required String generalMorningOffTime,
+    required String generalEveningOnTime,
+    required String generalEveningOffTime,
+  }) {
+    final artificial = <_MinuteRange>[];
+    for (var i = 0; i < channelEnabled.length; i++) {
+      if (!channelEnabled[i]) continue;
+      if (i < morningEnabled.length && morningEnabled[i]) {
+        artificial.addAll(
+          _rangesFromClock(
+            i < morningOnTimes.length ? morningOnTimes[i] : '',
+            i < morningOffTimes.length ? morningOffTimes[i] : '',
+          ),
+        );
+      }
+      if (i < eveningEnabled.length && eveningEnabled[i]) {
+        artificial.addAll(
+          _rangesFromClock(
+            i < eveningOnTimes.length ? eveningOnTimes[i] : '',
+            i < eveningOffTimes.length ? eveningOffTimes[i] : '',
+          ),
+        );
+      }
+    }
+    if (artificial.isEmpty) {
+      if (generalMorningEnabled) {
+        artificial.addAll(
+          _rangesFromClock(generalMorningOnTime, generalMorningOffTime),
+        );
+      }
+      if (generalEveningEnabled) {
+        artificial.addAll(
+          _rangesFromClock(generalEveningOnTime, generalEveningOffTime),
+        );
+      }
+    }
+
+    final sunriseMinute = forecast.sunrise.hour * 60 + forecast.sunrise.minute;
+    final sunsetMinute = forecast.sunset.hour * 60 + forecast.sunset.minute;
+    final natural = _rangesFromMinutes(sunriseMinute, sunsetMinute);
+    final naturalMinutes = _mergedMinutes(natural);
+    final artificialMinutes = _mergedMinutes(artificial);
+    final totalMinutes = _mergedMinutes([...natural, ...artificial]);
+    return _LightingExposurePlan(
+      naturalMinutes: naturalMinutes > 0
+          ? naturalMinutes
+          : forecast.daylightMinutes,
+      artificialScheduleMinutes: artificialMinutes,
+      usefulArtificialMinutes: math.max(0, totalMinutes - naturalMinutes),
+      totalExposureMinutes: totalMinutes,
+      activeWindowCount: artificial.length,
+    );
+  }
+}
+
+class _MinuteRange {
+  const _MinuteRange(this.start, this.end);
+
+  final int start;
+  final int end;
+}
+
+List<_MinuteRange> _rangesFromClock(String start, String end) {
+  final startMinute = _parseClockMinute(start);
+  final endMinute = _parseClockMinute(end);
+  if (startMinute == null || endMinute == null) return const [];
+  return _rangesFromMinutes(startMinute, endMinute);
+}
+
+List<_MinuteRange> _rangesFromMinutes(int start, int end) {
+  if (start == end) return const [];
+  if (start < end) return [_MinuteRange(start, end)];
+  return [_MinuteRange(start, 1440), _MinuteRange(0, end)];
+}
+
+int? _parseClockMinute(String value) {
+  final match = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$').firstMatch(value);
+  if (match == null) return null;
+  final hour = int.parse(match.group(1)!);
+  final minute = int.parse(match.group(2)!);
+  return hour * 60 + minute;
+}
+
+int _mergedMinutes(List<_MinuteRange> ranges) {
+  if (ranges.isEmpty) return 0;
+  final sorted = [...ranges]
+    ..sort((a, b) {
+      final byStart = a.start.compareTo(b.start);
+      return byStart == 0 ? a.end.compareTo(b.end) : byStart;
+    });
+  var total = 0;
+  var currentStart = sorted.first.start;
+  var currentEnd = sorted.first.end;
+  for (final range in sorted.skip(1)) {
+    if (range.start <= currentEnd) {
+      currentEnd = math.max(currentEnd, range.end);
+      continue;
+    }
+    total += currentEnd - currentStart;
+    currentStart = range.start;
+    currentEnd = range.end;
+  }
+  total += currentEnd - currentStart;
+  return total.clamp(0, 1440).toInt();
+}
+
+String _formatClock(DateTime value) {
+  String two(int number) => number.toString().padLeft(2, '0');
+  return '${two(value.hour)}:${two(value.minute)}';
+}
+
+String _formatDuration(int minutes) {
+  final safe = minutes.clamp(0, 1440);
+  final hours = safe ~/ 60;
+  final rest = safe % 60;
+  if (rest == 0) return '${hours}h';
+  return '${hours}h${rest.toString().padLeft(2, '0')}';
 }
 
 class _LightingInstrumentPainter extends CustomPainter {
