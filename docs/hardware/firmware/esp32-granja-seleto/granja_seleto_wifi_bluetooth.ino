@@ -307,36 +307,38 @@ String jsonScheduleObjectForChannel(const String &payload, uint8_t channel)
 
 uint16_t jsonChannelsMask(const String &payload, uint8_t relayCount)
 {
+  const int channelsPos = payload.indexOf("\"channels\"");
+  if (channelsPos >= 0)
+  {
+    const int arrayStart = payload.indexOf('[', channelsPos);
+    const int arrayEnd = payload.indexOf(']', arrayStart);
+    if (arrayStart < 0 || arrayEnd < 0 || arrayEnd <= arrayStart)
+      return 0;
+
+    uint16_t mask = 0;
+    int start = arrayStart + 1;
+    while (start < arrayEnd)
+    {
+      int end = payload.indexOf(',', start);
+      if (end < 0 || end > arrayEnd)
+        end = arrayEnd;
+      String token = payload.substring(start, end);
+      token.trim();
+      const uint8_t channel = static_cast<uint8_t>(token.toInt());
+      if (channel < 1 || channel > relayCount)
+        return 0;
+      mask |= static_cast<uint16_t>(1) << (channel - 1);
+      start = end + 1;
+    }
+    return mask;
+  }
+
   const int singleChannel = jsonIntField(payload, "channel", 0);
   if (singleChannel >= 1 && singleChannel <= relayCount)
   {
     return static_cast<uint16_t>(1) << (singleChannel - 1);
   }
-
-  const int channelsPos = payload.indexOf("\"channels\"");
-  if (channelsPos < 0)
-    return 0;
-  const int arrayStart = payload.indexOf('[', channelsPos);
-  const int arrayEnd = payload.indexOf(']', arrayStart);
-  if (arrayStart < 0 || arrayEnd < 0 || arrayEnd <= arrayStart)
-    return 0;
-
-  uint16_t mask = 0;
-  int start = arrayStart + 1;
-  while (start < arrayEnd)
-  {
-    int end = payload.indexOf(',', start);
-    if (end < 0 || end > arrayEnd)
-      end = arrayEnd;
-    String token = payload.substring(start, end);
-    token.trim();
-    const uint8_t channel = static_cast<uint8_t>(token.toInt());
-    if (channel < 1 || channel > relayCount)
-      return 0;
-    mask |= static_cast<uint16_t>(1) << (channel - 1);
-    start = end + 1;
-  }
-  return mask;
+  return 0;
 }
 
 bool readScheduleFromJson(
