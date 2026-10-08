@@ -98,10 +98,10 @@ class EspWifiNetwork {
   int get qualityPercent => ((rssi + 100) * 2).clamp(0, 100).toInt();
 
   String get qualityLabel {
-    if (rssi >= -55) return 'Excelente';
-    if (rssi >= -67) return 'Bom';
-    if (rssi >= -75) return 'Regular';
-    return 'Fraco';
+    if (rssi >= -60) return 'BOM';
+    if (rssi >= -70) return 'RAZOAVEL';
+    if (rssi >= -80) return 'ACEITAVEL';
+    return 'RUIM';
   }
 }
 

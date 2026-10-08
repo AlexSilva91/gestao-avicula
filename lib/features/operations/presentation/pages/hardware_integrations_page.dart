@@ -604,8 +604,8 @@ class _EspConfigurationSectionState
       _appendEspLog(
         'scan: ${result.networks.length} network(s) captured by ESP32 radio',
       );
-      _appendEspLog('SSID                 RSSI  CH  SEC   LINK');
-      _appendEspLog('-------------------  ----  --  ----  ----------');
+      _appendEspLog('SSID                 RSSI  CH  SEC   NIVEL');
+      _appendEspLog('-------------------  ----  --  ----  ---------');
       for (final network in result.networks.take(8)) {
         _appendEspLog(_wifiTerminalLine(network));
       }
@@ -630,8 +630,8 @@ class _EspConfigurationSectionState
     final rssi = '${network.rssi}'.padLeft(4);
     final channel = '${network.channel}'.padLeft(2);
     final security = network.encrypted ? 'WPA ' : 'OPEN';
-    final link = network.connected ? 'CONNECTED' : network.qualityLabel;
-    return '$displaySsid  $rssi  $channel  $security  $link';
+    final level = network.connected ? 'BOM*' : network.qualityLabel;
+    return '$displaySsid  $rssi  $channel  $security  $level';
   }
 
   Future<void> _disconnectEspWifi() async {
@@ -2809,16 +2809,23 @@ class _EspTerminalPanel extends StatelessWidget {
                     color: terminalGreen.withValues(alpha: .18),
                   ),
                 ),
-                child: SingleChildScrollView(
-                  reverse: true,
-                  padding: const EdgeInsets.all(10),
-                  child: SelectableText(
-                    lines.join('\n'),
-                    style: const TextStyle(
-                      color: terminalGreen,
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                      height: 1.32,
+                child: Scrollbar(
+                  thumbVisibility: false,
+                  child: SingleChildScrollView(
+                    reverse: true,
+                    padding: const EdgeInsets.all(10),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Text(
+                        lines.join('\n'),
+                        softWrap: false,
+                        style: const TextStyle(
+                          color: terminalGreen,
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                          height: 1.32,
+                        ),
+                      ),
                     ),
                   ),
                 ),
