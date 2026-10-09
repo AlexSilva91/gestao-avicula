@@ -1,12 +1,34 @@
 # GRANJA SELETO - automacoes atuais e proximos modulos
 
-Atualizado em: 08/10/2026
+Atualizado em: 09/10/2026
 
 ## 1. Objetivo
 
 Este documento registra o que o projeto GRANJA SELETO ja entrega hoje em automacao e quais automacoes uma granja pequena, media ou grande pode precisar no futuro.
 
 Tambem inclui uma recomendacao de API de previsao do tempo/astronomia para calcular horas de luz com base no nascer e no por do sol.
+
+## 1.1. Proxima leva de integracoes confirmada
+
+A proxima leva de integracoes sera focada em sensores basicos e essenciais para
+ambiencia e reservatorio:
+
+1. Temperatura do ambiente.
+2. Umidade do ambiente.
+3. Nivel da agua.
+4. Temperatura da agua.
+
+Nesta etapa nao serao integrados:
+
+- cloro;
+- pH;
+- TDS;
+- qualidade quimica da agua;
+- outros indicadores avancados de qualidade da agua.
+
+Esses sensores de qualidade da agua ficam reservados para uma fase futura,
+depois que temperatura/umidade do ambiente e nivel/temperatura da agua estiverem
+estaveis no app, no ESP32 e no historico.
 
 ## 2. Automacoes e integracoes que ja existem hoje
 
@@ -53,27 +75,51 @@ Ainda falta evoluir para controle automatico por temperatura, umidade e estagios
 
 ### Ambiente
 
-Ja existe:
+Ja existe base no app:
 
 - Tela de ambiente.
-- Leitura de temperatura.
-- Leitura de umidade.
+- Campos para leitura de temperatura.
+- Campos para leitura de umidade.
 - Endpoint dedicado no ESP32.
 - Registro historico em `sensor_readings`.
 - Graficos na central de automacao.
 
+Proxima integracao confirmada:
+
+- sensor real de temperatura do ambiente;
+- sensor real de umidade do ambiente;
+- exibicao em tempo real no app;
+- historico/grafico;
+- alerta de sensor sem leitura;
+- alerta de temperatura/umidade fora da faixa.
+
 ### Agua
 
-Ja existe:
+Ja existe base no app:
 
 - Tela de agua/reservatorio.
-- Leitura de nivel.
-- Leitura de temperatura da agua.
-- Leitura de pH.
-- Leitura de TDS.
+- Campos para leitura de nivel.
+- Campos para leitura de temperatura da agua.
 - Estrutura para historico e graficos.
 
-Ainda falta controle ativo de bomba, vazao e protecao contra falta de agua.
+Proxima integracao confirmada:
+
+- sensor real de nivel da agua;
+- sensor real de temperatura da agua;
+- exibicao em tempo real no app;
+- historico/grafico;
+- alerta de nivel baixo;
+- alerta de sensor sem leitura.
+
+Nao entra nesta etapa:
+
+- cloro;
+- pH;
+- TDS;
+- qualidade quimica da agua.
+
+Ainda falta, em etapa futura, controle ativo de bomba, vazao e protecao contra
+falta de agua.
 
 ### Cameras
 
@@ -93,7 +139,7 @@ Ja existe:
 
 - Painel central de automacao.
 - Indicador de ESP online/offline.
-- Indicadores de temperatura, umidade, agua, pH/TDS.
+- Indicadores de temperatura, umidade, nivel da agua e temperatura da agua.
 - Estado dos reles.
 - Alertas de automacao.
 - Graficos de sensores.
@@ -353,16 +399,17 @@ Funcionalidades recomendadas:
 
 Ordem sugerida para evolucao do produto:
 
-1. Alimentador automatico.
-2. Agua automatica com bomba/vazao.
-3. Ventilacao automatica por temperatura.
-4. Monitoramento de energia/falha eletrica.
-5. Silo/estoque fisico de racao.
-6. Lux e iluminacao avancada.
-7. Nebulizacao/resfriamento.
-8. Cameras com eventos.
-9. Manutencao preventiva.
-10. Cortinas/entrada de ar.
+1. Temperatura/umidade do ambiente e nivel/temperatura da agua.
+2. Alimentador automatico.
+3. Agua automatica com bomba/vazao.
+4. Ventilacao automatica por temperatura.
+5. Monitoramento de energia/falha eletrica.
+6. Silo/estoque fisico de racao.
+7. Lux e iluminacao avancada.
+8. Nebulizacao/resfriamento.
+9. Cameras com eventos.
+10. Manutencao preventiva.
+11. Cortinas/entrada de ar.
 
 ## 5. API de previsao do tempo e horas de luz
 
