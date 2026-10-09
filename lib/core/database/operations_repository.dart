@@ -5100,7 +5100,7 @@ extension OperationsRepository on AppDatabase {
       final espOnline =
           mqttStatus == 'ONLINE' &&
           lastSeen != null &&
-          DateTime.now().difference(lastSeen) < const Duration(seconds: 75);
+          DateTime.now().difference(lastSeen) < const Duration(minutes: 5);
       return AutomationOverview(
         espOnline: espOnline,
         espIp: row.readNullable<String>('esp_ip') ?? '',
