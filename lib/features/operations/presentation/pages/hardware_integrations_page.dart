@@ -251,6 +251,9 @@ class _EspConfigurationSectionState
   bool mqttEnabled = false;
   bool mqttConnected = false;
   bool mqttRuntimeStarted = false;
+  bool alertEspOffline = true;
+  bool alertEnvironmentSensor = false;
+  bool alertWaterSensor = false;
   StreamSubscription<EspMqttUpdate>? mqttRuntimeSubscription;
   String espTerminalTitle = 'SELETO ESP LINK';
   List<String> espTerminalLines = const [
@@ -304,6 +307,10 @@ class _EspConfigurationSectionState
         : savedMqttDeviceId;
     mqttUsername.text = values['hardware_esp_mqtt_username']?.trim() ?? '';
     mqttPassword.text = values['hardware_esp_mqtt_password'] ?? '';
+    alertEspOffline = values['hardware_alert_esp_offline_enabled'] != 'false';
+    alertEnvironmentSensor =
+        values['hardware_alert_environment_sensor_enabled'] == 'true';
+    alertWaterSensor = values['hardware_alert_water_sensor_enabled'] == 'true';
   }
 
   @override
@@ -384,10 +391,59 @@ class _EspConfigurationSectionState
                 onTest: _testMqttConnection,
                 onPushToEsp: _configureEspMqtt,
               ),
+              const SizedBox(height: 12),
+              _EspAlertMonitorPanel(
+                espOffline: alertEspOffline,
+                environmentSensor: alertEnvironmentSensor,
+                waterSensor: alertWaterSensor,
+                busy: saving,
+                onEspOfflineChanged: (value) =>
+                    _saveAlertMonitorSetting('esp', value),
+                onEnvironmentSensorChanged: (value) =>
+                    _saveAlertMonitorSetting('environment', value),
+                onWaterSensorChanged: (value) =>
+                    _saveAlertMonitorSetting('water', value),
+              ),
             ],
           );
         },
       );
+
+  Future<void> _saveAlertMonitorSetting(String type, bool value) async {
+    setState(() {
+      switch (type) {
+        case 'esp':
+          alertEspOffline = value;
+        case 'environment':
+          alertEnvironmentSensor = value;
+        case 'water':
+          alertWaterSensor = value;
+      }
+    });
+    final key = switch (type) {
+      'esp' => 'hardware_alert_esp_offline_enabled',
+      'environment' => 'hardware_alert_environment_sensor_enabled',
+      _ => 'hardware_alert_water_sensor_enabled',
+    };
+    try {
+      await ref
+          .read(operationsControllerProvider)
+          .saveSetting(key, value.toString());
+      _appendEspLog(
+        'APP> alerta ${_alertMonitorLabel(type)} ${value ? 'ativado' : 'desativado'}',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _appendEspLog('ERR> salvar alerta falhou: $error');
+      await showOperationError(context, error);
+    }
+  }
+
+  String _alertMonitorLabel(String type) => switch (type) {
+    'esp' => 'ESP offline',
+    'environment' => 'sensor ambiente',
+    _ => 'sensor água',
+  };
 
   EspMqttConfig _mqttConfig() => EspMqttConfig(
     enabled: mqttEnabled,
@@ -3614,6 +3670,124 @@ class _EspMqttPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+class _EspAlertMonitorPanel extends StatelessWidget {
+  const _EspAlertMonitorPanel({
+    required this.espOffline,
+    required this.environmentSensor,
+    required this.waterSensor,
+    required this.busy,
+    required this.onEspOfflineChanged,
+    required this.onEnvironmentSensorChanged,
+    required this.onWaterSensorChanged,
+  });
+
+  final bool espOffline;
+  final bool environmentSensor;
+  final bool waterSensor;
+  final bool busy;
+  final ValueChanged<bool> onEspOfflineChanged;
+  final ValueChanged<bool> onEnvironmentSensorChanged;
+  final ValueChanged<bool> onWaterSensorChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: .28),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.notifications_active_outlined,
+                  color: colors.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Monitoramento e alertas do ESP',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Enquanto o app estiver aberto ou vivo em segundo plano, o MQTT global atualiza sensores, relés e status mesmo fora desta tela.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+            ),
+            const SizedBox(height: 10),
+            _EspAlertSwitch(
+              title: 'Avisar se o ESP ficar offline',
+              subtitle: 'Recomendado manter ligado.',
+              value: espOffline,
+              busy: busy,
+              onChanged: onEspOfflineChanged,
+            ),
+            _EspAlertSwitch(
+              title: 'Avisar falha do sensor de ambiente',
+              subtitle: 'Ative somente se o sensor já estiver instalado.',
+              value: environmentSensor,
+              busy: busy,
+              onChanged: onEnvironmentSensorChanged,
+            ),
+            _EspAlertSwitch(
+              title: 'Avisar falha dos sensores de água',
+              subtitle:
+                  'Ative somente após instalar nível, pH, TDS ou temperatura.',
+              value: waterSensor,
+              busy: busy,
+              onChanged: onWaterSensorChanged,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EspAlertSwitch extends StatelessWidget {
+  const _EspAlertSwitch({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.busy,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final bool busy;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => SwitchListTile(
+    contentPadding: EdgeInsets.zero,
+    dense: true,
+    value: value,
+    onChanged: busy ? null : onChanged,
+    title: Text(
+      title,
+      style: Theme.of(
+        context,
+      ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+    ),
+    subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+  );
 }
 
 class _LightingControlInstrument extends StatelessWidget {

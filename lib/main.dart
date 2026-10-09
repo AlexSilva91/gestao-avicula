@@ -10,6 +10,7 @@ import 'core/platform/alert_scheduler.dart';
 import 'core/platform/notification_service.dart';
 import 'core/sync/seleto_sync_service.dart';
 import 'core/widgets/app_background.dart';
+import 'features/operations/application/hardware_esp_monitor_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,6 +65,10 @@ class _AppBootstrapState extends ConsumerState<_AppBootstrap> {
     await _runOptionalStartupTask(
       'sync',
       () => ref.read(seletoSyncServiceProvider).start(),
+    );
+    await _runOptionalStartupTask(
+      'esp-monitor',
+      () => ref.read(hardwareEspMonitorServiceProvider).start(),
     );
     await _runOptionalStartupTask(
       'alerts',
