@@ -39,6 +39,11 @@ class HardwareEspMonitorService {
   Future<void> start() async {
     if (_started) return;
     _started = true;
+    await _saveSetting('hardware_esp_mqtt_runtime_status', 'STARTING');
+    await _saveSetting(
+      'hardware_esp_mqtt_runtime_message',
+      'Monitor MQTT iniciando; aguardando telemetria viva do ESP32.',
+    );
     _mqttSubscription = _runtime.updates.listen(_handleMqttUpdate);
     _settingsSubscription = _db.watchAppSettings().listen((settings) {
       _settings = {for (final setting in settings) setting.key: setting.value};
@@ -101,15 +106,24 @@ class HardwareEspMonitorService {
       if (!config.isUsable) {
         _config = config;
         await _runtime.disconnect();
+        await _saveSetting('hardware_esp_mqtt_runtime_status', 'DISABLED');
         return;
       }
-      if (_sameConfig(_config, config) && _runtime.connected) return;
+      if (_sameConfig(_config, config) && _runtime.connected) {
+        await _saveSetting('hardware_esp_mqtt_runtime_status', 'CONNECTED');
+        await _saveSetting(
+          'hardware_esp_mqtt_runtime_message',
+          'MQTT conectado ao broker; aguardando telemetria viva do ESP32.',
+        );
+        return;
+      }
       _config = config;
+      await _saveSetting('hardware_esp_mqtt_runtime_status', 'CONNECTING');
       await _runtime.connect(config);
       await _saveSetting('hardware_esp_mqtt_runtime_status', 'CONNECTED');
       await _saveSetting(
         'hardware_esp_mqtt_runtime_message',
-        'MQTT global conectado em ${config.host}:${config.port}',
+        'MQTT conectado ao broker em ${config.host}:${config.port}; aguardando telemetria viva do ESP32.',
       );
     } catch (error, stackTrace) {
       debugPrint('SELETO ESP monitor MQTT failed: $error');

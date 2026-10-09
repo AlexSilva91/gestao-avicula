@@ -5074,6 +5074,7 @@ extension OperationsRepository on AppDatabase {
       SELECT
         (SELECT value FROM app_settings WHERE key='hardware_lighting_endpoint') esp_ip,
         (SELECT value FROM app_settings WHERE key='hardware_esp_last_seen_at') last_seen,
+        (SELECT value FROM app_settings WHERE key='hardware_esp_mqtt_runtime_status') mqtt_status,
         (SELECT value FROM app_settings WHERE key='hardware_lighting_schedule_last_synced_at') last_sync,
         (SELECT value FROM sensor_readings WHERE metric='air_temperature_c' ORDER BY captured_at DESC LIMIT 1) temp,
         (SELECT value FROM sensor_readings WHERE metric='air_humidity_percent' ORDER BY captured_at DESC LIMIT 1) humidity,
@@ -5095,9 +5096,11 @@ extension OperationsRepository on AppDatabase {
       final lastSync = DateTime.tryParse(
         row.readNullable<String>('last_sync') ?? '',
       );
+      final mqttStatus = row.readNullable<String>('mqtt_status') ?? '';
       final espOnline =
+          mqttStatus == 'ONLINE' &&
           lastSeen != null &&
-          DateTime.now().difference(lastSeen) < const Duration(minutes: 15);
+          DateTime.now().difference(lastSeen) < const Duration(seconds: 75);
       return AutomationOverview(
         espOnline: espOnline,
         espIp: row.readNullable<String>('esp_ip') ?? '',

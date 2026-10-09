@@ -580,17 +580,10 @@ class _EspConfigurationSectionState
       if (!mounted) return;
       setState(() {
         mqttConnected = true;
-        espTerminalTitle = 'MQTT TEMPO REAL';
+        espTerminalTitle = 'MQTT AGUARDANDO ESP';
       });
-      await ref
-          .read(databaseProvider)
-          .saveAppSetting(
-            'hardware_esp_last_seen_at',
-            DateTime.now().toIso8601String(),
-            'system',
-          );
       _appendEspLog(
-        'MQTT> tempo real conectado em ${config.host}:${config.port}',
+        'MQTT> broker conectado em ${config.host}:${config.port}; aguardando pacote vivo do ESP32',
       );
     } catch (error) {
       if (!mounted) return;
@@ -603,6 +596,15 @@ class _EspConfigurationSectionState
     if (!mounted) return;
     if (update.topic == 'runtime/disconnected') {
       setState(() => mqttConnected = false);
+      unawaited(
+        ref
+            .read(databaseProvider)
+            .saveAppSetting(
+              'hardware_esp_mqtt_runtime_status',
+              'OFFLINE',
+              'system',
+            ),
+      );
       _appendEspLog('MQTT> desconectado');
       return;
     }
@@ -612,23 +614,37 @@ class _EspConfigurationSectionState
         mqttConnected = false;
         espTerminalTitle = 'MQTT SEM TELEMETRIA';
       });
+      unawaited(
+        ref
+            .read(databaseProvider)
+            .saveAppSetting(
+              'hardware_esp_mqtt_runtime_status',
+              'OFFLINE',
+              'system',
+            ),
+      );
       _appendEspLog('WARN> sem pacote do ESP há ${seconds}s');
       return;
     }
-    setState(() => mqttConnected = true);
-    unawaited(
-      ref
-          .read(databaseProvider)
-          .saveAppSetting(
-            'hardware_esp_last_seen_at',
-            update.receivedAt.toIso8601String(),
-            'system',
-          ),
-    );
     if (update.topic == 'runtime/connected') {
-      _appendEspLog('MQTT> reconectado');
+      setState(() {
+        mqttConnected = true;
+        espTerminalTitle = 'MQTT AGUARDANDO ESP';
+      });
+      _appendEspLog('MQTT> broker reconectado; aguardando ESP32');
       return;
     }
+    if (update.retained) {
+      _appendEspLog(
+        _mqttLogLine(
+          update,
+          fallback: 'Cache MQTT retido recebido; aguardando estado real.',
+          prefix: 'CACHE',
+        ),
+      );
+      return;
+    }
+    setState(() => mqttConnected = true);
     final suffix = update.topic.split('/').isEmpty
         ? update.topic
         : update.topic.split('/').last;
@@ -643,12 +659,39 @@ class _EspConfigurationSectionState
           espWifiConnected = false;
           espTerminalTitle = 'ESP32 OFFLINE';
         });
+        unawaited(
+          ref
+              .read(databaseProvider)
+              .saveAppSetting(
+                'hardware_esp_mqtt_runtime_status',
+                'OFFLINE',
+                'system',
+              ),
+        );
         _appendEspLog(
           _mqttLogLine(update, fallback: espMessage, prefix: 'WARN'),
         );
         return;
       }
       final ip = (update.payload['ip'] ?? '').toString();
+      unawaited(
+        ref
+            .read(databaseProvider)
+            .saveAppSetting(
+              'hardware_esp_last_seen_at',
+              update.receivedAt.toIso8601String(),
+              'system',
+            ),
+      );
+      unawaited(
+        ref
+            .read(databaseProvider)
+            .saveAppSetting(
+              'hardware_esp_mqtt_runtime_status',
+              'ONLINE',
+              'system',
+            ),
+      );
       setState(
         () => espWifiConnected = update.payload['wifiConnected'] == true,
       );
@@ -2091,19 +2134,13 @@ class _HardwareIntegrationsPageState
       if (!mounted) return;
       setState(() {
         mqttConnected = true;
-        lightingConnectionResult = 'OK MQTT: tempo real ativo.';
-        lightingStatus = 'MQTT bidirecional ativo em tempo de execução.';
-        espTerminalTitle = 'MQTT TEMPO REAL';
+        lightingConnectionResult =
+            'MQTT conectado ao broker; aguardando pacote vivo do ESP32.';
+        lightingStatus = 'Aguardando telemetria viva do ESP32.';
+        espTerminalTitle = 'MQTT AGUARDANDO ESP';
       });
-      await ref
-          .read(databaseProvider)
-          .saveAppSetting(
-            'hardware_esp_last_seen_at',
-            DateTime.now().toIso8601String(),
-            'system',
-          );
       _appendEspLog(
-        'MQTT> tempo real conectado em ${config.host}:${config.port}',
+        'MQTT> broker conectado em ${config.host}:${config.port}; aguardando ESP32',
       );
     } catch (error) {
       if (!mounted) return;
@@ -2134,6 +2171,15 @@ class _HardwareIntegrationsPageState
         mqttConnected = false;
         lightingConnectionResult = 'MQTT desconectado.';
       });
+      unawaited(
+        ref
+            .read(databaseProvider)
+            .saveAppSetting(
+              'hardware_esp_mqtt_runtime_status',
+              'OFFLINE',
+              'system',
+            ),
+      );
       _appendEspLog('MQTT> desconectado');
       return;
     }
@@ -2144,6 +2190,15 @@ class _HardwareIntegrationsPageState
         lightingConnectionResult = 'MQTT sem telemetria recente.';
         lightingStatus = 'Sem atualização do ESP32 há ${seconds}s.';
       });
+      unawaited(
+        ref
+            .read(databaseProvider)
+            .saveAppSetting(
+              'hardware_esp_mqtt_runtime_status',
+              'OFFLINE',
+              'system',
+            ),
+      );
       _appendEspLog('WARN> sem pacote do ESP há ${seconds}s');
       return;
     }
@@ -2179,6 +2234,15 @@ class _HardwareIntegrationsPageState
           lightingConnectionResult = 'MQTT indicou ESP32 offline.';
           lightingStatus = espMessage;
         });
+        unawaited(
+          ref
+              .read(databaseProvider)
+              .saveAppSetting(
+                'hardware_esp_mqtt_runtime_status',
+                'OFFLINE',
+                'system',
+              ),
+        );
         _appendEspLog(
           _mqttLogLine(update, fallback: espMessage, prefix: 'WARN'),
         );
@@ -2191,6 +2255,15 @@ class _HardwareIntegrationsPageState
             .saveAppSetting(
               'hardware_esp_last_seen_at',
               update.receivedAt.toIso8601String(),
+              'system',
+            ),
+      );
+      unawaited(
+        ref
+            .read(databaseProvider)
+            .saveAppSetting(
+              'hardware_esp_mqtt_runtime_status',
+              'ONLINE',
               'system',
             ),
       );

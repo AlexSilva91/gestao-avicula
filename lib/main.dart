@@ -63,12 +63,12 @@ class _AppBootstrapState extends ConsumerState<_AppBootstrap> {
       () => NotificationService().initialize(),
     );
     await _runOptionalStartupTask(
-      'sync',
-      () => ref.read(seletoSyncServiceProvider).start(),
-    );
-    await _runOptionalStartupTask(
       'esp-monitor',
       () => ref.read(hardwareEspMonitorServiceProvider).start(),
+    );
+    await _runOptionalStartupTask(
+      'sync',
+      () => ref.read(seletoSyncServiceProvider).start(),
     );
     await _runOptionalStartupTask(
       'alerts',
