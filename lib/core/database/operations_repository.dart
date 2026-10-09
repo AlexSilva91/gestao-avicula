@@ -5097,10 +5097,14 @@ extension OperationsRepository on AppDatabase {
         row.readNullable<String>('last_sync') ?? '',
       );
       final mqttStatus = row.readNullable<String>('mqtt_status') ?? '';
+      final mqttStatusAllowsOnline =
+          mqttStatus != 'OFFLINE' &&
+          mqttStatus != 'FAILED' &&
+          mqttStatus != 'DISABLED';
       final espOnline =
-          mqttStatus == 'ONLINE' &&
+          mqttStatusAllowsOnline &&
           lastSeen != null &&
-          DateTime.now().difference(lastSeen) < const Duration(minutes: 5);
+          DateTime.now().difference(lastSeen) < const Duration(seconds: 90);
       return AutomationOverview(
         espOnline: espOnline,
         espIp: row.readNullable<String>('esp_ip') ?? '',

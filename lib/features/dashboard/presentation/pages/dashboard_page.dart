@@ -74,11 +74,13 @@ class DashboardPage extends ConsumerWidget {
     final appSettings = canSeeSensors
         ? ref.watch(appSettingsProvider).asData?.value ?? const <AppSetting>[]
         : const <AppSetting>[];
-    final sensorSnapshot = canSeeSensors
-        ? _HomeSensorSnapshot.fromSettings(appSettings)
-        : null;
     final automation = canSeeAutomation
         ? ref.watch(automationOverviewProvider).asData?.value
+        : null;
+    final sensorSnapshot = canSeeSensors
+        ? _HomeSensorSnapshot.fromSettings(appSettings).withLightingRelayStates(
+            automation?.espOnline == true ? automation?.relayStates : null,
+          )
         : null;
     if (metrics != null || eggs != null || automation != null) {
       unawaited(
@@ -565,6 +567,40 @@ class _HomeSensorSnapshot {
                   '')
               .trim()
               .isNotEmpty),
+      ventilationEnabledCount: ventilationEnabledCount,
+      ventilationOnCount: ventilationOnCount,
+      ventilationChannelOn: ventilationChannelOn,
+    );
+  }
+
+  _HomeSensorSnapshot withLightingRelayStates(List<bool>? relayStates) {
+    if (relayStates == null || relayStates.isEmpty) return this;
+    final channelOn = <bool>[];
+    var onCount = 0;
+    for (var i = 0; i < 4; i++) {
+      final enabled =
+          i < lightingEnabledCount ||
+          (i < lightingChannelOn.length && lightingChannelOn[i]);
+      final on = enabled && i < relayStates.length && relayStates[i];
+      channelOn.add(on);
+      if (on) onCount++;
+    }
+    return _HomeSensorSnapshot(
+      environmentTemperatureC: environmentTemperatureC,
+      environmentHumidityPercent: environmentHumidityPercent,
+      environmentReady: environmentReady,
+      waterLevelPercent: waterLevelPercent,
+      waterTemperatureC: waterTemperatureC,
+      waterPh: waterPh,
+      waterTdsPpm: waterTdsPpm,
+      waterReady: waterReady,
+      lightingEnabled: lightingEnabled,
+      lightingReady: lightingReady,
+      lightingEnabledCount: lightingEnabledCount,
+      lightingOnCount: onCount,
+      lightingChannelOn: channelOn,
+      ventilationEnabled: ventilationEnabled,
+      ventilationReady: ventilationReady,
       ventilationEnabledCount: ventilationEnabledCount,
       ventilationOnCount: ventilationOnCount,
       ventilationChannelOn: ventilationChannelOn,
