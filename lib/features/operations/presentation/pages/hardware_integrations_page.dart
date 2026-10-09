@@ -13,6 +13,7 @@ import '../../../../core/database/operations_repository.dart';
 import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/widgets/seleto_widgets.dart';
 import '../../application/hardware_esp_client.dart';
+import '../../application/hardware_esp_monitor_service.dart';
 import '../../application/hardware_mqtt_client.dart';
 import '../../application/operations_controller.dart';
 
@@ -787,22 +788,41 @@ class _EspConfigurationSectionState
       wifiScanLoading = true;
       espTerminalTitle = 'SCAN WIFI ESP';
     });
-    final useMqtt = mqttRuntime.connected;
+    final config = _mqttConfig();
+    final monitor = ref.read(hardwareEspMonitorServiceProvider);
+    final useMqtt = config.isUsable;
     _appendEspLog(
       useMqtt
           ? r'$ mosquitto_pub seleto/esp32/SELETO-RELE-01/wifi/scan/command'
           : r'$ iw dev esp32 scan --source=esp --endpoint=' + endpoint,
     );
     try {
-      final result = useMqtt
-          ? EspWifiScanResult.fromPayload(
-              (await mqttRuntime.publishWifiScanCommand(
-                now: DateTime.now(),
-              )).payload,
-            )
-          : await espClient.scanWifi(endpoint);
+      EspWifiScanResult result;
+      var transport = 'Wi-Fi';
+      if (useMqtt) {
+        try {
+          result = EspWifiScanResult.fromPayload(
+            (await monitor.publishWifiScanCommand(
+              config: config,
+              now: DateTime.now(),
+            )).payload,
+          );
+          transport = 'MQTT';
+        } catch (mqttError) {
+          _appendEspLog(
+            'WARN> MQTT broker OK, mas o ESP não respondeu ao scan: $mqttError',
+          );
+          _appendEspLog(
+            'WARN> tentando HTTP local; se o celular estiver fora da rede do ESP, isso deve falhar.',
+          );
+          result = await _scanEspWifiNetworksByHttp(endpoint);
+          transport = 'Wi-Fi local';
+        }
+      } else {
+        result = await _scanEspWifiNetworksByHttp(endpoint);
+      }
       if (!mounted) return;
-      _applyEspWifiScanResult(result, transport: useMqtt ? 'MQTT' : 'Wi-Fi');
+      _applyEspWifiScanResult(result, transport: transport);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -813,6 +833,31 @@ class _EspConfigurationSectionState
     } finally {
       if (mounted) setState(() => wifiScanLoading = false);
     }
+  }
+
+  Future<EspWifiScanResult> _scanEspWifiNetworksByHttp(
+    String primaryEndpoint,
+  ) async {
+    final candidates = <String>[
+      primaryEndpoint,
+      lightingEndpoint.text.trim(),
+      '192.168.4.1',
+    ].where((value) => value.trim().isNotEmpty).map((value) => value.trim());
+    final unique = <String>[];
+    for (final candidate in candidates) {
+      if (!unique.contains(candidate)) unique.add(candidate);
+    }
+    Object? lastError;
+    for (final candidate in unique) {
+      try {
+        _appendEspLog('HTTP> lendo redes pelo ESP em $candidate');
+        return await espClient.scanWifi(candidate);
+      } catch (error) {
+        lastError = error;
+        _appendEspLog('WARN> scan HTTP falhou em $candidate: $error');
+      }
+    }
+    throw StateError('ESP não respondeu ao scan por MQTT nem HTTP: $lastError');
   }
 
   void _applyEspWifiScanResult(
@@ -1977,16 +2022,9 @@ class _HardwareIntegrationsPageState
     final config = _mqttConfig();
     if (!config.isUsable) return false;
     try {
-      if (!mqttRuntime.connected) await _startMqttRuntime();
-      if (mqttRuntime.connected) {
-        mqttRuntime.publishRelayCommand(channel: channel, state: state);
-      } else {
-        await mqttClient.publishRelayCommand(
-          config: config,
-          channel: channel,
-          state: state,
-        );
-      }
+      await ref
+          .read(hardwareEspMonitorServiceProvider)
+          .publishRelayCommand(config: config, channel: channel, state: state);
       if (!mounted) return true;
       setState(() => mqttConnected = true);
       _appendEspLog('MQTT> comando canal $channel enviado: $state');
@@ -2007,26 +2045,18 @@ class _HardwareIntegrationsPageState
     final config = _mqttConfig();
     if (!config.isUsable) return false;
     try {
-      if (!mqttRuntime.connected) await _startMqttRuntime();
       final now = DateTime.now();
       final payloadSchedules = [
         for (final schedule in schedules) _scheduleMqttPayload(schedule),
       ];
-      EspMqttUpdate ack;
-      if (mqttRuntime.connected) {
-        ack = await mqttRuntime.publishScheduleCommand(
-          channels: channels,
-          schedules: payloadSchedules,
-          now: now,
-        );
-      } else {
-        ack = await mqttClient.publishScheduleCommand(
-          config: config,
-          channels: channels,
-          schedules: payloadSchedules,
-          now: now,
-        );
-      }
+      final ack = await ref
+          .read(hardwareEspMonitorServiceProvider)
+          .publishScheduleCommand(
+            config: config,
+            channels: channels,
+            schedules: payloadSchedules,
+            now: now,
+          );
       if (!mounted) return true;
       setState(() => mqttConnected = true);
       _appendEspLog('MQTT> agenda confirmada pelo ESP: $label');
@@ -2118,20 +2148,22 @@ class _HardwareIntegrationsPageState
       return;
     }
     if (update.topic == 'runtime/connected') {
-      unawaited(
-        ref
-            .read(databaseProvider)
-            .saveAppSetting(
-              'hardware_esp_last_seen_at',
-              update.receivedAt.toIso8601String(),
-              'system',
-            ),
-      );
       setState(() {
         mqttConnected = true;
-        lightingConnectionResult = 'OK MQTT: tempo real ativo.';
+        lightingConnectionResult =
+            'MQTT conectado ao broker; aguardando pacote vivo do ESP32.';
       });
-      _appendEspLog('MQTT> reconectado');
+      _appendEspLog('MQTT> broker conectado; aguardando ESP32');
+      return;
+    }
+    if (update.retained) {
+      _appendEspLog(
+        _mqttLogLine(
+          update,
+          fallback: 'Cache MQTT retido recebido; aguardando estado real.',
+          prefix: 'CACHE',
+        ),
+      );
       return;
     }
     setState(() => mqttConnected = true);

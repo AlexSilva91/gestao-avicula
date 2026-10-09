@@ -32,6 +32,10 @@ class HardwareEspMonitorService {
   bool _started = false;
   bool _connecting = false;
 
+  bool get connected => _runtime.connected;
+
+  Stream<EspMqttUpdate> get updates => _runtime.updates;
+
   Future<void> start() async {
     if (_started) return;
     _started = true;
@@ -46,6 +50,47 @@ class HardwareEspMonitorService {
     await _settingsSubscription?.cancel();
     await _mqttSubscription?.cancel();
     await _runtime.dispose();
+  }
+
+  Future<void> connectNow([EspMqttConfig? override]) async {
+    if (override != null && override.isUsable) {
+      _config = override;
+      await _runtime.connect(override);
+      await _saveSetting('hardware_esp_mqtt_runtime_status', 'CONNECTED');
+      return;
+    }
+    await _syncRuntime();
+  }
+
+  Future<void> publishRelayCommand({
+    required EspMqttConfig config,
+    required int channel,
+    required String state,
+  }) async {
+    await connectNow(config);
+    _runtime.publishRelayCommand(channel: channel, state: state);
+  }
+
+  Future<EspMqttUpdate> publishScheduleCommand({
+    required EspMqttConfig config,
+    required List<int> channels,
+    required List<Map<String, Object?>> schedules,
+    required DateTime now,
+  }) async {
+    await connectNow(config);
+    return _runtime.publishScheduleCommand(
+      channels: channels,
+      schedules: schedules,
+      now: now,
+    );
+  }
+
+  Future<EspMqttUpdate> publishWifiScanCommand({
+    required EspMqttConfig config,
+    required DateTime now,
+  }) async {
+    await connectNow(config);
+    return _runtime.publishWifiScanCommand(now: now);
   }
 
   Future<void> _syncRuntime() async {
@@ -123,6 +168,13 @@ class HardwareEspMonitorService {
       }
 
       await _saveSetting('hardware_esp_last_mqtt_topic', update.topic);
+      if (update.retained) {
+        await _saveSetting(
+          'hardware_esp_mqtt_runtime_message',
+          'Pacote MQTT retido recebido; aguardando telemetria viva do ESP32.',
+        );
+        return;
+      }
       await _saveSetting(
         'hardware_esp_last_mqtt_packet_at',
         update.receivedAt.toIso8601String(),

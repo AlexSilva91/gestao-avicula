@@ -446,15 +446,18 @@ class HardwareMqttRuntime {
 
   void _handleUpdates(List<MqttReceivedMessage<MqttMessage>> events) {
     for (final event in events) {
-      _markPacket();
       final message = event.payload as MqttPublishMessage;
+      final retained = message.header?.retain == true;
+      if (!retained) {
+        _markPacket();
+      }
       if (_updates.isClosed) return;
       _updates.add(
         EspMqttUpdate(
           topic: event.topic,
           payload: _decodeMqttPayload(message),
           receivedAt: DateTime.now(),
-          retained: message.header?.retain == true,
+          retained: retained,
         ),
       );
     }
@@ -523,9 +526,9 @@ class HardwareMqttRuntime {
     });
     return completer.future
         .timeout(
-          const Duration(seconds: 15),
+          const Duration(seconds: 40),
           onTimeout: () => throw TimeoutException(
-            'ESP nao respondeu scan Wi-Fi MQTT em 15s.',
+            'ESP nao respondeu scan Wi-Fi MQTT em 40s.',
           ),
         )
         .whenComplete(() => subscription.cancel());
